@@ -1,0 +1,36 @@
+# SECRETS — never commit these. They unlock your Drive and Anthropic account.
+.env
+credentials.json
+token.json
+*.json.backup
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+.Python
+venv/
+.venv/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Generated outputs (timelines, sample specs) — don't commit per-project content
+timeline_*.md
+*_timeline.md
+
+# OS-level cruft
+Thumbs.db
+desktop.ini
