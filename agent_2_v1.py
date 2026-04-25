@@ -11,14 +11,22 @@ timeline grounded in Baldwin County code, climate, and verified luxury suppliers
 
 Saves the timeline as a Google Doc in your Drive Generated Timelines folder.
 
+Usage:
+  python3 agent_2_v1.py                            # use default spec (pelican_point.md)
+  python3 agent_2_v1.py chads_lake_house.md        # run on a specific spec
+  python3 agent_2_v1.py --list                     # list available specs and exit
+  SPEC_FILE=foo.md python3 agent_2_v1.py           # env-var fallback (legacy)
+
 First run: opens a browser asking you to authorize Drive access.
 After that: runs silently using saved token.json.
 """
 
+import argparse
 import io
 import json
 import os
 import re
+import sys
 from datetime import datetime
 
 # Google's OAuth flow can return a different scope set than requested when a
@@ -50,9 +58,9 @@ WORKSPACE = os.path.expanduser(
 #   GENERATED TIMELINES/        ← Drive uploads land here as Google Docs
 #   ARCHIVE/                    ← old test files, no longer used
 
-# Default project spec (override via SPEC_FILE env var if needed)
-SPEC_FILENAME = os.environ.get("SPEC_FILE", "pelican_point.md")
-SPEC_PATH = os.path.join(WORKSPACE, "PROJECT SPECS", SPEC_FILENAME)
+# Where specs live. Spec selection is resolved at runtime from CLI / env / default.
+PROJECT_SPECS_DIR = os.path.join(WORKSPACE, "PROJECT SPECS")
+DEFAULT_SPEC_FILENAME = "pelican_point.md"
 
 # Knowledge base files — read at runtime so research updates flow to the agent
 # without code changes. If you rename these, update the constants below.
@@ -99,6 +107,61 @@ DOC_MARGIN_PT = 54
 PARA_SPACE_BEFORE_PT = 6
 PARA_SPACE_AFTER_PT = 8
 PARA_LINE_SPACING_PCT = 115  # 115% line height (slightly above default)
+
+
+# --- CLI argument parsing -------------------------------------------
+
+def parse_args():
+    """Parse CLI arguments. Returns argparse.Namespace.
+
+    Resolution order for which spec to run on (highest priority first):
+      1. Positional CLI argument          → python3 agent_2_v1.py foo.md
+      2. SPEC_FILE environment variable   → SPEC_FILE=foo.md python3 agent_2_v1.py
+      3. DEFAULT_SPEC_FILENAME            → pelican_point.md
+    """
+    parser = argparse.ArgumentParser(
+        description="Generate a construction timeline from a project spec.",
+        epilog=(
+            "Examples:\n"
+            "  python3 agent_2_v1.py                            (use default spec)\n"
+            "  python3 agent_2_v1.py chads_lake_house.md        (specific spec)\n"
+            "  python3 agent_2_v1.py --list                     (list available specs)"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "spec", nargs="?", default=None,
+        help="Spec filename inside PROJECT SPECS/. "
+             "If omitted, uses SPEC_FILE env var or default.",
+    )
+    parser.add_argument(
+        "-l", "--list", action="store_true",
+        help="List available specs in PROJECT SPECS/ and exit.",
+    )
+    return parser.parse_args()
+
+
+def resolve_spec_filename(cli_spec):
+    """Apply the CLI > env > default resolution and return the filename."""
+    if cli_spec:
+        return cli_spec
+    return os.environ.get("SPEC_FILE") or DEFAULT_SPEC_FILENAME
+
+
+def list_available_specs():
+    """Print all .md specs in PROJECT SPECS/ with file sizes."""
+    if not os.path.isdir(PROJECT_SPECS_DIR):
+        print(f"PROJECT SPECS folder not found at {PROJECT_SPECS_DIR}")
+        return
+    files = sorted(f for f in os.listdir(PROJECT_SPECS_DIR) if f.endswith(".md"))
+    if not files:
+        print(f"No .md specs found in {PROJECT_SPECS_DIR}")
+        return
+    print(f"Available specs in PROJECT SPECS/:")
+    for f in files:
+        size = os.path.getsize(os.path.join(PROJECT_SPECS_DIR, f))
+        marker = " (default)" if f == DEFAULT_SPEC_FILENAME else ""
+        print(f"  {f}  ({size:,} bytes){marker}")
 
 
 # --- Knowledge base loading -----------------------------------------
@@ -885,6 +948,19 @@ PROJECT SPECIFICATION:
 # --- Main ------------------------------------------------------------
 
 def main():
+    # 0. Parse CLI args. --list short-circuits before any heavy work.
+    args = parse_args()
+    if args.list:
+        list_available_specs()
+        return
+
+    spec_filename = resolve_spec_filename(args.spec)
+    spec_path = os.path.join(PROJECT_SPECS_DIR, spec_filename)
+    if not os.path.exists(spec_path):
+        print(f"ERROR: Spec file not found: {spec_path}")
+        print(f"Run `python3 agent_2_v1.py --list` to see available specs.")
+        sys.exit(1)
+
     # 1. Load API key + create Anthropic client
     load_dotenv()
     client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
@@ -894,8 +970,8 @@ def main():
     construction_ref, supplier_ref, comm_rules = load_knowledge_base()
 
     # 3. Read project spec
-    print(f"\nReading spec: {os.path.basename(SPEC_PATH)}")
-    with open(SPEC_PATH) as f:
+    print(f"\nReading spec: {spec_filename}")
+    with open(spec_path) as f:
         spec_content = f.read()
     print(f"  ({len(spec_content):,} characters)")
 
@@ -968,7 +1044,7 @@ def main():
     print(f"Finding folder: {' / '.join(DRIVE_FOLDER_PATH)}")
     folder_id = find_folder_by_path(drive_service, DRIVE_FOLDER_PATH)
 
-    project_name = os.path.splitext(SPEC_FILENAME)[0].replace("_", " ").title()
+    project_name = os.path.splitext(spec_filename)[0].replace("_", " ").title()
     doc_name = f"Timeline – {project_name}"
     sheet_name = f"Tracker – {project_name}"
 
