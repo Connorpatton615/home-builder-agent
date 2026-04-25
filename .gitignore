@@ -31,6 +31,11 @@ venv/
 timeline_*.md
 *_timeline.md
 
+# Watcher runtime state and logs — these change every minute, no value in versioning
+.watcher_state.json
+watcher.log
+*.log
+
 # OS-level cruft
 Thumbs.db
 desktop.ini

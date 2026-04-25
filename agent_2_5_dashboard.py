@@ -403,10 +403,14 @@ def write_dashboard(sheets_service, sheet_id, dashboard_sheet_id, metrics, proje
 
 
 def extract_project_name(tracker_name):
-    """Tracker sheets are named 'Tracker – {Project} – {Timestamp}'.
-    Pull just the project portion."""
+    """Pull project name from a Tracker sheet's name.
+
+    Handles both naming conventions:
+      'Tracker – Pelican Point'              (current — no timestamp)
+      'Tracker – Pelican Point – 2026-04-25 11:10'  (legacy — pre-2026-04-25 cleanup)
+    """
     parts = tracker_name.split(" – ")
-    if len(parts) >= 3:
+    if len(parts) >= 2:
         return parts[1]
     return tracker_name
 

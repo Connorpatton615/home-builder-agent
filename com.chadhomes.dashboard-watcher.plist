@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd job for the dashboard watcher.
+
+  Install:
+    cp com.chadhomes.dashboard-watcher.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.chadhomes.dashboard-watcher.plist
+
+  Stop:
+    launchctl unload ~/Library/LaunchAgents/com.chadhomes.dashboard-watcher.plist
+
+  Reload after edits:
+    launchctl unload ~/Library/LaunchAgents/com.chadhomes.dashboard-watcher.plist
+    launchctl load   ~/Library/LaunchAgents/com.chadhomes.dashboard-watcher.plist
+
+  Inspect:
+    launchctl list | grep chadhomes
+    tail -f ~/Projects/home-builder-agent/watcher.log
+    tail -f /tmp/dashboard-watcher.stderr.log
+
+  StartInterval: how often (in seconds) launchd fires the script. 60 = every
+  minute. macOS may delay slightly under heavy load but never skips ticks.
+
+  WorkingDirectory: launchd starts processes with cwd=/, so we set it
+  explicitly so credentials.json + token.json + .watcher_state.json all
+  resolve from ~/Projects/home-builder-agent/ relative paths.
+
+  RunAtLoad: fire once immediately on load — don't wait the first 60 seconds.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.chadhomes.dashboard-watcher</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Library/Frameworks/Python.framework/Versions/3.14/bin/python3</string>
+    <string>/Users/connorpattonequipassid/Projects/home-builder-agent/watcher.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/connorpattonequipassid/Projects/home-builder-agent</string>
+
+  <key>StartInterval</key>
+  <integer>60</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/dashboard-watcher.stdout.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/dashboard-watcher.stderr.log</string>
+</dict>
+</plist>

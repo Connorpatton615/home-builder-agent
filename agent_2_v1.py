@@ -69,11 +69,16 @@ DRIVE_FOLDER_PATH = [
     "GENERATED TIMELINES",
 ]
 
-# Anthropic model and pricing
+# Anthropic model and pricing (USD per million tokens)
 MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 36000
 INPUT_COST_PER_M = 3.0
 OUTPUT_COST_PER_M = 15.0
+# Prompt-caching pricing for Sonnet 4.6:
+#   cache write = base × 1.25 (slight premium for first write)
+#   cache read  = base × 0.10 (90% discount for cached reads, within ~5-min TTL)
+CACHE_WRITE_COST_PER_M = 3.75
+CACHE_READ_COST_PER_M = 0.30
 
 # Google OAuth — Drive (upload) + Docs (formatting) + Sheets (tracker workbook)
 GOOGLE_SCOPES = [
@@ -198,6 +203,59 @@ def upload_as_google_doc(service, html, doc_name, parent_folder_id):
     return service.files().create(
         body=metadata, media_body=media, fields="id, webViewLink"
     ).execute()
+
+
+def ensure_archive_folder(service, parent_folder_id):
+    """Find or create an ARCHIVE subfolder under parent. Returns its ID."""
+    query = (
+        "name='ARCHIVE' "
+        "and mimeType='application/vnd.google-apps.folder' "
+        f"and '{parent_folder_id}' in parents "
+        "and trashed=false"
+    )
+    folders = service.files().list(
+        q=query, fields="files(id)"
+    ).execute().get("files", [])
+    if folders:
+        return folders[0]["id"]
+    folder = service.files().create(
+        body={
+            "name": "ARCHIVE",
+            "mimeType": "application/vnd.google-apps.folder",
+            "parents": [parent_folder_id],
+        },
+        fields="id",
+    ).execute()
+    return folder["id"]
+
+
+def archive_existing_artifact(service, name, parent_folder_id, archive_folder_id):
+    """If a file named `name` exists in parent_folder_id, move it to ARCHIVE
+    with a timestamped name suffix so prior runs don't collide.
+
+    Returns the number of files archived (0 if nothing existed).
+    """
+    query = (
+        f"name='{name}' "
+        f"and '{parent_folder_id}' in parents "
+        "and trashed=false"
+    )
+    files = service.files().list(
+        q=query, fields="files(id,name)"
+    ).execute().get("files", [])
+    if not files:
+        return 0
+    stamp = datetime.now().strftime("%Y-%m-%d_%H%M")
+    for f in files:
+        new_name = f"{f['name']} (archived {stamp})"
+        service.files().update(
+            fileId=f["id"],
+            body={"name": new_name},
+            addParents=archive_folder_id,
+            removeParents=parent_folder_id,
+            fields="id",
+        ).execute()
+    return len(files)
 
 
 def extract_json_block(text):
@@ -573,8 +631,16 @@ def convert_checkboxes(docs_service, doc_id):
 # --- Prompt construction --------------------------------------------
 
 def build_system_prompt(construction_ref, supplier_ref, comm_rules):
-    """Build the system prompt with Baldwin County context + Chad's comm style."""
-    return f"""You are a senior construction project manager with 30 years of
+    """Build the system prompt as cacheable content blocks.
+
+    Returns a list of content blocks compatible with messages.create(system=...).
+    Each KB file gets its own cache_control marker so on subsequent runs (within
+    the 5-minute cache TTL) the input cost on that block drops by ~90%.
+
+    Anthropic allows up to 4 cache_control markers per request; we use exactly 4:
+    role/principles, construction reference, supplier KB, communication rules.
+    """
+    role_and_principles = """You are a senior construction project manager with 30 years of
 experience building $1M+ luxury custom homes in Baldwin County, Alabama.
 You serve Chad's Custom Homes — a builder who works across both coastal
 Baldwin (Fairhope, Gulf Shores, Orange Beach, Daphne, Point Clear) and inland
@@ -626,53 +692,68 @@ materials must be ordered, and specific about which suppliers serve which tier.
    solar inverter), state in the timeline UNAMBIGUOUSLY: "[Feature] is NOT
    being installed in this build. Only the [framing / rough-in / pre-wire]
    is included now to enable future install without rework." Never let a
-   reader wonder whether a feature is in scope.
+   reader wonder whether a feature is in scope."""
 
-# BALDWIN COUNTY CONSTRUCTION REFERENCE
+    construction_block = (
+        "# BALDWIN COUNTY CONSTRUCTION REFERENCE\n\n"
+        "The following is your authoritative reference on Baldwin County code, "
+        "climate, permitting, and construction realities. Treat it as ground "
+        "truth.\n\n"
+        "<construction_reference>\n"
+        + construction_ref
+        + "\n</construction_reference>"
+    )
 
-The following is your authoritative reference on Baldwin County code,
-climate, permitting, and construction realities. Treat it as ground truth.
+    supplier_block = (
+        "# BALDWIN COUNTY LUXURY SUPPLIER KNOWLEDGE BASE\n\n"
+        "The following is your reference on suppliers and trade contractors in "
+        "the Baldwin County / Mobile / Pensacola luxury market. Tier flags: "
+        "[LUXURY] = verified $1M+ tier, [MID-MARKET] = broader market, "
+        "[UNCERTAIN] = positioning unclear from public evidence.\n\n"
+        "When recommending suppliers, prefer [LUXURY]-tier names. When the "
+        "research notes a gap (no luxury candidate verified), explicitly tell "
+        "Chad this is a category he needs to weigh in on — do not invent a "
+        "supplier.\n\n"
+        "<supplier_knowledge_base>\n"
+        + supplier_ref
+        + "\n</supplier_knowledge_base>"
+    )
 
-<construction_reference>
-{construction_ref}
-</construction_reference>
+    comm_block = (
+        "# CHAD COMMUNICATION RULES (DISC: D / S)\n\n"
+        "Chad is the builder reading every document you produce. He is a "
+        "project-focused operator with a Dominant + Steady DISC profile. Apply "
+        "the communication rules below to ALL prose you write — phase "
+        "descriptions, risk callouts, action items, the Critical Path, status "
+        "notes.\n\n"
+        "The comprehensive structure (Phase Overview, per-phase sections, "
+        "Critical Path, Master Ordering, Regulatory Checklist) stays as-is — "
+        "it's the format he expects. The VOICE within each section is what "
+        "these rules govern.\n\n"
+        "Key principles to internalize:\n"
+        "- Lead with status framing (on track / delayed / ready / blocked)\n"
+        "- 1-4 sentence prose blocks; no walls of text\n"
+        "- Every risk paired with a recommended mitigation — never list a risk alone\n"
+        "- Direct, calm, no hype, no decorative emojis (functional status emojis "
+        "🟢🟡🔴⚪ ARE encouraged for at-a-glance scannability)\n"
+        "- \"If Chad has to read twice or think hard, the message failed.\"\n\n"
+        "<chad_communication_rules>\n"
+        + comm_rules
+        + "\n</chad_communication_rules>"
+    )
 
-# BALDWIN COUNTY LUXURY SUPPLIER KNOWLEDGE BASE
-
-The following is your reference on suppliers and trade contractors in the
-Baldwin County / Mobile / Pensacola luxury market. Tier flags:
-[LUXURY] = verified $1M+ tier, [MID-MARKET] = broader market,
-[UNCERTAIN] = positioning unclear from public evidence.
-
-When recommending suppliers, prefer [LUXURY]-tier names. When the research
-notes a gap (no luxury candidate verified), explicitly tell Chad this is
-a category he needs to weigh in on — do not invent a supplier.
-
-<supplier_knowledge_base>
-{supplier_ref}
-</supplier_knowledge_base>
-
-# CHAD COMMUNICATION RULES (DISC: D / S)
-
-Chad is the builder reading every document you produce. He is a
-project-focused operator with a Dominant + Steady DISC profile. Apply the
-communication rules below to ALL prose you write — phase descriptions,
-risk callouts, action items, the Critical Path, status notes.
-
-The comprehensive structure (Phase Overview, per-phase sections, Critical
-Path, Master Ordering, Regulatory Checklist) stays as-is — it's the format
-he expects. The VOICE within each section is what these rules govern.
-
-Key principles to internalize:
-- Lead with status framing (on track / delayed / ready / blocked)
-- 1-4 sentence prose blocks; no walls of text
-- Every risk paired with a recommended mitigation — never list a risk alone
-- Direct, calm, no enthusiasm or hype, no emojis
-- "If Chad has to read twice or think hard, the message failed."
-
-<chad_communication_rules>
-{comm_rules}
-</chad_communication_rules>"""
+    # Cache markers were removed 2026-04-25 after measuring no benefit:
+    # Agent 2 runs take ~10 min (32K-token output stream) but Anthropic's
+    # default ephemeral cache TTL is 5 min, so consecutive runs always see
+    # cache misses. Worse, the 25% write premium added ~$0.023/run with no
+    # offsetting reads. Fine-grained caching belongs on Agent 1 (Gmail)
+    # where call frequency vs. TTL matches up. See memory: project_active_vs_ondemand.
+    return [
+        {"type": "text", "text": role_and_principles},
+        {"type": "text", "text": construction_block},
+        {"type": "text", "text": supplier_block},
+        {"type": "text", "text": comm_block},
+    ]
 
 
 def build_user_prompt(spec_content):
@@ -818,11 +899,13 @@ def main():
         spec_content = f.read()
     print(f"  ({len(spec_content):,} characters)")
 
-    # 4. Build prompts
+    # 4. Build prompts (system is now a list of cacheable content blocks)
     system_prompt = build_system_prompt(construction_ref, supplier_ref, comm_rules)
     user_prompt = build_user_prompt(spec_content)
-    print(f"\nSystem prompt: {len(system_prompt):,} characters "
-          f"(~{len(system_prompt)//4:,} tokens)")
+    total_system_chars = sum(len(b["text"]) for b in system_prompt)
+    print(f"\nSystem prompt: {len(system_prompt)} cached blocks, "
+          f"{total_system_chars:,} characters "
+          f"(~{total_system_chars//4:,} tokens)")
     print(f"User prompt:   {len(user_prompt):,} characters")
 
     # 5. Call Claude (streaming because 24K-token generations can exceed
@@ -885,9 +968,24 @@ def main():
     print(f"Finding folder: {' / '.join(DRIVE_FOLDER_PATH)}")
     folder_id = find_folder_by_path(drive_service, DRIVE_FOLDER_PATH)
 
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
     project_name = os.path.splitext(SPEC_FILENAME)[0].replace("_", " ").title()
-    doc_name = f"Timeline – {project_name} – {timestamp}"
+    doc_name = f"Timeline – {project_name}"
+    sheet_name = f"Tracker – {project_name}"
+
+    # Idempotency: archive any existing Timeline/Tracker for this project
+    # before creating new ones. Prevents duplicates from accumulating on re-runs.
+    # Old versions stay in ARCHIVE/ subfolder (recoverable, just out of sight).
+    archive_folder_id = ensure_archive_folder(drive_service, folder_id)
+    n_archived = 0
+    n_archived += archive_existing_artifact(
+        drive_service, doc_name, folder_id, archive_folder_id
+    )
+    n_archived += archive_existing_artifact(
+        drive_service, sheet_name, folder_id, archive_folder_id
+    )
+    if n_archived:
+        print(f"Archived {n_archived} prior version(s) → ARCHIVE/")
+
     print(f"Uploading as Google Doc: {doc_name}")
     file = upload_as_google_doc(drive_service, full_html, doc_name, folder_id)
 
@@ -902,9 +1000,9 @@ def main():
         print("  (Doc was still uploaded; manual adjustment available.)")
 
     # 7c. Build the tracker sheet from the structured JSON (if available)
+    # sheet_name was already set above (idempotent: same name = same artifact)
     sheet_url = None
     if project_data:
-        sheet_name = f"Tracker – {project_name} – {timestamp}"
         try:
             print(f"\nBuilding tracker sheet: {sheet_name}")
             sheet_file = build_tracker_sheet(
@@ -912,13 +1010,31 @@ def main():
             )
             sheet_url = sheet_file["webViewLink"]
             print(f"  Sheet ready at: {sheet_url}")
+
+            # Apply visual polish (conditional formatting, date formats)
+            try:
+                from agent_2_5_dashboard import apply_visual_formatting
+                from googleapiclient.discovery import build as _build
+                sheets_service = _build("sheets", "v4", credentials=creds)
+                n = apply_visual_formatting(sheets_service, sheet_file["id"])
+                print(f"  Visual polish applied ({n} formatting requests).")
+            except Exception as e:
+                print(f"  NOTE: Visual polish skipped: {e}")
         except Exception as e:
             print(f"  WARNING: Could not build tracker sheet: {e}")
             print("  (Doc still uploaded; rerun to retry the sheet.)")
 
-    # 8. Report
-    in_cost = response.usage.input_tokens * INPUT_COST_PER_M / 1_000_000
-    out_cost = response.usage.output_tokens * OUTPUT_COST_PER_M / 1_000_000
+    # 8. Report (with cache hit/miss breakdown)
+    cache_create = getattr(response.usage, "cache_creation_input_tokens", 0) or 0
+    cache_read = getattr(response.usage, "cache_read_input_tokens", 0) or 0
+    fresh_in = response.usage.input_tokens
+    out = response.usage.output_tokens
+
+    cache_create_cost = cache_create * CACHE_WRITE_COST_PER_M / 1_000_000
+    cache_read_cost = cache_read * CACHE_READ_COST_PER_M / 1_000_000
+    in_cost = fresh_in * INPUT_COST_PER_M / 1_000_000
+    out_cost = out * OUTPUT_COST_PER_M / 1_000_000
+    total = cache_create_cost + cache_read_cost + in_cost + out_cost
 
     print("\n" + "=" * 60)
     print("DONE")
@@ -927,9 +1043,23 @@ def main():
     print(f"  Doc URL:   {file['webViewLink']}")
     if sheet_url:
         print(f"  Sheet URL: {sheet_url}")
-    print(f"Tokens:   {response.usage.input_tokens:,} in / "
-          f"{response.usage.output_tokens:,} out")
-    print(f"Cost:     ~${in_cost + out_cost:.4f}")
+    print()
+    print("Token usage:")
+    if cache_create:
+        print(f"  Cache write:  {cache_create:>7,} tokens (${cache_create_cost:.4f})")
+    if cache_read:
+        print(f"  Cache read:   {cache_read:>7,} tokens (${cache_read_cost:.4f})  ← 90% off")
+    print(f"  Fresh input:  {fresh_in:>7,} tokens (${in_cost:.4f})")
+    print(f"  Output:       {out:>7,} tokens (${out_cost:.4f})")
+    print(f"  TOTAL:                        ${total:.4f}")
+    if cache_read:
+        # Estimate what cost would have been without caching
+        without_cache = (
+            (fresh_in + cache_read) * INPUT_COST_PER_M / 1_000_000
+            + out_cost
+        )
+        savings = without_cache - total
+        print(f"  (Saved ~${savings:.4f} via prompt cache hit)")
     print()
 
 
