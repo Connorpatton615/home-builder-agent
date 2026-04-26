@@ -24,11 +24,18 @@ Chad/Connor edits a cell does modifiedTime change beyond what we saved.
 
 import json
 import os
+import signal
+import socket
 import sys
 from datetime import datetime
 
 # Allow OAuth scope flexibility (Google may return fewer scopes than requested)
 os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
+
+# Per-socket timeout so any blocking Drive/Sheets call cannot hang indefinitely.
+# Without this, a stalled network call holds the process forever and launchd
+# won't spawn a new instance until the zombie dies. (Seen 2026-04-25.)
+socket.setdefaulttimeout(45)
 
 from googleapiclient.discovery import build
 
@@ -54,6 +61,11 @@ LOG_FILE = os.path.join(SCRIPT_DIR, "watcher.log")
 # How many error log lines we'll print before suppressing further duplicates
 # in a single invocation. Prevents one bad sheet from filling the log.
 MAX_ERRORS_PER_RUN = 5
+
+# Hard ceiling on a single watcher invocation. launchd fires us every 60 sec,
+# so 90 sec is generous — if we're not done by then, something is hung.
+# Better to bail and let launchd spawn a fresh instance than to block the queue.
+WATCHER_TIMEOUT_SEC = 90
 
 
 # --- Logging --------------------------------------------------------
@@ -164,7 +176,17 @@ def refresh_one(drive_service, sheets_service, tracker):
 
 # --- Main loop body (single invocation) ----------------------------
 
+def _timeout_handler(signum, frame):
+    log(f"ERROR: watcher exceeded {WATCHER_TIMEOUT_SEC} sec — exiting so launchd can respawn.")
+    sys.exit(1)
+
+
 def main():
+    # Hard kill if we're not done in 90 sec. Belt-and-suspenders alongside the
+    # 45-sec socket timeout — covers anything that's stuck outside a socket.
+    signal.signal(signal.SIGALRM, _timeout_handler)
+    signal.alarm(WATCHER_TIMEOUT_SEC)
+
     try:
         creds = get_credentials()
     except Exception as e:
