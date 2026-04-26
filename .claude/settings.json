@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "Bash(python3 -m home_builder_agent.*)",
+      "Bash(hb-*)",
+      "Bash(git status)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(launchctl list*)",
+      "Bash(tail*)",
+      "Bash(cat*)",
+      "Bash(ls*)",
+      "Bash(pip install -e *)"
+    ],
+    "ask": [
+      "Bash(launchctl unload*)",
+      "Bash(launchctl load*)",
+      "Bash(rm*)",
+      "Bash(git push*)"
+    ]
+  }
+}

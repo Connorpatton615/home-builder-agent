@@ -1,0 +1,46 @@
+[project]
+name = "home-builder-agent"
+version = "0.2.0"
+description = "Multi-agent AI system for Chad's Custom Homes — Baldwin County, AL luxury custom home builder."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary — not for distribution" }
+authors = [{ name = "Connor Patton" }]
+
+# Phase 1 dependencies — same packages CP already pip3-installed globally,
+# now declared in one place so any environment (Mac Mini, future Linux box,
+# new contributor's machine) can `pip install -e .` and get a working setup.
+dependencies = [
+    "anthropic>=0.40.0",
+    "python-dotenv>=1.0.0",
+    "markdown>=3.5",
+    "google-auth>=2.30.0",
+    "google-auth-oauthlib>=1.2.0",
+    "google-api-python-client>=2.140.0",
+]
+
+[project.optional-dependencies]
+# Test deps — populated as we add tests
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+
+# CLI entry points — `pip install -e .` exposes these as real shell commands.
+# Then `hb-timeline pelican_point.md` works from anywhere on the Mac Mini,
+# instead of `python3 ~/Projects/home-builder-agent/agent_2_v1.py pelican_point.md`.
+[project.scripts]
+hb-timeline = "home_builder_agent.agents.timeline_generator:main"
+hb-update = "home_builder_agent.agents.status_updater:main"
+hb-dashboard = "home_builder_agent.agents.dashboard_refresher:main"
+hb-inbox = "home_builder_agent.agents.gmail_followup:main"
+hb-watcher = "home_builder_agent.watchers.dashboard:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["home_builder_agent*"]
+exclude = ["legacy*", "tests*", "scripts*"]
