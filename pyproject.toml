@@ -35,6 +35,8 @@ hb-update = "home_builder_agent.agents.status_updater:main"
 hb-dashboard = "home_builder_agent.agents.dashboard_refresher:main"
 hb-inbox = "home_builder_agent.agents.gmail_followup:main"
 hb-watcher = "home_builder_agent.watchers.dashboard:main"
+hb-inbox-watcher = "home_builder_agent.watchers.inbox:main"
+hb-help = "home_builder_agent.agents.help_desk:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

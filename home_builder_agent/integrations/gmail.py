@@ -1,19 +1,10 @@
-"""gmail.py — Gmail API helpers.
-
-Gmail integration is read-only — Phase 1 only LISTS threads and reads metadata
-to classify them. No sending, no labels, no archiving from this code. The
-Gmail follow-up agent generates a checklist Doc that Chad clicks through
-manually.
-
-Phase 2 may add the supplier-email watcher, which will also be read-only but
-will scan thread bodies for lead-time changes. Those helpers will land here
-when that lands.
-"""
+"""gmail.py — Gmail API helpers."""
 
 from datetime import date, timedelta, datetime, timezone
 from email.utils import parseaddr, parsedate_to_datetime
 
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 
 def gmail_service(creds):
@@ -25,6 +16,57 @@ def get_my_email(svc):
     """Return the authenticated user's email address ('me' resolved)."""
     profile = svc.users().getProfile(userId="me").execute()
     return profile.get("emailAddress", "")
+
+
+def get_current_history_id(svc):
+    """Return the user's current Gmail historyId as a string.
+
+    Used by the inbox watcher to (re-)baseline its cursor when starting
+    fresh or after the previous historyId has aged out (>~7 days).
+    """
+    profile = svc.users().getProfile(userId="me").execute()
+    return str(profile["historyId"])
+
+
+def list_inbox_message_added_since(svc, start_history_id):
+    """Fetch INBOX messageAdded events since `start_history_id`.
+
+    Returns (thread_ids, latest_history_id, baseline_expired):
+      - thread_ids: set of thread IDs that received a new INBOX message
+      - latest_history_id: highest historyId observed (next cursor value)
+      - baseline_expired: True if Gmail no longer has `start_history_id`
+        (it was older than ~7 days). Caller must re-baseline.
+    """
+    thread_ids = set()
+    latest_history_id = start_history_id
+    page_token = None
+
+    while True:
+        try:
+            resp = svc.users().history().list(
+                userId="me",
+                startHistoryId=start_history_id,
+                historyTypes=["messageAdded"],
+                pageToken=page_token,
+            ).execute()
+        except HttpError as e:
+            if e.resp.status == 404:
+                return set(), None, True
+            raise
+
+        for record in resp.get("history", []):
+            for added in record.get("messagesAdded", []):
+                msg = added.get("message", {})
+                if "INBOX" in msg.get("labelIds", []):
+                    thread_ids.add(msg["threadId"])
+
+        if "historyId" in resp:
+            latest_history_id = str(resp["historyId"])
+        page_token = resp.get("nextPageToken")
+        if not page_token:
+            break
+
+    return thread_ids, latest_history_id, False
 
 
 def list_recent_threads(svc, days=7, max_results=100):
