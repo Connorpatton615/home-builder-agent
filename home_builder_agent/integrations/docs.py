@@ -71,6 +71,41 @@ def apply_doc_formatting(creds, doc_id):
     convert_checkboxes(service, doc_id)
 
 
+def read_doc_text(service, doc_id):
+    """Return the full plain-text content of a Google Doc.
+
+    Used by the help desk agent to read existing FAQ content before answering.
+    """
+    doc = service.documents().get(documentId=doc_id).execute()
+    parts = []
+    for element in doc.get("body", {}).get("content", []):
+        para = element.get("paragraph")
+        if para:
+            for el in para.get("elements", []):
+                tr = el.get("textRun")
+                if tr:
+                    parts.append(tr.get("content", ""))
+    return "".join(parts)
+
+
+def append_text_to_doc(service, doc_id, text):
+    """Append plain text to the end of a Google Doc.
+
+    Inserts at end_index - 1 (before the document's terminal newline) so
+    content lands at the bottom rather than after the terminal character.
+    """
+    doc = service.documents().get(documentId=doc_id).execute()
+    content = doc.get("body", {}).get("content", [])
+    end_index = content[-1].get("endIndex", 2) if content else 2
+    service.documents().batchUpdate(
+        documentId=doc_id,
+        body={"requests": [{"insertText": {
+            "location": {"index": end_index - 1},
+            "text": text,
+        }}]},
+    ).execute()
+
+
 def convert_checkboxes(service, doc_id):
     """Find paragraphs starting with [ ] or [x] and convert to checkbox bullets.
 

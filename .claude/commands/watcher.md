@@ -1,26 +1,45 @@
 ---
-description: Manage the dashboard watcher (status / start / stop / tail)
-argument-hint: status | start | stop | reload | tail
+description: Manage the dashboard or inbox watcher (status / start / stop / reload / tail)
+argument-hint: [dashboard|inbox|all] [status|start|stop|reload|tail]
 ---
 
-Manage the launchd-managed dashboard watcher. $ARGUMENTS picks the subcommand.
+Manage one or both launchd-managed watchers.
 
-- **status** — `launchctl list | grep chadhomes` to confirm it's loaded, plus
-  `tail -n 5 ~/Projects/home-builder-agent/watcher.log` to show the last
-  activity.
+**Format:** `$ARGUMENTS` is `[target] [subcommand]`
+- `target` is `dashboard`, `inbox`, or `all` (default when omitted)
+- `subcommand` is one of the actions below (default: `status`)
 
-- **start** — `launchctl load ~/Library/LaunchAgents/com.chadhomes.dashboard-watcher.plist`
+Examples: `/watcher` → status of both; `/watcher inbox stop` → stop inbox watcher.
 
-- **stop** — `launchctl unload ~/Library/LaunchAgents/com.chadhomes.dashboard-watcher.plist`
+---
 
-- **reload** — stop, then start. Use after editing `watchers/dashboard.py`
-  or anything in its import chain.
+### Subcommands
 
-- **tail** — `tail -f ~/Projects/home-builder-agent/watcher.log` for the
-  watcher's own log, AND `tail -n 20 /tmp/dashboard-watcher.stderr.log` for
-  Python tracebacks if the script is crashing before our log() can fire.
+- **status** — `launchctl list | grep chadhomes` (shows both), then tail the
+  last 5 lines of the relevant log(s):
+  - dashboard → `~/Projects/home-builder-agent/watcher.log`
+  - inbox → `~/Projects/home-builder-agent/inbox_watcher.log`
 
-Default ($ARGUMENTS empty) → run **status**.
+- **start**
+  - dashboard → `launchctl load ~/Library/LaunchAgents/com.chadhomes.dashboard-watcher.plist`
+  - inbox → `launchctl load ~/Library/LaunchAgents/com.chadhomes.inbox-watcher.plist`
 
-Always confirm before running stop or reload — the watcher is
-production. Surface the launchctl exit code so silent failures don't hide.
+- **stop**
+  - dashboard → `launchctl unload ~/Library/LaunchAgents/com.chadhomes.dashboard-watcher.plist`
+  - inbox → `launchctl unload ~/Library/LaunchAgents/com.chadhomes.inbox-watcher.plist`
+
+- **reload** — stop then start. Use after editing a watcher's source file or
+  anything in its import chain.
+
+- **tail** — `tail -f` on the relevant log(s), plus `tail -n 20` on the
+  stderr log for Python tracebacks if the script crashes before log() fires:
+  - dashboard stderr → `/tmp/dashboard-watcher.stderr.log`
+  - inbox stderr → `/tmp/inbox-watcher.stderr.log`
+
+---
+
+Default (`$ARGUMENTS` empty) → **status of both watchers**.
+
+Always confirm before running **stop** or **reload** on the dashboard watcher —
+it is production and has been running reliably. Surface launchctl exit codes
+so silent failures don't hide.

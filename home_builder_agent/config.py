@@ -119,7 +119,19 @@ GMAIL_DEFAULT_LOOKBACK_DAYS = 7
 UPDATE_PARSER_MAX_TOKENS = 500
 UPDATE_SUMMARY_MAX_TOKENS = 1500
 
-# Watcher
+# Watcher (dashboard)
 WATCHER_TIMEOUT_SEC = 90       # hard kill if a poll exceeds this
 WATCHER_SOCKET_TIMEOUT = 45    # blocking socket call timeout
 WATCHER_MAX_ERRORS_PER_RUN = 5
+
+# Watcher (inbox)
+INBOX_WATCHER_TIMEOUT_SEC = 90
+INBOX_WATCHER_NOTIFY_HIGH = True   # macOS notification on high-urgency hits
+
+# Help desk agent
+CLAUDE_COMMANDS_DIR = ".claude/commands"
+HELP_DESK_DOC_FOLDER = [
+    "Home Building Agent V.1",
+    "Home Builder Agent V.1",
+]
+HELP_DESK_STATE_FILE = ".help_desk_state.json"

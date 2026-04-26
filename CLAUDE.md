@@ -25,14 +25,17 @@ home-builder-agent/                 ← project root (~/Projects/home-builder-ag
 ├── .env                            ← ANTHROPIC_API_KEY (gitignored)
 ├── credentials.json                ← Google OAuth client (gitignored)
 ├── token.json                      ← Google OAuth token (gitignored)
-├── .watcher_state.json             ← watcher's modifiedTime memory (gitignored)
-├── watcher.log                     ← watcher's structured log (gitignored)
+├── .watcher_state.json             ← dashboard watcher's modifiedTime memory (gitignored)
+├── .inbox_watcher_state.json       ← inbox watcher's historyId cursor (gitignored)
+├── watcher.log                     ← dashboard watcher log (gitignored)
+├── inbox_watcher.log               ← inbox watcher log (gitignored)
 ├── .claude/                        ← Claude Code project settings + slash commands
 ├── home_builder_agent/             ← the package
 │   ├── config.py                   ← single source of truth for paths/scopes/models/pricing
 │   ├── core/                       ← cross-cutting: auth, claude_client, knowledge_base
 │   ├── integrations/               ← Google API wrappers (drive, docs, sheets, gmail)
-│   ├── agents/                     ← user-triggered agents (4 in Phase 1)
+│   ├── classifiers/                ← shared Anthropic classifiers (email, ...)
+│   ├── agents/                     ← user-triggered agents
 │   └── watchers/                   ← long-running poll loops invoked by launchd
 └── legacy/                         ← original flat-file agents, kept for reference
 ```
@@ -45,14 +48,16 @@ home-builder-agent/                 ← project root (~/Projects/home-builder-ag
 | Status updater | `agents/status_updater.py` | `hb-update "<NL update>"` | Parses NL → cascades through dependency graph → applies to Sheet → refreshes Dashboard (~$0.02/run) |
 | Dashboard refresher | `agents/dashboard_refresher.py` | `hb-dashboard` | Reads Master Schedule → writes Dashboard tab + visual formatting ($0/run) |
 | Gmail follow-up | `agents/gmail_followup.py` | `hb-inbox [--days N] [--upload]` | Lists threads → Haiku classifies → Sonnet writes Chad-voice checklist (~$0.05/run) |
+| Help desk | `agents/help_desk.py` | `hb-help "<question>"` | Answers questions about the system; auto-appends informative Q&A to the FAQ Google Doc (~$0.02–0.05/run) |
 
-Active background process:
+Active background processes:
 - **Dashboard watcher** (`watchers/dashboard.py`) — runs every 60s via launchd. Polls GENERATED TIMELINES for modified Tracker sheets, refreshes their Dashboard tab. State in `.watcher_state.json`. Logs to `watcher.log`. Plist: `~/Library/LaunchAgents/com.chadhomes.dashboard-watcher.plist`.
+- **Inbox watcher** (`watchers/inbox.py`) — runs every 5 min via launchd. Polls Gmail for new INBOX messages since the last historyId, classifies via Haiku (using `classifiers/email.classify_thread`), fires a macOS notification on `urgency=high` hits. Medium/low urgency get logged but don't ping. State in `.inbox_watcher_state.json` (just `last_history_id`). Logs to `inbox_watcher.log`. Plist: `~/Library/LaunchAgents/com.chadhomes.inbox-watcher.plist`.
 
 ## Phase 2 backlog (in priority order)
 
 1. **Monday demo with Chad's real spec** (gating) — drop spec → run `hb-timeline` → hand Chad the output
-2. **Gmail watcher** (active Agent 1) — extend the launchd-polling pattern to inbox
+2. ~~**Gmail watcher**~~ — live via launchd; firing every 5 min, macOS notifications on high-urgency hits
 3. **Supplier-email watcher** — scan supplier emails → auto-update `KNOWLEDGE BASE/baldwin_county_supplier_research.md`
 4. **Chad UX (non-Terminal)** — drop-spec-into-folder + email/text notification when output is ready
 5. **Mobile access** — Chad interacts from phone on a job site
@@ -75,6 +80,7 @@ Active background process:
 - **Cost reporting at the end of every Claude-touching run.** Use `core/claude_client.sonnet_cost()` / `haiku_cost()` so the per-call USD line is consistent across agents.
 - **Best-effort formatting steps.** Doc/Sheet formatting passes (`apply_doc_formatting`, `apply_visual_formatting`) wrap in try/except and continue. Don't lose the upload over a styling failure.
 - **Watchers use fire-and-exit, not long-running loops.** launchd handles scheduling. State is JSON in the project root.
+- **Shared classifier prompts go in `classifiers/`, not `agents/` or `core/`.** Anthropic-call code used by more than one entry point (e.g. email classification used by both `gmail_followup` and the inbox watcher) lives in `classifiers/`. Single-use prompts stay in the agent file.
 
 ## How to add a new agent
 
@@ -108,12 +114,16 @@ hb-inbox --days 14
 
 # Watcher health
 launchctl list | grep chadhomes
-tail -f ~/Projects/home-builder-agent/watcher.log
+tail -f ~/Projects/home-builder-agent/watcher.log         # dashboard
+tail -f ~/Projects/home-builder-agent/inbox_watcher.log   # inbox
 tail -f /tmp/dashboard-watcher.stderr.log
+tail -f /tmp/inbox-watcher.stderr.log
 
-# Reload watcher after editing watchers/dashboard.py or its dependencies
+# Reload watchers after editing watchers/*.py or their dependencies
 launchctl unload ~/Library/LaunchAgents/com.chadhomes.dashboard-watcher.plist
 launchctl load ~/Library/LaunchAgents/com.chadhomes.dashboard-watcher.plist
+launchctl unload ~/Library/LaunchAgents/com.chadhomes.inbox-watcher.plist
+launchctl load ~/Library/LaunchAgents/com.chadhomes.inbox-watcher.plist
 
 # After editing pyproject.toml [project.scripts]
 pip install -e . --break-system-packages
