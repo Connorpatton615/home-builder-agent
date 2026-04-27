@@ -1,6 +1,6 @@
 """help_desk.py — AI Help Desk agent.
 
-Answers questions about the Chad's Custom Homes AI Agent system.
+Answers questions about the Palmetto Custom Homes AI Agent system.
 Knows every slash command, agent behavior, and common troubleshooting step.
 When an answer is informative enough to be reusable, it automatically appends
 the Q&A to the living FAQ Google Doc in Drive.
@@ -42,7 +42,7 @@ FAQ_DOC_NAME = "Agent FAQ & Troubleshooting Guide"
 FAQ_INITIAL_HTML = """<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head><body>
 <h1>Agent FAQ &amp; Troubleshooting Guide</h1>
-<p><em>Chad's Custom Homes — maintained automatically by the Help Desk Agent</em></p>
+<p><em>Palmetto Custom Homes — maintained automatically by the Help Desk Agent</em></p>
 <hr>
 <p>Questions and answers are added here as they come up. Run <strong>/help</strong> any time you have a question about the system.</p>
 <hr>
@@ -113,7 +113,7 @@ def find_or_create_faq_doc(drive_svc, state):
 
 def answer_question(client, question, command_docs, faq_text):
     """Ask Sonnet to answer the question and decide if the Q&A belongs in FAQ."""
-    system = f"""You are the help desk agent for the Chad's Custom Homes AI Agent system.
+    system = f"""You are the help desk agent for the Palmetto Custom Homes AI Agent system.
 
 The system automates back-office work for a luxury custom home builder in Baldwin County, AL. It runs on a Mac Mini and connects to Gmail, Google Drive, Google Docs, and Google Sheets via the Claude API.
 
@@ -134,8 +134,19 @@ Return ONLY a valid JSON object — no markdown fence, no preamble:
   "answer": "<your full answer — plain English, step-by-step where helpful>",
   "add_to_faq": <true|false>,
   "faq_question": "<concise version of the question for the FAQ doc, or null>",
-  "faq_answer": "<clean standalone answer for the FAQ doc, or null>"
+  "faq_answer": "<standalone answer formatted exactly as described below, or null>"
 }}
+
+FAQ ANSWER FORMAT (match this style exactly):
+- Opening sentence that directly answers the question — no label, no "A:"
+- Blank line, then bullet list with - (hyphen) for key details/rules
+- Numbered steps (1. 2. 3.) for sequential actions
+- Commands in backticks inline
+- Conditional guidance blocks: "Do X when: ..." on its own line, followed by bullet items
+- "Do NOT X if: ..." warnings where relevant
+- Recovery path at the end if something could go wrong
+- One idea per paragraph, blank line between paragraphs
+- No bold, no headers inside the answer — plain prose and lists only
 
 Set add_to_faq=true when the answer:
 - Reveals non-obvious behavior or a common point of confusion

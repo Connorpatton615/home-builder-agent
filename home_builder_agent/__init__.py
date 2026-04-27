@@ -1,4 +1,4 @@
-"""home_builder_agent — multi-agent AI system for Chad's Custom Homes.
+"""home_builder_agent — multi-agent AI system for Palmetto Custom Homes.
 
 See README.md at the repo root for the architecture overview. The package is
 organized as:

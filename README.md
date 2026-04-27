@@ -1,6 +1,6 @@
 # Home Builder Agent
 
-AI-powered project orchestrator for Chad's Custom Homes — Baldwin County, Alabama luxury custom home builder.
+AI-powered project orchestrator for Palmetto Custom Homes — Baldwin County, Alabama luxury custom home builder.
 
 Built in Python using the Anthropic Claude API + Google Drive/Docs/Sheets APIs.
 

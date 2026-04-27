@@ -1,7 +1,7 @@
 [project]
 name = "home-builder-agent"
 version = "0.2.0"
-description = "Multi-agent AI system for Chad's Custom Homes — Baldwin County, AL luxury custom home builder."
+description = "Multi-agent AI system for Palmetto Custom Homes — Baldwin County, AL luxury custom home builder."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Proprietary — not for distribution" }
