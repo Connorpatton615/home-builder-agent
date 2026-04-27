@@ -6,7 +6,7 @@ this file plus the code itself.
 
 ## What this is
 
-Multi-agent AI system for **Chad's Custom Homes** — Baldwin County, AL luxury
+Multi-agent AI system for **Palmetto Custom Homes** — Baldwin County, AL luxury
 custom home builder. Built in Python on top of Anthropic's Claude API +
 Google Drive/Docs/Sheets/Gmail APIs. Runs locally on a Mac Mini. Goal is to
 sell to Chad first, then potentially to other custom home builders.
