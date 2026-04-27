@@ -33,8 +33,14 @@ timeline_*.md
 
 # Watcher runtime state and logs — these change every minute, no value in versioning
 .watcher_state.json
+.inbox_watcher_state.json
+.help_desk_state.json
+.cost_log.jsonl
 watcher.log
 *.log
+
+# Claude Code worktrees — managed by Claude Code, not part of repo
+.claude/worktrees/
 
 # OS-level cruft
 Thumbs.db
