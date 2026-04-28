@@ -246,13 +246,35 @@ def build_tracker_sheet(creds, project_data, sheet_name, parent_folder_id):
                 "fields": "pixelSize",
             }})
 
-    # ── Data row height — comfortable 22px ───────────────────────────────────
-    for sid, row_end in ((0, 20), (1, 80), (2, 30)):
-        requests.append({"updateDimensionProperties": {
-            "range": {"sheetId": sid, "dimension": "ROWS",
-                      "startIndex": 1, "endIndex": row_end},
-            "properties": {"pixelSize": 22},
-            "fields": "pixelSize",
+    # ── Text wrapping: WRAP data cells, CLIP headers ─────────────────────────
+    for sid, row_end, col_end in ((0, 20, 7), (1, 80, 6), (2, 30, 7)):
+        # Data rows: wrap + align to top
+        requests.append({"repeatCell": {
+            "range": {"sheetId": sid, "startRowIndex": 1,
+                      "endRowIndex": row_end, "startColumnIndex": 0,
+                      "endColumnIndex": col_end},
+            "cell": {"userEnteredFormat": {
+                "wrapStrategy": "WRAP",
+                "verticalAlignment": "TOP",
+            }},
+            "fields": "userEnteredFormat(wrapStrategy,verticalAlignment)",
+        }})
+        # Header row: clip so it never wraps
+        requests.append({"repeatCell": {
+            "range": {"sheetId": sid, "startRowIndex": 0, "endRowIndex": 1,
+                      "startColumnIndex": 0, "endColumnIndex": col_end},
+            "cell": {"userEnteredFormat": {
+                "wrapStrategy": "CLIP",
+                "verticalAlignment": "MIDDLE",
+            }},
+            "fields": "userEnteredFormat(wrapStrategy,verticalAlignment)",
+        }})
+
+    # ── Row heights: auto-size to content so wrapped text shows ──────────────
+    for sid in (0, 1, 2):
+        requests.append({"autoResizeDimensions": {
+            "dimensions": {"sheetId": sid, "dimension": "ROWS",
+                           "startIndex": 1, "endIndex": 80},
         }})
 
     # ── Data validation: Status dropdown Master Schedule col F (index 5) ──────
