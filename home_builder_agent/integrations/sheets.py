@@ -144,23 +144,118 @@ def build_tracker_sheet(creds, project_data, sheet_name, parent_folder_id):
         },
     ).execute()
 
-    # 5. Apply data validation + bold headers
+    # 5. Apply data validation + visual polish
     requests = []
 
-    # Bold + green header rows on all three tabs
-    for sid in (0, 1, 2):
-        requests.append({
-            "repeatCell": {
-                "range": {"sheetId": sid, "startRowIndex": 0, "endRowIndex": 1},
-                "cell": {"userEnteredFormat": {
-                    "textFormat": {"bold": True},
-                    "backgroundColor": {"red": 0.85, "green": 0.92, "blue": 0.83},
-                }},
-                "fields": "userEnteredFormat(textFormat,backgroundColor)",
-            }
-        })
+    # ── Color palette ─────────────────────────────────────────────────────────
+    HEADER_BG   = {"red": 0.13, "green": 0.23, "blue": 0.40}  # deep navy
+    HEADER_TEXT = {"red": 1.00, "green": 1.00, "blue": 1.00}  # white
+    BAND_ODD    = {"red": 0.94, "green": 0.96, "blue": 0.99}  # light blue-gray
+    BAND_EVEN   = {"red": 1.00, "green": 1.00, "blue": 1.00}  # white
+    BORDER_SM   = {"red": 0.70, "green": 0.72, "blue": 0.75}  # soft gray
+    BORDER_MED  = {"red": 0.40, "green": 0.43, "blue": 0.48}  # darker header bottom
 
-    # Status dropdown on Master Schedule column F (index 5)
+    def _border(color, style="SOLID", width=1):
+        return {"style": style, "width": width, "colorStyle": {"rgbColor": color}}
+
+    # ── Headers: navy BG, white bold text, 30px tall ──────────────────────────
+    for sid in (0, 1, 2):
+        requests.append({"repeatCell": {
+            "range": {"sheetId": sid, "startRowIndex": 0, "endRowIndex": 1},
+            "cell": {"userEnteredFormat": {
+                "backgroundColor": HEADER_BG,
+                "textFormat": {"bold": True, "foregroundColor": HEADER_TEXT,
+                               "fontSize": 10},
+                "verticalAlignment": "MIDDLE",
+                "padding": {"top": 4, "bottom": 4, "left": 8, "right": 8},
+            }},
+            "fields": "userEnteredFormat(backgroundColor,textFormat,verticalAlignment,padding)",
+        }})
+        requests.append({"updateDimensionProperties": {
+            "range": {"sheetId": sid, "dimension": "ROWS",
+                      "startIndex": 0, "endIndex": 1},
+            "properties": {"pixelSize": 30},
+            "fields": "pixelSize",
+        }})
+
+    # ── Tab colors ────────────────────────────────────────────────────────────
+    tab_colors = {
+        0: {"red": 0.18, "green": 0.49, "blue": 0.34},  # green  — Master Schedule
+        1: {"red": 0.93, "green": 0.58, "blue": 0.11},  # amber  — Action Items
+        2: {"red": 0.60, "green": 0.15, "blue": 0.60},  # purple — Order Schedule
+    }
+    for sid, color in tab_colors.items():
+        requests.append({"updateSheetProperties": {
+            "properties": {"sheetId": sid,
+                           "tabColorStyle": {"rgbColor": color}},
+            "fields": "tabColorStyle",
+        }})
+
+    # ── Banded rows ───────────────────────────────────────────────────────────
+    for sid, row_end in ((0, 20), (1, 80), (2, 30)):
+        requests.append({"addBanding": {"bandedRange": {
+            "range": {"sheetId": sid, "startRowIndex": 1, "endRowIndex": row_end,
+                      "startColumnIndex": 0, "endColumnIndex": 7},
+            "rowProperties": {
+                "headerColor": HEADER_BG,
+                "firstBandColor": BAND_ODD,
+                "secondBandColor": BAND_EVEN,
+            },
+        }}})
+
+    # ── Borders ───────────────────────────────────────────────────────────────
+    for sid, row_end, col_end in ((0, 20, 7), (1, 80, 6), (2, 30, 7)):
+        requests.append({"updateBorders": {
+            "range": {"sheetId": sid, "startRowIndex": 0,
+                      "endRowIndex": row_end, "startColumnIndex": 0,
+                      "endColumnIndex": col_end},
+            "top":             _border(BORDER_SM),
+            "bottom":          _border(BORDER_SM),
+            "left":            _border(BORDER_SM),
+            "right":           _border(BORDER_SM),
+            "innerHorizontal": _border(BORDER_SM),
+            "innerVertical":   _border(BORDER_SM),
+        }})
+        requests.append({"updateBorders": {
+            "range": {"sheetId": sid, "startRowIndex": 0,
+                      "endRowIndex": 1, "startColumnIndex": 0,
+                      "endColumnIndex": col_end},
+            "bottom": _border(BORDER_MED, style="SOLID_MEDIUM", width=2),
+        }})
+
+    # ── Freeze first column on Action Items ───────────────────────────────────
+    requests.append({"updateSheetProperties": {
+        "properties": {"sheetId": 1,
+                       "gridProperties": {"frozenRowCount": 1,
+                                          "frozenColumnCount": 1}},
+        "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
+    }})
+
+    # ── Column widths ─────────────────────────────────────────────────────────
+    col_widths = {
+        0: [40, 200, 60, 110, 110, 120, 220],    # Master: #, Phase, Wks, Start, End, Status, Deps
+        1: [140, 300, 55, 110, 80, 220],          # Actions: Phase, Task, Done, Date, Owner, Notes
+        2: [220, 160, 110, 90, 130, 75, 220],     # Orders: Item, Supplier, By, Lead, Status, Arr, Notes
+    }
+    for sid, widths in col_widths.items():
+        for i, px in enumerate(widths):
+            requests.append({"updateDimensionProperties": {
+                "range": {"sheetId": sid, "dimension": "COLUMNS",
+                          "startIndex": i, "endIndex": i + 1},
+                "properties": {"pixelSize": px},
+                "fields": "pixelSize",
+            }})
+
+    # ── Data row height — comfortable 22px ───────────────────────────────────
+    for sid, row_end in ((0, 20), (1, 80), (2, 30)):
+        requests.append({"updateDimensionProperties": {
+            "range": {"sheetId": sid, "dimension": "ROWS",
+                      "startIndex": 1, "endIndex": row_end},
+            "properties": {"pixelSize": 22},
+            "fields": "pixelSize",
+        }})
+
+    # ── Data validation: Status dropdown Master Schedule col F (index 5) ──────
     requests.append({
         "setDataValidation": {
             "range": {"sheetId": 0, "startRowIndex": 1,
@@ -176,7 +271,7 @@ def build_tracker_sheet(creds, project_data, sheet_name, parent_folder_id):
         }
     })
 
-    # Done checkbox on Action Items column C (index 2)
+    # ── Done checkbox on Action Items col C (index 2) ─────────────────────────
     requests.append({
         "setDataValidation": {
             "range": {"sheetId": 1, "startRowIndex": 1,
@@ -185,7 +280,7 @@ def build_tracker_sheet(creds, project_data, sheet_name, parent_folder_id):
         }
     })
 
-    # Order status dropdown on Order Schedule column E (index 4)
+    # ── Order status dropdown on Order Schedule col E (index 4) ──────────────
     requests.append({
         "setDataValidation": {
             "range": {"sheetId": 2, "startRowIndex": 1,
@@ -202,7 +297,7 @@ def build_tracker_sheet(creds, project_data, sheet_name, parent_folder_id):
         }
     })
 
-    # Arrived checkbox on Order Schedule column F (index 5)
+    # ── Arrived checkbox on Order Schedule col F (index 5) ───────────────────
     requests.append({
         "setDataValidation": {
             "range": {"sheetId": 2, "startRowIndex": 1,
@@ -210,15 +305,6 @@ def build_tracker_sheet(creds, project_data, sheet_name, parent_folder_id):
             "rule": {"condition": {"type": "BOOLEAN"}, "strict": True}
         }
     })
-
-    # Auto-resize columns on each tab
-    for sid in (0, 1, 2):
-        requests.append({
-            "autoResizeDimensions": {
-                "dimensions": {"sheetId": sid, "dimension": "COLUMNS",
-                               "startIndex": 0, "endIndex": 10}
-            }
-        })
 
     sheets.spreadsheets().batchUpdate(
         spreadsheetId=sheet_id, body={"requests": requests}
