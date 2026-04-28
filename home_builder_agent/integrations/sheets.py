@@ -197,7 +197,8 @@ def build_tracker_sheet(creds, project_data, sheet_name, parent_folder_id):
             "range": {"sheetId": sid, "startRowIndex": 1, "endRowIndex": row_end,
                       "startColumnIndex": 0, "endColumnIndex": 7},
             "rowProperties": {
-                "headerColor": HEADER_BG,
+                # No headerColor — row 1 is styled separately; headerColor
+                # would re-color row 2 (the first banded row) navy.
                 "firstBandColor": BAND_ODD,
                 "secondBandColor": BAND_EVEN,
             },
@@ -360,17 +361,41 @@ def read_master_schedule(sheets_svc, sheet_id):
     return phases
 
 
-def compute_dashboard_metrics(phases, today=None):
+def read_order_schedule(sheets_svc, sheet_id):
+    """Read Order Schedule tab. Return list of order dicts (one per row)."""
+    result = sheets_svc.spreadsheets().values().get(
+        spreadsheetId=sheet_id,
+        range="Order Schedule!A1:G200",
+    ).execute()
+    rows = result.get("values", [])
+    if not rows or len(rows) < 2:
+        return []
+
+    headers = rows[0]
+    orders = []
+    for row in rows[1:]:
+        padded = list(row) + [""] * (len(headers) - len(row))
+        order = dict(zip(headers, padded))
+        if order.get("Item", "").strip():
+            orders.append(order)
+    return orders
+
+
+def compute_dashboard_metrics(phases, orders=None, today=None):
     """Compute the dashboard metrics dict from a list of phase rows.
 
     Pure function — no I/O, no API calls. Takes the phase rows produced by
-    read_master_schedule() and returns the dict that write_dashboard() expects.
+    read_master_schedule() and optionally the order rows from
+    read_order_schedule(). Returns the dict that write_dashboard() expects.
+
+    The `orders` param is optional for backward compatibility — callers that
+    don't pass it get the same metrics as before, minus order-aware fields.
 
     Lives here (in integrations/sheets) rather than in core because the dict
     keys mirror the Master Schedule column names exactly — moving sheet
     schema = updating this in one place.
     """
-    from datetime import date as _date  # local to avoid module-level dep
+    from datetime import date as _date, datetime as _dt
 
     if today is None:
         today = _date.today()
@@ -412,14 +437,107 @@ def compute_dashboard_metrics(phases, today=None):
     )
 
     original_completion = phases[-1].get("End", "") if phases else ""
-    # Stage 1 doesn't compute revised completion (no cascade logic in the
-    # READ path — that lives in the status updater). Show same value.
     revised_completion = original_completion
 
     current_status = current.get("Status", "") if current else ""
     current_status_emoji = STATUS_EMOJI.get(
         normalize_status(current_status), "⚪"
     )
+
+    # ── Named issue lists — what needs attention by name, not just count ──────
+    blocked_phases = [
+        p.get("Phase", "") for p in phases
+        if normalize_status(p.get("Status")) == STATUS_BLOCKED
+    ]
+    delayed_phases = [
+        p.get("Phase", "") for p in phases
+        if normalize_status(p.get("Status")) == STATUS_DELAYED
+    ]
+
+    # ── Order-aware fields ────────────────────────────────────────────────────
+    overdue_orders = []
+    due_soon_orders = []
+    if orders:
+        inactive_statuses = {"delivered", "ordered", "in production", "shipped"}
+        for o in orders:
+            order_by_str = (o.get("Order By") or "").strip()
+            status = normalize_status(o.get("Status", ""))
+            if not order_by_str or status in inactive_statuses:
+                continue
+            try:
+                order_by = _dt.strptime(order_by_str, "%b %d, %Y").date()
+                days_until = (order_by - today).days
+                entry = {
+                    "item": o.get("Item", ""),
+                    "supplier": o.get("Supplier", ""),
+                    "order_by": order_by_str,
+                }
+                if days_until < 0:
+                    overdue_orders.append({**entry, "days_overdue": abs(days_until)})
+                elif days_until <= 14:
+                    due_soon_orders.append({**entry, "days_until": days_until})
+            except ValueError:
+                pass
+
+    # ── Overall health ────────────────────────────────────────────────────────
+    if blocked_phases or overdue_orders:
+        health, health_emoji = "ACTION NEEDED", "🔴"
+    elif delayed_phases or due_soon_orders:
+        health, health_emoji = "WATCH", "🟡"
+    else:
+        health, health_emoji = "ON TRACK", "🟢"
+
+    # ── Next action — one sentence, most important thing to do right now ───────
+    if blocked_phases:
+        next_action = (
+            f"Resolve block on {blocked_phases[0]} — "
+            "this phase is stopping the schedule from moving forward"
+        )
+    elif overdue_orders:
+        o = overdue_orders[0]
+        next_action = (
+            f"Place order immediately: {o['item']} from {o['supplier']} — "
+            f"Order By date has passed ({o['order_by']})"
+        )
+    elif delayed_phases:
+        next_action = (
+            f"Review delay on {delayed_phases[0]} and assess impact on "
+            f"{original_completion} completion deadline"
+        )
+    elif due_soon_orders:
+        o = due_soon_orders[0]
+        next_action = (
+            f"Order {o['item']} from {o['supplier']} within "
+            f"{o['days_until']} days — lead time window is closing"
+        )
+    elif current:
+        # Parse current phase start date to give a meaningful prompt
+        try:
+            start_dt = _dt.strptime(current.get("Start", ""), "%b %d, %Y").date()
+            days_to_start = (start_dt - today).days
+            phase_name = current.get("Phase", "current phase")
+            if days_to_start <= 0:
+                next_action = (
+                    f"{phase_name} is active — check in with your sub "
+                    "for a progress update"
+                )
+            elif days_to_start <= 7:
+                next_action = (
+                    f"{phase_name} starts in {days_to_start} days — "
+                    "confirm subs are scheduled and materials are ready"
+                )
+            else:
+                next_action = (
+                    f"Prepare for {phase_name} starting "
+                    f"{current.get('Start', '')} — all systems green"
+                )
+        except (ValueError, TypeError):
+            next_action = (
+                f"Review {current.get('Phase', 'current phase')} "
+                "and confirm next steps with your sub"
+            )
+    else:
+        next_action = "All phases complete — project is in wrap-up"
 
     return {
         "today": today.isoformat(),
@@ -439,6 +557,14 @@ def compute_dashboard_metrics(phases, today=None):
         "n_delayed_phases": n_delayed,
         "original_completion": original_completion,
         "revised_completion": revised_completion,
+        # Actionable fields
+        "blocked_phases": blocked_phases,
+        "delayed_phases": delayed_phases,
+        "overdue_orders": overdue_orders,
+        "due_soon_orders": due_soon_orders,
+        "health": health,
+        "health_emoji": health_emoji,
+        "next_action": next_action,
     }
 
 
@@ -505,53 +631,188 @@ def ensure_dashboard_tab(sheets_svc, sheet_id):
 
 
 def write_dashboard(sheets_svc, sheet_id, dashboard_sheet_id, metrics, project_name):
-    """Write the dashboard view to the Dashboard tab with formatting.
+    """Write the dashboard view to the Dashboard tab.
 
-    `metrics` shape comes from compute_dashboard_metrics() — see the dashboard
-    refresher agent for the dict schema.
+    Designed around the first 10 seconds: what changed → what matters →
+    what needs attention → what to do next. Four zones, top to bottom.
+
+    Layout (6 columns A–F, 26 rows):
+      R0:  Title bar + health badge
+      R1:  Subtitle (job code, last updated)
+      R2:  spacer
+      R3–5: KPI strip (Days out / Current Phase / % Done / Phases / Issues)
+      R6:  spacer
+      R7–10: Attention zone (green if clear, amber/red if issues)
+      R11: spacer
+      R12–13: Next Action (navy header + bold sentence)
+      R14: spacer
+      R15–18: Phase context (current / upcoming / completion)
+      R19: spacer
+      R20–21: Build progress bar
+      R22: spacer
+      R23–24: Phase status count boxes
+      R25: footer hint
     """
+    from datetime import date as _date, datetime as _dt
+
+    D = dashboard_sheet_id
     pct = int(metrics["pct_complete"])
-    pct_bar = _progress_bar_text(pct)
-    status_with_emoji = (
+    today = _date.today()
+
+    # ── Derived display values ────────────────────────────────────────────────
+    try:
+        compl_dt = _dt.strptime(metrics["original_completion"], "%b %d, %Y").date()
+        days_out = (compl_dt - today).days
+        days_str = str(max(0, days_out))
+        compl_label = f"to {compl_dt.strftime('%b %Y')}"
+    except (ValueError, TypeError):
+        days_out = None
+        days_str = "—"
+        compl_label = ""
+
+    health       = metrics.get("health", "ON TRACK")
+    health_emoji = metrics.get("health_emoji", "🟢")
+    next_action  = metrics.get("next_action", "Review current phase with your sub")
+    n_not_started = (
+        metrics["n_total_phases"] - metrics["n_done_phases"]
+        - metrics["n_in_progress_phases"] - metrics["n_blocked_phases"]
+        - metrics["n_delayed_phases"]
+    )
+    issue_count = metrics["n_blocked_phases"] + metrics["n_delayed_phases"]
+
+    current_status_display = (
         f"{metrics['current_status_emoji']} {metrics['current_status']}"
-        if metrics['current_status'] else metrics['current_status_emoji']
+        if metrics.get("current_status") else "⚪ Not Started"
+    )
+    phase_sub = (
+        f"{current_status_display}  ·  "
+        f"Phase {metrics['n_done_phases'] + 1} of {metrics['n_total_phases']}"
     )
 
+    # ── Attention items (up to 3, padded to exactly 3 for stable layout) ─────
+    items = []
+    for ph in metrics.get("blocked_phases", []):
+        items.append(f"   🔴  {ph} is BLOCKED — resolve before schedule can advance")
+    for ph in metrics.get("delayed_phases", []):
+        items.append(f"   🟠  {ph} is DELAYED — assess impact on deadline")
+    for o in metrics.get("overdue_orders", [])[:2]:
+        items.append(
+            f"   ⚠   Order {o['item']} from {o['supplier']} — "
+            f"Order By date has passed"
+        )
+    for o in metrics.get("due_soon_orders", [])[:1]:
+        items.append(
+            f"   📋  Order {o['item']} from {o['supplier']} — "
+            f"due in {o['days_until']} days"
+        )
+
+    if items:
+        attn_header = (
+            f"   ⚠   {len(items)} ITEM{'S' if len(items) > 1 else ''} "
+            f"NEED{'S' if len(items) == 1 else ''} ATTENTION"
+        )
+        attn_bg = {"red": 0.78, "green": 0.38, "blue": 0.04}
+    else:
+        attn_header = "   ✅   ALL CLEAR — no issues today"
+        attn_bg     = {"red": 0.11, "green": 0.50, "blue": 0.27}
+        items = [""]
+
+    while len(items) < 3:
+        items.append("")
+    items = items[:3]
+
+    pct_bar = _progress_bar_text(pct, width=54)
+
+    # ── Values (26 rows × 6 cols) ─────────────────────────────────────────────
     layout = [
-        [f"PROJECT DASHBOARD — {project_name}", "", "", ""],
-        ["Last updated", metrics["today"], "", ""],
-        ["", "", "", ""],
-        ["CURRENT STAGE", "", "", ""],
-        ["Phase", metrics["current_stage"], "", ""],
-        ["Status", status_with_emoji, "", ""],
-        ["Started", metrics["current_start"], "", ""],
-        ["Phase ends", metrics["current_end"], "", ""],
-        ["", "", "", ""],
-        ["UPCOMING STAGE", "", "", ""],
-        ["Next phase", metrics["upcoming_stage"], "", ""],
-        ["Starts", metrics["upcoming_start"], "", ""],
-        ["", "", "", ""],
-        ["PROGRESS", "", "", ""],
-        ["% Complete", f"{pct}%", pct_bar, ""],
-        ["Phases complete",
-         f"{metrics['n_done_phases']} of {metrics['n_total_phases']}", "", ""],
-        ["🟡 Phases in progress", metrics["n_in_progress_phases"], "", ""],
-        ["🔴 Phases blocked", metrics["n_blocked_phases"], "", ""],
-        ["🟠 Phases delayed", metrics["n_delayed_phases"], "", ""],
-        ["", "", "", ""],
-        ["COMPLETION TARGET", "", "", ""],
-        ["Original completion", metrics["original_completion"], "", ""],
-        ["Revised completion", metrics["revised_completion"], "", ""],
-        ["", "", "", ""],
-        ["NOTES", "", "", ""],
-        ["", "Update phase Status dropdowns on Master Schedule tab; the watcher",
-         "", ""],
-        ["", "auto-refreshes this view within 60 seconds. For natural-language",
-         "", ""],
-        ["", "updates that auto-cascade through the schedule, run", "", ""],
-        ["", "  hb-update \"Phase 3 pushed 1 week\"", "", ""],
+        # R0 title + health badge
+        [project_name.upper(), "", "", "", f"{health_emoji}  {health}", ""],
+        # R1 subtitle
+        [f"Palmetto Custom Homes  ·  PCH-2026-007  ·  Fairhope, AL",
+         "", "", "", f"Refreshed {metrics['today']}", ""],
+        # R2 spacer
+        [""] * 6,
+        # R3 KPI labels
+        ["DAYS TO DEADLINE", "CURRENT PHASE", "", "% DONE", "PHASES DONE", "ISSUES"],
+        # R4 KPI values
+        [days_str, metrics["current_stage"], "",
+         f"{pct}%",
+         f"{metrics['n_done_phases']} / {metrics['n_total_phases']}",
+         str(issue_count)],
+        # R5 KPI descriptors
+        [compl_label, phase_sub, "", "complete", "done", "blocked or delayed"],
+        # R6 spacer
+        [""] * 6,
+        # R7 attention header
+        [attn_header, "", "", "", "", ""],
+        # R8–R10 attention items
+        [items[0], "", "", "", "", ""],
+        [items[1], "", "", "", "", ""],
+        [items[2], "", "", "", "", ""],
+        # R11 spacer
+        [""] * 6,
+        # R12 next action header
+        ["   ▶   YOUR NEXT ACTION", "", "", "", "", ""],
+        # R13 next action text
+        [f"   {next_action}", "", "", "", "", ""],
+        # R14 spacer
+        [""] * 6,
+        # R15 phase context labels
+        ["CURRENT PHASE", "", "UP NEXT", "", "COMPLETION", ""],
+        # R16 phase names
+        [metrics["current_stage"], "", metrics.get("upcoming_stage", "—"),
+         "", metrics["original_completion"], ""],
+        # R17 dates
+        [f"{metrics['current_start']} → {metrics['current_end']}", "",
+         f"Starts {metrics.get('upcoming_start', '—')}", "",
+         f"Firm deadline", ""],
+        # R18 status / days out
+        [current_status_display, "", "—", "",
+         f"{days_str} days out" if days_str != "—" else "—", ""],
+        # R19 spacer
+        [""] * 6,
+        # R20 progress header
+        ["BUILD PROGRESS", "",
+         f"{pct}%  ·  {metrics['n_done_phases']} of "
+         f"{metrics['n_total_phases']} phases complete",
+         "", "", ""],
+        # R21 progress bar
+        [pct_bar, "", "", "", "", ""],
+        # R22 spacer
+        [""] * 6,
+        # R23 count labels
+        ["⚪  NOT STARTED", "✅  DONE", "🟡  IN PROGRESS",
+         "🔴  BLOCKED", "🟠  DELAYED", "TOTAL"],
+        # R24 count values
+        [str(n_not_started), str(metrics["n_done_phases"]),
+         str(metrics["n_in_progress_phases"]), str(metrics["n_blocked_phases"]),
+         str(metrics["n_delayed_phases"]), str(metrics["n_total_phases"])],
+        # R25 footer
+        ["Update Status on Master Schedule tab — auto-refreshes every 60s  "
+         "·  hb-update \"[phase] complete\" for natural-language cascades",
+         "", "", "", "", ""],
     ]
 
+    # ── Clear existing content + unmerge ─────────────────────────────────────
+    sheets_svc.spreadsheets().values().clear(
+        spreadsheetId=sheet_id, range="Dashboard!A1:Z50"
+    ).execute()
+
+    meta = sheets_svc.spreadsheets().get(
+        spreadsheetId=sheet_id,
+        fields="sheets(properties(sheetId),merges)"
+    ).execute()
+    unmerge_reqs = []
+    for s in meta["sheets"]:
+        if s["properties"]["sheetId"] == D:
+            for m in s.get("merges", []):
+                unmerge_reqs.append({"unmergeCells": {"range": m}})
+    if unmerge_reqs:
+        sheets_svc.spreadsheets().batchUpdate(
+            spreadsheetId=sheet_id, body={"requests": unmerge_reqs}
+        ).execute()
+
+    # ── Write values ──────────────────────────────────────────────────────────
     sheets_svc.spreadsheets().values().update(
         spreadsheetId=sheet_id,
         range="Dashboard!A1",
@@ -559,74 +820,304 @@ def write_dashboard(sheets_svc, sheet_id, dashboard_sheet_id, metrics, project_n
         body={"values": layout},
     ).execute()
 
-    requests = []
+    # ── Formatting batch ──────────────────────────────────────────────────────
+    # Color palette — restrained: one neutral base, one accent, semantic only
+    NAVY      = {"red": 0.13, "green": 0.23, "blue": 0.40}
+    NAVY_DK   = {"red": 0.22, "green": 0.35, "blue": 0.55}
+    NAVY_TEXT = {"red": 0.10, "green": 0.18, "blue": 0.32}
+    WHITE     = {"red": 1.00, "green": 1.00, "blue": 1.00}
+    LGRAY_BG  = {"red": 0.95, "green": 0.96, "blue": 0.97}
+    MID_GRAY  = {"red": 0.55, "green": 0.55, "blue": 0.55}
+    DARK_GRAY = {"red": 0.30, "green": 0.30, "blue": 0.30}
+    DIVIDER   = {"red": 0.88, "green": 0.90, "blue": 0.93}
+    ATTN_ITEM_BG = ({"red": 0.99, "green": 0.96, "blue": 0.92}
+                    if items[0] else WHITE)
+    # Status box colors — only used for the count strip
+    BOX_GRAY   = {"red": 0.60, "green": 0.62, "blue": 0.65}
+    BOX_GREEN  = {"red": 0.13, "green": 0.50, "blue": 0.28}
+    BOX_AMBER  = {"red": 0.80, "green": 0.55, "blue": 0.08}
+    BOX_RED    = {"red": 0.75, "green": 0.16, "blue": 0.16}
+    BOX_ORANGE = {"red": 0.78, "green": 0.38, "blue": 0.06}
+    # Health badge color
+    if health == "ON TRACK":
+        health_bg = BOX_GREEN
+    elif health == "WATCH":
+        health_bg = BOX_AMBER
+    else:
+        health_bg = BOX_RED
+    # Issues number color
+    issue_color = BOX_RED if issue_count > 0 else BOX_GREEN
 
-    # Title (row 0): bold, large, dark blue background, white text
-    requests.append({
-        "repeatCell": {
-            "range": {"sheetId": dashboard_sheet_id,
-                      "startRowIndex": 0, "endRowIndex": 1,
-                      "startColumnIndex": 0, "endColumnIndex": 4},
-            "cell": {"userEnteredFormat": {
-                "textFormat": {
-                    "bold": True, "fontSize": 14,
-                    "foregroundColor": {"red": 1, "green": 1, "blue": 1},
-                },
-                "backgroundColor": {"red": 0.2, "green": 0.4, "blue": 0.6},
-            }},
-            "fields": "userEnteredFormat(textFormat,backgroundColor)",
-        }
-    })
+    reqs = []
 
-    # Section header rows: bold, light green
-    section_rows = [3, 9, 13, 20, 24]  # 0-indexed
-    for row in section_rows:
-        requests.append({
-            "repeatCell": {
-                "range": {"sheetId": dashboard_sheet_id,
-                          "startRowIndex": row, "endRowIndex": row + 1,
-                          "startColumnIndex": 0, "endColumnIndex": 4},
-                "cell": {"userEnteredFormat": {
-                    "textFormat": {"bold": True},
-                    "backgroundColor": {"red": 0.85, "green": 0.92, "blue": 0.83},
-                }},
-                "fields": "userEnteredFormat(textFormat,backgroundColor)",
-            }
-        })
+    def rng(r1, r2, c1, c2):
+        return {"sheetId": D, "startRowIndex": r1, "endRowIndex": r2,
+                "startColumnIndex": c1, "endColumnIndex": c2}
 
-    # Label column for value rows: bold
-    label_rows = [1, 4, 5, 6, 7, 10, 11, 14, 15, 16, 17, 18, 21, 22]
-    for row in label_rows:
-        requests.append({
-            "repeatCell": {
-                "range": {"sheetId": dashboard_sheet_id,
-                          "startRowIndex": row, "endRowIndex": row + 1,
-                          "startColumnIndex": 0, "endColumnIndex": 1},
-                "cell": {"userEnteredFormat": {"textFormat": {"bold": True}}},
-                "fields": "userEnteredFormat.textFormat",
-            }
-        })
+    def cell_fmt(r1, r2, c1, c2, **kw):
+        return {"repeatCell": {
+            "range": rng(r1, r2, c1, c2),
+            "cell": {"userEnteredFormat": kw},
+            "fields": "userEnteredFormat(" + ",".join(kw) + ")",
+        }}
 
-    # Auto-resize columns + extra width on label column
-    requests.append({
-        "autoResizeDimensions": {
-            "dimensions": {"sheetId": dashboard_sheet_id,
-                           "dimension": "COLUMNS",
-                           "startIndex": 0, "endIndex": 4},
-        }
-    })
-    requests.append({
-        "updateDimensionProperties": {
-            "range": {"sheetId": dashboard_sheet_id,
-                      "dimension": "COLUMNS",
-                      "startIndex": 0, "endIndex": 1},
-            "properties": {"pixelSize": 200},
-            "fields": "pixelSize",
-        }
-    })
+    def mrg(r1, r2, c1, c2):
+        return {"mergeCells": {"range": rng(r1, r2, c1, c2),
+                               "mergeType": "MERGE_ALL"}}
+
+    def row_h(r, px):
+        return {"updateDimensionProperties": {
+            "range": {"sheetId": D, "dimension": "ROWS",
+                      "startIndex": r, "endIndex": r + 1},
+            "properties": {"pixelSize": px}, "fields": "pixelSize"}}
+
+    def col_w(c, px):
+        return {"updateDimensionProperties": {
+            "range": {"sheetId": D, "dimension": "COLUMNS",
+                      "startIndex": c, "endIndex": c + 1},
+            "properties": {"pixelSize": px}, "fields": "pixelSize"}}
+
+    def hdivider(r):
+        return {"updateBorders": {
+            "range": rng(r, r + 1, 0, 6),
+            "bottom": {"style": "SOLID", "width": 1,
+                       "colorStyle": {"rgbColor": DIVIDER}}}}
+
+    # ── Grid: 6 cols, freeze top 2 rows, nav tab color ────────────────────────
+    reqs += [
+        {"updateSheetProperties": {
+            "properties": {"sheetId": D,
+                           "gridProperties": {"columnCount": 6,
+                                              "frozenRowCount": 2},
+                           "tabColorStyle": {"rgbColor": NAVY}},
+            "fields": "gridProperties.columnCount,"
+                      "gridProperties.frozenRowCount,tabColorStyle"}},
+    ]
+
+    # Column widths: A=140 B=200 C=150 D=110 E=140 F=110
+    for c, px in enumerate([140, 200, 150, 110, 140, 110]):
+        reqs.append(col_w(c, px))
+
+    # Row heights
+    heights = {0: 42, 1: 22, 2: 10, 3: 13, 4: 44, 5: 15, 6: 12,
+               7: 28, 8: 22, 9: 22, 10: 22, 11: 12, 12: 24, 13: 34,
+               14: 12, 15: 20, 16: 26, 17: 18, 18: 16, 19: 12,
+               20: 20, 21: 26, 22: 12, 23: 14, 24: 34, 25: 16}
+    for r, px in heights.items():
+        reqs.append(row_h(r, px))
+
+    # ── Reset all to white, no border ─────────────────────────────────────────
+    reqs.append(cell_fmt(0, 26, 0, 6,
+        backgroundColor=WHITE,
+        textFormat={"fontSize": 9, "bold": False,
+                    "foregroundColor": DARK_GRAY},
+        wrapStrategy="CLIP",
+        verticalAlignment="MIDDLE",
+        horizontalAlignment="LEFT",
+    ))
+
+    # ── Merges ────────────────────────────────────────────────────────────────
+    for m in [
+        (0,1,0,4), (0,1,4,6),           # R0 title | health
+        (1,2,0,4), (1,2,4,6),           # R1 subtitle | date
+        (2,3,0,6),                       # R2 spacer
+        (3,4,1,3), (4,5,1,3), (5,6,1,3),  # KPI B:C phase col
+        (6,7,0,6),                       # R6 spacer
+        (7,8,0,6),                       # R7 attn header
+        (8,9,0,6), (9,10,0,6), (10,11,0,6),  # R8-10 items
+        (11,12,0,6),                     # R11 spacer
+        (12,13,0,6), (13,14,0,6),        # R12-13 next action
+        (14,15,0,6),                     # R14 spacer
+        (15,16,0,2), (15,16,2,4), (15,16,4,6),  # R15 phase labels
+        (16,17,0,2), (16,17,2,4), (16,17,4,6),  # R16 phase names
+        (17,18,0,2), (17,18,2,4), (17,18,4,6),  # R17 dates
+        (18,19,0,2), (18,19,2,4), (18,19,4,6),  # R18 status
+        (19,20,0,6),                     # R19 spacer
+        (20,21,0,2), (20,21,2,6),        # R20 progress label | value
+        (21,22,0,6),                     # R21 bar
+        (22,23,0,6),                     # R22 spacer
+        (25,26,0,6),                     # R25 footer
+    ]:
+        reqs.append(mrg(*m))
+
+    # ── R0: Title bar ─────────────────────────────────────────────────────────
+    reqs.append(cell_fmt(0,1,0,4,
+        backgroundColor=NAVY,
+        textFormat={"bold": True, "fontSize": 14, "foregroundColor": WHITE},
+        verticalAlignment="MIDDLE", horizontalAlignment="LEFT",
+        padding={"top":0,"bottom":0,"left":16,"right":0},
+        wrapStrategy="CLIP",
+    ))
+    reqs.append(cell_fmt(0,1,4,6,
+        backgroundColor=health_bg,
+        textFormat={"bold": True, "fontSize": 9, "foregroundColor": WHITE},
+        verticalAlignment="MIDDLE", horizontalAlignment="CENTER",
+        wrapStrategy="CLIP",
+    ))
+
+    # ── R1: Subtitle ──────────────────────────────────────────────────────────
+    reqs.append(cell_fmt(1,2,0,4,
+        backgroundColor=NAVY_DK,
+        textFormat={"fontSize": 8, "foregroundColor":
+                    {"red":0.82,"green":0.86,"blue":0.93}},
+        verticalAlignment="MIDDLE", horizontalAlignment="LEFT",
+        padding={"top":0,"bottom":0,"left":16,"right":0},
+        wrapStrategy="CLIP",
+    ))
+    reqs.append(cell_fmt(1,2,4,6,
+        backgroundColor=NAVY_DK,
+        textFormat={"fontSize": 8, "foregroundColor":
+                    {"red":0.82,"green":0.86,"blue":0.93}},
+        verticalAlignment="MIDDLE", horizontalAlignment="RIGHT",
+        padding={"top":0,"bottom":0,"left":0,"right":12},
+        wrapStrategy="CLIP",
+    ))
+
+    # ── R3: KPI labels ────────────────────────────────────────────────────────
+    reqs.append(cell_fmt(3,4,0,6,
+        textFormat={"bold": True, "fontSize": 8, "foregroundColor": MID_GRAY},
+        horizontalAlignment="CENTER", verticalAlignment="BOTTOM",
+        wrapStrategy="CLIP",
+    ))
+    # Phase label left-aligned
+    reqs.append(cell_fmt(3,4,1,3,
+        textFormat={"bold": True, "fontSize": 8, "foregroundColor": MID_GRAY},
+        horizontalAlignment="LEFT", verticalAlignment="BOTTOM",
+        padding={"top":0,"bottom":0,"left":8,"right":0}, wrapStrategy="CLIP",
+    ))
+
+    # ── R4: KPI values ────────────────────────────────────────────────────────
+    reqs.append(cell_fmt(4,5,0,6,
+        textFormat={"bold": True, "fontSize": 26, "foregroundColor": NAVY_TEXT},
+        horizontalAlignment="CENTER", verticalAlignment="MIDDLE",
+    ))
+    # Phase name — smaller, left-aligned
+    reqs.append(cell_fmt(4,5,1,3,
+        textFormat={"bold": True, "fontSize": 12, "foregroundColor": NAVY_TEXT},
+        horizontalAlignment="LEFT", verticalAlignment="MIDDLE",
+        padding={"top":0,"bottom":0,"left":8,"right":0}, wrapStrategy="WRAP",
+    ))
+    # Issues — color-coded
+    reqs.append(cell_fmt(4,5,5,6,
+        textFormat={"bold": True, "fontSize": 26, "foregroundColor": issue_color},
+        horizontalAlignment="CENTER", verticalAlignment="MIDDLE",
+    ))
+
+    # ── R5: KPI descriptors ───────────────────────────────────────────────────
+    reqs.append(cell_fmt(5,6,0,6,
+        textFormat={"fontSize": 8, "italic": True, "foregroundColor": MID_GRAY},
+        horizontalAlignment="CENTER", verticalAlignment="TOP",
+    ))
+    reqs.append(cell_fmt(5,6,1,3,
+        textFormat={"fontSize": 8, "italic": True, "foregroundColor": MID_GRAY},
+        horizontalAlignment="LEFT", verticalAlignment="TOP",
+        padding={"top":0,"bottom":0,"left":8,"right":0},
+    ))
+    reqs.append(hdivider(5))
+
+    # ── R7: Attention header ──────────────────────────────────────────────────
+    reqs.append(cell_fmt(7,8,0,6,
+        backgroundColor=attn_bg,
+        textFormat={"bold": True, "fontSize": 10, "foregroundColor": WHITE},
+        verticalAlignment="MIDDLE", horizontalAlignment="LEFT",
+        padding={"top":0,"bottom":0,"left":4,"right":0}, wrapStrategy="CLIP",
+    ))
+    # R8-10: attention items
+    reqs.append(cell_fmt(8,11,0,6,
+        backgroundColor=ATTN_ITEM_BG,
+        textFormat={"fontSize": 9, "foregroundColor": DARK_GRAY},
+        verticalAlignment="MIDDLE", horizontalAlignment="LEFT",
+        padding={"top":0,"bottom":0,"left":4,"right":0}, wrapStrategy="CLIP",
+    ))
+
+    # ── R12: Next action header ───────────────────────────────────────────────
+    reqs.append(cell_fmt(12,13,0,6,
+        backgroundColor=NAVY,
+        textFormat={"bold": True, "fontSize": 9, "foregroundColor": WHITE},
+        verticalAlignment="MIDDLE", horizontalAlignment="LEFT",
+        padding={"top":0,"bottom":0,"left":4,"right":0}, wrapStrategy="CLIP",
+    ))
+    # R13: Next action text
+    reqs.append(cell_fmt(13,14,0,6,
+        backgroundColor={"red":0.96,"green":0.97,"blue":0.99},
+        textFormat={"bold": True, "fontSize": 10, "foregroundColor": NAVY_TEXT},
+        verticalAlignment="MIDDLE", horizontalAlignment="LEFT",
+        padding={"top":0,"bottom":0,"left":4,"right":12}, wrapStrategy="WRAP",
+    ))
+
+    # ── R15-18: Phase context (light gray band) ───────────────────────────────
+    reqs.append(cell_fmt(15,19,0,6, backgroundColor=LGRAY_BG))
+    # Section labels (R15)
+    for c1, c2 in ((0,2), (2,4), (4,6)):
+        reqs.append(cell_fmt(15,16,c1,c2,
+            backgroundColor=LGRAY_BG,
+            textFormat={"bold": True, "fontSize": 8, "foregroundColor": NAVY_DK},
+            verticalAlignment="MIDDLE", horizontalAlignment="LEFT",
+            padding={"top":0,"bottom":0,"left":10,"right":0}, wrapStrategy="CLIP",
+        ))
+    # Phase names (R16)
+    for c1, c2 in ((0,2), (2,4), (4,6)):
+        reqs.append(cell_fmt(16,17,c1,c2,
+            backgroundColor=LGRAY_BG,
+            textFormat={"bold": True, "fontSize": 11, "foregroundColor": NAVY_TEXT},
+            verticalAlignment="MIDDLE", horizontalAlignment="LEFT",
+            padding={"top":0,"bottom":0,"left":10,"right":0}, wrapStrategy="WRAP",
+        ))
+    # Dates + status (R17-18)
+    for c1, c2 in ((0,2), (2,4), (4,6)):
+        reqs.append(cell_fmt(17,19,c1,c2,
+            backgroundColor=LGRAY_BG,
+            textFormat={"fontSize": 9, "foregroundColor": MID_GRAY},
+            verticalAlignment="MIDDLE", horizontalAlignment="LEFT",
+            padding={"top":0,"bottom":0,"left":10,"right":0},
+        ))
+    reqs.append(hdivider(18))
+
+    # ── R20-21: Progress ──────────────────────────────────────────────────────
+    reqs.append(cell_fmt(20,21,0,2,
+        textFormat={"bold": True, "fontSize": 9, "foregroundColor": NAVY_TEXT},
+        verticalAlignment="MIDDLE", horizontalAlignment="LEFT",
+        padding={"top":0,"bottom":0,"left":10,"right":0},
+    ))
+    reqs.append(cell_fmt(20,21,2,6,
+        textFormat={"fontSize": 9, "foregroundColor": MID_GRAY},
+        verticalAlignment="MIDDLE", horizontalAlignment="RIGHT",
+        padding={"top":0,"bottom":0,"left":0,"right":10},
+    ))
+    bar_color = ({"red":0.13,"green":0.50,"blue":0.28}
+                 if pct > 0 else {"red":0.78,"green":0.80,"blue":0.84})
+    reqs.append(cell_fmt(21,22,0,6,
+        textFormat={"fontSize": 10, "foregroundColor": bar_color},
+        verticalAlignment="MIDDLE", horizontalAlignment="LEFT",
+        wrapStrategy="CLIP",
+        padding={"top":0,"bottom":0,"left":10,"right":0},
+    ))
+    reqs.append(hdivider(21))
+
+    # ── R23-24: Status count boxes ────────────────────────────────────────────
+    box_colors = [BOX_GRAY, BOX_GREEN, BOX_AMBER, BOX_RED, BOX_ORANGE, NAVY]
+    for ci, bg in enumerate(box_colors):
+        reqs.append(cell_fmt(23,25,ci,ci+1, backgroundColor=bg))
+    reqs.append(cell_fmt(23,24,0,6,
+        textFormat={"bold": True, "fontSize": 8, "foregroundColor": WHITE},
+        horizontalAlignment="CENTER", verticalAlignment="MIDDLE",
+        wrapStrategy="CLIP",
+    ))
+    reqs.append(cell_fmt(24,25,0,6,
+        textFormat={"bold": True, "fontSize": 20, "foregroundColor": WHITE},
+        horizontalAlignment="CENTER", verticalAlignment="MIDDLE",
+    ))
+
+    # ── R25: Footer ───────────────────────────────────────────────────────────
+    reqs.append(cell_fmt(25,26,0,6,
+        textFormat={"fontSize": 8, "italic": True,
+                    "foregroundColor": {"red":0.68,"green":0.70,"blue":0.72}},
+        verticalAlignment="MIDDLE", horizontalAlignment="CENTER",
+        wrapStrategy="CLIP",
+    ))
 
     sheets_svc.spreadsheets().batchUpdate(
-        spreadsheetId=sheet_id, body={"requests": requests}
+        spreadsheetId=sheet_id, body={"requests": reqs}
     ).execute()
 
 

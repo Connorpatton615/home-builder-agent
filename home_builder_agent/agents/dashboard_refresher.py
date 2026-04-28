@@ -35,16 +35,22 @@ def main():
     phases = sheets.read_master_schedule(sheets_svc, tracker["id"])
     print(f"  {len(phases)} phases loaded")
 
+    print("Reading Order Schedule tab...")
+    orders = sheets.read_order_schedule(sheets_svc, tracker["id"])
+    print(f"  {len(orders)} orders loaded")
+
     print("\nComputing dashboard metrics...")
-    metrics = sheets.compute_dashboard_metrics(phases)
+    metrics = sheets.compute_dashboard_metrics(phases, orders=orders)
+    print(f"  Health:           {metrics['health_emoji']} {metrics['health']}")
     print(f"  Current stage:    {metrics['current_stage']}")
     print(f"  Current status:   {metrics['current_status']}")
-    print(f"  Upcoming stage:   {metrics['upcoming_stage']}")
     print(f"  % Complete:       {int(metrics['pct_complete'])}%")
     print(f"  Phases done:      {metrics['n_done_phases']} of "
           f"{metrics['n_total_phases']}")
-    print(f"  Original target:  {metrics['original_completion']}")
-    print(f"  Revised target:   {metrics['revised_completion']}")
+    print(f"  Issues:           {metrics['n_blocked_phases']} blocked, "
+          f"{metrics['n_delayed_phases']} delayed")
+    print(f"  Overdue orders:   {len(metrics['overdue_orders'])}")
+    print(f"  Next action:      {metrics['next_action']}")
 
     print("\nEnsuring Dashboard tab exists...")
     dashboard_sheet_id = sheets.ensure_dashboard_tab(sheets_svc, tracker["id"])

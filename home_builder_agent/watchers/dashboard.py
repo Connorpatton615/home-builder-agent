@@ -98,7 +98,8 @@ def refresh_one(drive_svc, sheets_svc, tracker):
     """
     project_name = drive.extract_project_name(tracker["name"])
     phases = sheets.read_master_schedule(sheets_svc, tracker["id"])
-    metrics = sheets.compute_dashboard_metrics(phases)
+    orders = sheets.read_order_schedule(sheets_svc, tracker["id"])
+    metrics = sheets.compute_dashboard_metrics(phases, orders=orders)
     dashboard_sheet_id = sheets.ensure_dashboard_tab(sheets_svc, tracker["id"])
     sheets.write_dashboard(
         sheets_svc, tracker["id"], dashboard_sheet_id, metrics, project_name
