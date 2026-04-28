@@ -380,7 +380,13 @@ def main():
         return
 
     spec_filename = resolve_spec_filename(args.spec)
-    spec_path = os.path.join(WORKSPACE, PROJECT_SPECS_DIR, spec_filename)
+    # If the user passed an absolute path that exists, use it directly;
+    # otherwise look for the file inside the configured WORKSPACE folder.
+    if args.spec and os.path.isabs(args.spec) and os.path.exists(args.spec):
+        spec_path = args.spec
+        spec_filename = os.path.basename(args.spec)   # keep just the filename for naming
+    else:
+        spec_path = os.path.join(WORKSPACE, PROJECT_SPECS_DIR, spec_filename)
     if not os.path.exists(spec_path):
         print(f"ERROR: Spec file not found: {spec_path}")
         print("Run `hb-timeline --list` to see available specs.")
