@@ -59,6 +59,12 @@ Active background process:
 6. **Knowledge base validation by Chad** — three categories where research couldn't verify his preferred suppliers
 7. **Pricing model** — one-time setup vs subscription vs per-project license
 
+> Note: Phase 2 item 3 (Supplier-email watcher) overlaps in intent with the Phase 3 Vendor Intelligence System below — both ingest vendor data, but via different paths (email parse vs catalog scrape). Decide whether the email watcher feeds the same normalized schema or gets subsumed once the vendor list is in hand. See `docs/specs/vendor-intelligence-system.md`.
+
+## Phase 3 backlog
+
+1. **Vendor Intelligence System** (anchor) — scrape every vendor's catalog → normalize into a comparable schema → recommend the best buy for any product (price / lead time / stock / distance / Chad's preferences) with plain-English rationale. Productizes across Patton AI customers; positioned as Tier 2/3 anchor feature in pricing. Spec: [`docs/specs/vendor-intelligence-system.md`](docs/specs/vendor-intelligence-system.md).
+
 ## Architectural decisions (load-bearing)
 
 - **Active vs on-demand split.** Watch-the-world agents run on schedules (launchd polling). Intent-driven agents stay scripts the user invokes. Don't promote a script to a watcher unless polling actually pays off.
