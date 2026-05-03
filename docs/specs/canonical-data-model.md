@@ -413,7 +413,22 @@ Each entity below carries the same six headings. "Source-of-truth owner" names t
 
 **Relationships.** → Project / Phase / Task / Vendor / SKU (varies by type), ← Notifications (1:N — one Event can produce multiple Notifications across surfaces/channels).
 
-**Source-of-truth owner.** Whichever layer emits is the originator; the canonical Event record is engine-owned post-emission. Vendor Intelligence emits stock/price-change Events; the supplier-email watcher emits ETA-change Events; the Scheduling Engine emits schedule-slip and selection-deadline Events; the weather monitor emits weather-delay Events; the permit-portal integration (when live) emits inspection-failure Events.
+**Source-of-truth owner — load-bearing rule.**
+
+**Emission is many-to-one. Ownership is one.** Multiple layers MAY emit Events:
+
+- **Vendor Intelligence** emits `stock-change`, `price-change`, `lead-time-change`.
+- **Supplier-email watcher** emits `eta-change`, `backorder-detected`.
+- **Weather subsystem** emits `weather-impact` (which becomes `weather-delay` once severity ≥ warning).
+- **Scheduling Engine** emits `selection-deadline`, `schedule-slip`, `sub-no-show`, `material-no-show`.
+- **Inspection ingestion** (permit-portal integration when live; manual-mark in the Tracker today) emits `inspection-status` Events.
+- **UX surfaces** (desktop, mobile) emit user-action Events through the engine — they never write Event records directly.
+
+**The Scheduling Engine OWNS the canonical Event record once an emitted Event is accepted into the canonical store.** There is one Event store. There is no parallel vendor-side or watcher-side or surface-side Event store. Emitters call into the engine's Event API; the engine validates, persists, and routes.
+
+**Renderers (Chad UX desktop, Mobile UX) NEVER mutate engine state directly.** All mutations — including Event acknowledgement and Event resolution — flow through the engine. A renderer that wants to "mark this notification resolved" emits a UserAction; the engine processes the UserAction and updates the Event's `status`, `acknowledged_at`, `resolved_at`, and `acknowledgement_actor` fields.
+
+**Why this rule is load-bearing.** It is the rule that prevents implementations from spinning up parallel event stores in vendor-side or watcher-side or surface-side code. If there are two Event stores, there are two consistency models, two retention policies, two acknowledgement flows, and Chad sees double notifications. The rule says: many emitters, one owner, one store. Implementers who feel the pull to write Event records directly from a non-engine layer are violating this contract — the answer is to call the engine's emission API instead.
 
 **Fallback behavior.** Without a Notification dispatcher, Events accumulate in an append-only log readable by Chad on the dashboard. The Event always exists; only delivery degrades.
 
@@ -477,9 +492,15 @@ Per layer: what it owns truth for, what it consumes read-only, and what it mutat
 - **Consumes read-only.** Event (subscribes; one Event → one or more Notifications based on routing rules and surface targets).
 - **Mutates via engine.** Notification own-state only.
 
-### Hard rule
+### Hard rules
 
-**No renderer mutates engine state directly.** Every state change is either (a) the engine acting on its own logic, (b) Vendor Intelligence updating vendor-owned entities through its own API, or (c) a renderer emitting a UserAction that the engine processes. There is no fourth path. If a future feature seems to need one, the answer is to model it as a UserAction, not to grant the renderer write access.
+Two non-negotiable rules govern mutation across the stack. Both exist to prevent the kind of drift that turns a layered architecture into a tangle.
+
+**Rule 1 — No renderer mutates engine state directly.** Every state change is either (a) the engine acting on its own logic, (b) Vendor Intelligence updating vendor-owned entities through its own API, or (c) a renderer emitting a UserAction that the engine processes. There is no fourth path. If a future feature seems to need one, the answer is to model it as a UserAction, not to grant the renderer write access. **This includes Event acknowledgement and Event resolution** — a renderer that wants to mark an Event acknowledged emits a UserAction; the engine updates the Event record.
+
+**Rule 2 — One Event store, many emitters.** Events MAY be emitted by Vendor Intelligence, the supplier-email watcher, the weather subsystem, the Scheduling Engine, and the inspection ingestion layer (and by UX surfaces via UserAction → engine). **The Scheduling Engine owns the canonical Event record.** There is no parallel vendor-side, watcher-side, weather-side, or surface-side Event store. Emitters call into the engine's emission API; the engine validates, persists, and routes. See entity 17 for the full rule and rationale.
+
+If a future feature seems to need either rule violated, the feature design is wrong — not the rule.
 
 ---
 

@@ -103,9 +103,13 @@ Phases:
 
 The non-precon 23 are generated from industry standards plus Chad's stated preferences (knowledge base + spec sheet defaults), then reviewed by Chad. They are not transcribed from Chad — they're the agent's first draft, ready for redlines.
 
-## Three-tier Views
+## Schedule view-model outputs
 
-Each view is a derived projection over the same scheduling data. Rendering target is the existing Tracker dashboard tab; mobile / PWA presentation comes later.
+The Scheduling Engine projects four shared view-models out of canonical schedule data: daily, weekly, monthly, and master. These are not Tracker tabs — they are the structured payloads defined in [`canonical-data-model.md` § View-model contract](canonical-data-model.md#view-model-contract). Every renderer that shows a schedule consumes one of these payloads.
+
+Two related view-models — checklist gates and the notification feed — are also engine outputs but live with the entities that produce them (the Checklist system and the Event/Notification model respectively, both in `canonical-data-model.md`). All six together are the contract surface between the engine and its renderers.
+
+**Renderer note.** Desktop and mobile are co-equal renderers over these view-models. They differ in layout and input affordances — mobile prioritizes the daily payload and tap-to-update inputs from the field; desktop renders the full master schedule and authors checklists — not in data. The Tracker Sheet is a transitional renderer that may continue as a presentation/edit bridge under the persistence-strategy recommendation in [`canonical-data-model.md` § Schedule persistence strategy](canonical-data-model.md#schedule-persistence-strategy); it is not the engine.
 
 ### Daily (Chad's morning view)
 

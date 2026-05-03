@@ -108,25 +108,25 @@ The drop-dead date per material category is what drives the **selection-deadline
 
 - Per-vendor adapters should **ingest lead times per SKU** where vendors expose them (some plumbing supply and appliance distributor sites do; lumber yards generally don't). Capture as a numeric days field with a `source` label so we can tell vendor-published from category-default at decision time.
 - Where SKU-level data is missing, fall back to vendor-level defaults, then category defaults from the table above.
-- Lead time is volatile (windows in particular have swung 8 → 16+ weeks across recent supply cycles); the scrape-refresh cadence for lead-time-sensitive categories should be tighter than for price.
+- Lead time is volatile (windows in particular have swung 8 → 16+ weeks across recent supply cycles); the scrape-refresh cadence for lead-time-sensitive categories should be tighter than for price. The consolidated cadence rule lives in § Operational details § Refresh cadence — weekly for prices, tighter for lead-time-sensitive or supply-volatile categories, and the supplier-email watcher feeding per-order ETA updates outside the scrape schedule.
 
 ## Operational details
 
 - **Vendor onboarding.** Chad uploads a list of his vendors (URLs + vendor type) and the system kicks off the right adapter per entry.
-- **Refresh cadence.** Weekly default, more frequent for volatile-priced categories like lumber. Configurable per category.
+- **Refresh cadence.** Two-track. **Weekly default** for prices and standing catalog data. **Tighter cadence — daily or near-real-time —** for lead-time-sensitive or supply-volatile categories (windows during volatile supply cycles, lumber during price spikes; see § Lead-Time + Drop-Dead Date Logic § Implications for scrapers for the volatility rationale). Per-category override is configurable. Outside both scrape tracks, the supplier-email watcher provides per-order ETA updates as they arrive — when a supplier emails a revised ETA, that update lands in Vendor Intelligence immediately, regardless of when the next scheduled scrape runs. The three together (weekly bulk + tighter scrapes for volatile categories + email-driven per-order updates) are the live-data contract; consumers do not need to know which one produced any given row.
 - **Compliance.** Respect each vendor's TOS. Prefer official feeds / partner programs / API where available. Lean on publicly listed catalog endpoints over hidden APIs. Polite rate limits. Flag a legal review before production.
 - **Strategic note.** This productizes — every blue-collar SMB has the same pain. Build it for Chad, template it, sell across Patton AI's customer base. Tier 2 / Tier 3 anchor feature in Patton AI's pricing model.
 
-## Relationship to existing work
+## Ingestion paths into Vendor Intelligence
 
-Phase 2 includes a **Supplier-email watcher** (item 3 in the Phase 2 backlog) that would scan supplier emails and auto-update `KNOWLEDGE BASE/baldwin_county_supplier_research.md`. That watcher is conceptually adjacent but takes a different ingestion path (parse inbound emails) than this initiative (crawl public catalogs).
+Vendor data flows into Vendor Intelligence's normalized schema through two complementary ingestion paths. Both write the same entities (Vendor, VendorItem, LeadTime). Neither subsumes the other.
 
-Two ways they could fit together:
+1. **Supplier-email watcher (V1 path).** Phase 2 item 3 in `CLAUDE.md`. Parses inbound supplier emails — order acknowledgements, ship notifications, ETA updates, backorder notices — and writes structured lead-time and availability updates into the normalized schema. The watcher lights up Vendor Intelligence with live signal *before* catalog scrapers exist; it is the V1 ingestion path on its own.
+2. **Per-vendor catalog scrapers (V2+).** The four-layer scope above (adapters → normalized schema → decision engine → override layer). Bulk + standing data — full SKU coverage, prices, in-stock, vendor-published lead times. Augments the watcher; does not replace it.
 
-1. **Complementary feeders.** The email watcher captures one-off updates ("our 2x4 price went up Monday") and writes to the same normalized schema. Catalog scrapers handle bulk + standing data.
-2. **Subsumed.** Vendor Intelligence's normalized schema becomes the authoritative store and the supplier-email watcher is reframed as one more adapter feeding into it.
+The two paths run in parallel indefinitely. Supplier emails carry fresher per-order ETAs than catalog pages — a vendor's site might say "lead time 4 weeks" generically while their email confirms a specific PO will arrive Tuesday — so email-driven updates remain valuable even with full scraper coverage. The decision engine reads from the normalized schema without caring which path produced any given row; consumers see only the merged result.
 
-Decision deferred until vendor list is in hand and we know how often suppliers actually email Chad with pricing vs. update their site.
+Until the normalized schema itself is live, the watcher's keyword-driven writes land in `KNOWLEDGE BASE/baldwin_county_supplier_research.md` as a fallback (per the dependency map in `CLAUDE.md`'s Phase 2 backlog notes). KB markdown is degraded-mode storage; once Vendor Intelligence is live, both ingestion paths target the schema directly. Cross-reference: `CLAUDE.md` Phase 2 item 3 and the Phase 2 dependency-map note.
 
 ## Open questions (TBD)
 
