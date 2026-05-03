@@ -143,7 +143,7 @@ Until the normalized schema itself is live, the watcher's keyword-driven writes 
 A defensible Phase 3 v0 that Chad can use:
 
 1. Three adapters live (best guesses: paint store, lumber yard, plumbing supply — confirm with Chad).
-2. Normalized schema in whatever store we pick, refreshed weekly.
+2. Normalized schema in whatever store we pick, populated through the three-track cadence rule: weekly bulk scrapes for prices and standing catalog data; tighter cadence (daily or near-real-time) for volatile / lead-time-sensitive categories — windows during volatile supply cycles, lumber during price spikes; supplier-email watcher writing live per-order ETA updates outside the scrape cycle so the freshest delivery data lands the moment a supplier emails a confirmation. Consolidated rule lives in § Operational details § Refresh cadence; rationale in § Lead-Time + Drop-Dead Date Logic § Implications for scrapers.
 3. CLI command (`hb-vendor "5gal Naval interior paint"`) that returns a ranked recommendation with rationale.
 4. Override table Chad can edit in Sheets.
 5. No surfacing in the timeline / order schedule yet — that's a follow-on once the recommendation engine is trusted.

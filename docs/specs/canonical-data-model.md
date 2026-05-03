@@ -204,7 +204,7 @@ Each entity below carries the same six headings. "Source-of-truth owner" names t
 
 **Source-of-truth owner.** Vendor Intelligence System.
 
-**Fallback behavior.** Until Vendor Intelligence ships, the vendor list lives in `KNOWLEDGE BASE/baldwin_county_supplier_research.md` as Markdown. The supplier-email watcher (Phase 2 item 3) updates that file as a fallback path; once the normalized schema is live, both the watcher and the catalog scrapers write to it instead.
+**Fallback behavior.** The Supplier-email watcher's V1 ingestion target *is* the normalized Vendor Intelligence schema — as soon as that schema is live, the watcher writes Vendor and VendorItem updates directly into the canonical store. KB markdown (`KNOWLEDGE BASE/baldwin_county_supplier_research.md`) is only the fallback when the normalized schema does not exist yet, and it is the fallback for *both* ingestion paths (the watcher today, the catalog scrapers when they arrive). Once the schema is live, neither path writes to KB markdown anymore — both target the canonical store, and the engine ignores the KB file. KB markdown is degraded-mode storage, not a permanent destination.
 
 **Ownership classification.** Vendor-owned.
 
@@ -273,7 +273,13 @@ Each entity below carries the same six headings. "Source-of-truth owner" names t
 
 **Relationships.** → Project, → Phase, → VendorItem.
 
-**Source-of-truth owner.** Scheduling Engine. The engine consumes vendor confirmations (email-parse via the supplier watcher) or manual marks (Tracker entry) and projects Deliveries onto the schedule.
+**Source-of-truth owner.** Scheduling Engine. The flow is event-driven, not direct-write:
+
+1. The **Supplier-email watcher** parses an inbound supplier email (order acknowledgement, ship notification, ETA update, backorder, delivery confirmation) and emits an Event into the canonical Event store (`eta-change`, `shipment-update`, `backorder-detected`, etc.). It does not write Delivery records directly.
+2. The **Scheduling Engine** accepts the Event into the canonical Event store (per the load-bearing rule in entity 17 — one Event store, many emitters).
+3. The engine then **projects accepted Events into Delivery records**, creating, updating, or marking Deliveries based on event type and payload (e.g., a `shipment-update` Event with status=`in-transit` flips an existing Delivery's `status` to `en-route`; a delivery-confirmation Event with a timestamp populates `actual_date`).
+
+The watcher owns the inbound Event stream from supplier emails. The engine owns the projected Delivery state. The same projection rule applies to manual marks: Chad's Tracker entry or mobile-app `material-delivery-confirm` becomes a `UserAction` → engine processes → engine projects into the Delivery record. There is no path that writes Deliveries from outside the engine.
 
 **Fallback behavior.** Without the supplier-email watcher, Deliveries exist only as manual marks in the Tracker. `material-no-show` events still fire — they fire from the absence of an `actual_date` past `scheduled_date`, regardless of how `scheduled_date` got there.
 

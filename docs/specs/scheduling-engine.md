@@ -147,17 +147,17 @@ The artifact, not a view: full phase Gantt with milestones, drop-dead order date
 
 ## Notification Triggers
 
-Each trigger is `(condition, data source, threshold, channel)`. Channel defaults to whichever dashboard tier surfaces it; the alerting layer (Phase 2 Chad-UX backlog item) decides email/text escalation.
+Each trigger is `(condition, data source, threshold)`. A fired trigger emits an Event into the canonical Event store; the **Notification dispatcher** (per [`canonical-data-model.md` § State ownership boundaries](canonical-data-model.md#state-ownership-boundaries)) owns the routing decision — which surface to render on, whether to fire push, whether to escalate to email or SMS. Triggers do not pick channels; they emit Events. Renderers consume the resulting Notifications. This split keeps trigger logic in the engine and routing logic in the dispatcher, neither tangled with the other.
 
 | Trigger | Data source | Threshold |
 |---|---|---|
 | Selection deadline approaching | Drop-dead order date table per project | Today ≥ drop-dead − warning window (default 14 days, per-category override) |
 | Weather impact on schedule | Weather API for job-site ZIP | Forecast precipitation or wind exceeds phase tolerance over the next N days (concrete pour, framing, roofing, exterior paint each have their own thresholds) |
-| Sub no-show | Daily check-in (manual today; automatable via SMS bot or sub portal later) | No check-in by 9am on a scheduled day |
-| Material no-show | Delivery confirmation (vendor adapter or manual mark) | Past scheduled delivery date with no confirmation |
-| Inspection failure / re-inspect required | Permit portal status (Baldwin County) or manual mark | Status = `Failed` or `Reinspect` |
+| Sub no-show | **V1:** `UserAction:sub-checkin` from mobile (Chad or sub taps a check-in button from the field). **V2+:** SMS bot reply ("reply Y to confirm on-site today"), GPS-based job-site check-in, sub portal. | No check-in by 9am on a scheduled day |
+| Material no-show | **V1:** `UserAction:material-delivery-confirm` from mobile or desktop (Chad or crew confirms delivery). **V2+:** vendor-adapter automatic delivery confirmations from Vendor Intelligence once supplier APIs are wired in. | Past scheduled delivery date with no confirmation |
+| Inspection failure / re-inspect required | **V1:** `UserAction:inspection-result` from mobile or desktop (Chad logs Pass / Fail / Reinspect after the inspector leaves). **V2+:** Baldwin County permit-portal scrape or feed (when available) emitting automatic `inspection-status` Events. | Status = `Fail` or `Reinspect` |
 
-Each fired trigger writes to the project's notification log and updates the dashboard tier(s) it's relevant to.
+Each fired trigger emits an Event with the appropriate type and payload (per [`canonical-data-model.md` § Event + notification model](canonical-data-model.md#event--notification-model)). The Notification dispatcher routes the Event to surfaces and channels; renderers (daily / weekly / monthly view, notification feed, push) display the resulting Notifications.
 
 ## Open Questions
 
