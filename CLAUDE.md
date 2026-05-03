@@ -54,12 +54,15 @@ Active background process:
 1. **Monday demo with Chad's real spec** (gating) — drop spec → run `hb-timeline` → hand Chad the output
 2. **Gmail watcher** (active Agent 1) — extend the launchd-polling pattern to inbox
 3. **Supplier-email watcher** — scan supplier emails → auto-update `KNOWLEDGE BASE/baldwin_county_supplier_research.md`
-4. **Chad UX (non-Terminal)** — drop-spec-into-folder + email/text notification when output is ready
-5. **Mobile access** — Chad interacts from phone on a job site
-6. **Knowledge base validation by Chad** — three categories where research couldn't verify his preferred suppliers
-7. **Pricing model** — one-time setup vs subscription vs per-project license
+4. **Scheduling engine** — backwards-scheduler from phase durations + vendor lead times → master build-out schedule with drop-dead order dates + 24-phase checklist gates + daily/weekly/monthly views. Spec: [`docs/specs/scheduling-engine.md`](docs/specs/scheduling-engine.md). Sample inputs in [`samples/`](samples/README.md).
+5. **Chad UX (non-Terminal)** — drop-spec-into-folder + email/text notification when output is ready
+6. **Mobile access** — Chad interacts from phone on a job site
+7. **Knowledge base validation by Chad** — three categories where research couldn't verify his preferred suppliers
+8. **Pricing model** — one-time setup vs subscription vs per-project license
 
 > Note: Phase 2 item 3 (Supplier-email watcher) overlaps in intent with the Phase 3 Vendor Intelligence System below — both ingest vendor data, but via different paths (email parse vs catalog scrape). Decide whether the email watcher feeds the same normalized schema or gets subsumed once the vendor list is in hand. See `docs/specs/vendor-intelligence-system.md`.
+>
+> Note: Phase 2 item 4 (Scheduling engine) is the consumer of vendor lead times produced by the Phase 3 Vendor Intelligence System. Until the vendor system is live, the scheduling engine falls back to the category lead-time defaults captured in `docs/specs/vendor-intelligence-system.md` § Lead-Time + Drop-Dead Date Logic.
 
 ## Phase 3 backlog
 

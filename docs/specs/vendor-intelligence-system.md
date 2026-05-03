@@ -73,6 +73,42 @@ Example:
 
 Chad can pin product → vendor relationships ("always buy plumbing fittings from Wholesale Plumbing regardless of price") and the agent honors them. Capture his judgment, don't override it.
 
+## Lead-Time + Drop-Dead Date Logic (from Chad's brief)
+
+Vendor recommendations aren't just about the cheapest catalog price — they're about whether an order placed today will actually arrive in time for its install window. Chad gave us his trusted lead-time defaults; the engine uses them to compute a backwards-scheduled drop-dead order date for every category.
+
+### Default lead times by category
+
+| Category | Lead time | Notes |
+|---|---|---|
+| Windows & exterior doors | 10–12 weeks | **Order at contract signing.** Longest lead time on the build; if this slips, framing-to-dry-in slips. |
+| Plumbing fixtures | Order before framing starts | In-wall valves needed at rough-in. |
+| Electrical | Order before framing | Panel + rough-in components needed before drywall. |
+| Cabinets | Measure & order when framing complete | Measure-driven; can't order earlier without risk of rework. |
+| Flooring | 3–4 weeks | Tile + hardwood. |
+| Interior doors | 2 weeks | |
+
+### Backwards-scheduling rule
+
+```
+drop_dead_order_date = scheduled_install_date − lead_time − safety_buffer
+```
+
+- `safety_buffer` defaults to **5 business days** (configurable per category).
+- `scheduled_install_date` comes from the scheduling engine (see [`scheduling-engine.md`](scheduling-engine.md)).
+- `lead_time` resolution priority:
+  1. Vendor catalog SKU lead time (where the vendor exposes it).
+  2. Vendor-level default (where the vendor publishes a blanket lead time).
+  3. Category default from the table above.
+
+The drop-dead date per material category is what drives the **selection-deadline notification trigger** — when "today" crosses inside drop-dead-minus-warning-window for a category Chad hasn't selected yet, the agent surfaces it on the daily/weekly dashboards and emits a notification.
+
+### Implications for scrapers
+
+- Per-vendor adapters should **ingest lead times per SKU** where vendors expose them (some plumbing supply and appliance distributor sites do; lumber yards generally don't). Capture as a numeric days field with a `source` label so we can tell vendor-published from category-default at decision time.
+- Where SKU-level data is missing, fall back to vendor-level defaults, then category defaults from the table above.
+- Lead time is volatile (windows in particular have swung 8 → 16+ weeks across recent supply cycles); the scrape-refresh cadence for lead-time-sensitive categories should be tighter than for price.
+
 ## Operational details
 
 - **Vendor onboarding.** Chad uploads a list of his vendors (URLs + vendor type) and the system kicks off the right adapter per entry.
