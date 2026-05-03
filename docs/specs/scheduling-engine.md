@@ -7,6 +7,7 @@
 **Owner:** CP.
 **Last updated:** 2026-05-02.
 **Source:** Chad's "AI Help List" brief, tab `list of list`. See [`samples/`](../../samples/README.md) for the artifact.
+**Data contract:** entities, ownership rules, view-model shapes, and persistence-strategy comparison live in [`canonical-data-model.md`](canonical-data-model.md). This spec is the operational consumer of that model.
 
 ## Overview
 
@@ -160,6 +161,6 @@ Each fired trigger writes to the project's notification log and updates the dash
 - **Inspection-status data source.** Baldwin County permit portal is the obvious answer; need to confirm whether it exposes a usable status query (scrape vs. official feed). Until automated, the inspection trigger fires from manual marks in the Tracker.
 - **Sub-status check-in mechanism.** Daily phone calls don't scale. Options: SMS bot ("reply Y to confirm on-site today"), sub portal, location-based trigger (ask sub to check in via the app from the job site GPS). Defer choice until the rest of the engine is live.
 - **Overlapping phases — V1 or V2?** Sticking with strict linear + per-project overlap overrides for V1 keeps the math simple. V2 models overlap natively (parallel phase tracks, resource-leveling). Decision driven by how often Chad needs to override the linear schedule in V1.
-- **Where does the schedule live?** Each project's Tracker Sheet is the natural store today. Multi-project views (daily across all jobs) want a denormalized roll-up sheet — same question as Vendor Intelligence's "Sheets vs. Postgres vs. SQLite." Decide once.
+- **Where does the schedule live?** Each project's Tracker Sheet is the natural store today. Multi-project views (daily across all jobs) want a denormalized roll-up sheet — same question as Vendor Intelligence's "Sheets vs. Postgres vs. SQLite." Decide once. Tradeoffs and a preliminary recommendation (Sheets as presentation, relational store for engine state, reconcile-pass bridge) are worked through in [`canonical-data-model.md` § Schedule persistence strategy](canonical-data-model.md#schedule-persistence-strategy).
 - **Holiday / non-working-day calendar.** Builders don't work Sundays or major holidays in Baldwin County. Build a calendar layer or assume Chad enters working days manually.
 - **Critical-path identification.** Is V1 a Gantt that visually shows critical path, or just a sequence with drop-dead dates? Probably the latter — critical path falls out naturally once durations + dependencies are explicit.

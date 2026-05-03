@@ -6,6 +6,7 @@
 **Phase:** 3 (anchor initiative).
 **Owner:** CP.
 **Last updated:** 2026-04-29.
+**Data contract:** Vendor / VendorItem / LeadTime entities, the source-of-truth ownership rules, and the persistence-strategy comparison live in [`canonical-data-model.md`](canonical-data-model.md). This spec is the implementation home for the entities canonical-data-model assigns to Vendor Intelligence.
 
 ## Problem
 
@@ -134,7 +135,7 @@ Decision deferred until vendor list is in hand and we know how often suppliers a
 - **Single-tenant for Chad now, or multi-tenant from day one** for Patton AI's other future customers? Affects schema design (per-tenant overrides table vs global) and infra choices.
 - **Refresh cadence preference per category.** Default weekly, but which categories does Chad want daily / hourly?
 - **Legal review timing.** Before any production scraping, get a TOS-and-CFAA pass. Who signs off?
-- **Where does the normalized catalog live?** Sheets (consistent with the rest of the stack)? Postgres? SQLite? Depends on row count once a real vendor list is in.
+- **Where does the normalized catalog live?** Sheets (consistent with the rest of the stack)? Postgres? SQLite? Depends on row count once a real vendor list is in. Tradeoffs and a preliminary recommendation (Sheets as presentation, relational store for engine state, reconcile-pass bridge) are worked through in [`canonical-data-model.md` § Schedule persistence strategy](canonical-data-model.md#schedule-persistence-strategy) — same decision applies to the catalog.
 - **Distance computation source.** Google Distance Matrix API has cost; cached lookups by vendor address may be enough.
 
 ## What "done" looks like for the first slice

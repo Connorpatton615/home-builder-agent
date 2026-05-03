@@ -78,6 +78,8 @@ Active background process:
 > ```
 >
 > Reading the graph: Vendor Intelligence is the source-of-truth for vendor data. The Supplier-email watcher writes lead-time and availability updates into Vendor Intelligence's normalized schema in V1; until that schema is live, the watcher writes to `KNOWLEDGE BASE/baldwin_county_supplier_research.md` as a fallback. The Scheduling Engine consumes Vendor Intelligence's lead times to compute drop-dead order dates; until Vendor Intelligence ships, it falls back to Chad's category-default lead-time table. Chad UX (desktop) and Mobile Access are two renderers over the same Scheduling Engine view-model — they depend on the engine, not on each other, and the split between them is layout and input affordances, not data.
+>
+> Note: the shared object contract that prevents drift across every layer in the dependency map above lives in [`docs/specs/canonical-data-model.md`](docs/specs/canonical-data-model.md). It defines the 17 cross-cutting entities, the state-ownership boundaries per layer (who owns truth, who reads, who mutates via the engine), the Event/Notification model, the schedule-persistence strategy, the desktop+mobile view-model contract, and the future-proofing seams (overlap, critical path, multi-tenant, offline mobile sync). Read it before extending any layer; every layer's spec consumes it.
 
 ## Phase 3 backlog
 
