@@ -1295,3 +1295,242 @@ def apply_visual_formatting(sheets_svc, sheet_id):
         ).execute()
 
     return len(requests)
+
+
+# ---------------------------------------------------------------------------
+# Procurement Alerts tab
+# ---------------------------------------------------------------------------
+
+PROCUREMENT_ALERTS_HEADERS = [
+    "Date Fired", "Phase #", "Phase Name", "Alert Type",
+    "Order By", "Phase Start", "Lead Time (wks)",
+]
+
+
+def ensure_procurement_tab(sheets_svc, sheet_id: str) -> int:
+    """Ensure a 'Procurement Alerts' tab exists. Returns its sheetId.
+
+    Creates the tab with a frozen header row if it doesn't exist.
+    """
+    from home_builder_agent.config import PROCUREMENT_ALERTS_TAB
+
+    meta = sheets_svc.spreadsheets().get(spreadsheetId=sheet_id).execute()
+    existing = {s["properties"]["title"]: s["properties"]["sheetId"]
+                for s in meta.get("sheets", [])}
+
+    if PROCUREMENT_ALERTS_TAB in existing:
+        return existing[PROCUREMENT_ALERTS_TAB]
+
+    # Create the tab
+    resp = sheets_svc.spreadsheets().batchUpdate(
+        spreadsheetId=sheet_id,
+        body={"requests": [{"addSheet": {"properties": {"title": PROCUREMENT_ALERTS_TAB}}}]},
+    ).execute()
+    tab_id = resp["replies"][0]["addSheet"]["properties"]["sheetId"]
+
+    # Write header row
+    sheets_svc.spreadsheets().values().update(
+        spreadsheetId=sheet_id,
+        range=f"{PROCUREMENT_ALERTS_TAB}!A1",
+        valueInputOption="RAW",
+        body={"values": [PROCUREMENT_ALERTS_HEADERS]},
+    ).execute()
+
+    # Freeze header + bold it
+    sheets_svc.spreadsheets().batchUpdate(
+        spreadsheetId=sheet_id,
+        body={
+            "requests": [
+                {
+                    "updateSheetProperties": {
+                        "properties": {
+                            "sheetId": tab_id,
+                            "gridProperties": {"frozenRowCount": 1},
+                        },
+                        "fields": "gridProperties.frozenRowCount",
+                    }
+                },
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": tab_id,
+                            "startRowIndex": 0, "endRowIndex": 1,
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "textFormat": {"bold": True},
+                                "backgroundColor": {"red": 0.18, "green": 0.18, "blue": 0.18},
+                                "foregroundColor": {"red": 1, "green": 1, "blue": 1},
+                            }
+                        },
+                        "fields": "userEnteredFormat(textFormat,backgroundColor,foregroundColor)",
+                    }
+                },
+            ]
+        },
+    ).execute()
+
+    return tab_id
+
+
+def log_procurement_alerts(sheets_svc, sheet_id: str, alerts: list[dict]) -> int:
+    """Append procurement alert rows to the Procurement Alerts tab.
+
+    Args:
+        sheets_svc: authenticated Sheets service
+        sheet_id:   Tracker spreadsheet ID
+        alerts:     list of alert dicts from check_procurement_alerts()
+
+    Returns:
+        Number of rows appended.
+    """
+    from home_builder_agent.config import PROCUREMENT_ALERTS_TAB
+
+    if not alerts:
+        return 0
+
+    ensure_procurement_tab(sheets_svc, sheet_id)
+
+    from datetime import date as _date
+    today_str = _date.today().isoformat()
+
+    rows = []
+    for a in alerts:
+        rows.append([
+            today_str,
+            str(a.get("phase_num", "")),
+            a.get("phase_name", ""),
+            a.get("alert_type", ""),
+            a.get("order_by", "").isoformat() if a.get("order_by") else "",
+            a.get("start", "").isoformat() if a.get("start") else "",
+            str(a.get("lead_weeks", "")),
+        ])
+
+    sheets_svc.spreadsheets().values().append(
+        spreadsheetId=sheet_id,
+        range=f"{PROCUREMENT_ALERTS_TAB}!A1",
+        valueInputOption="RAW",
+        insertDataOption="INSERT_ROWS",
+        body={"values": rows},
+    ).execute()
+
+    return len(rows)
+
+
+# ---------------------------------------------------------------------------
+# Inspections tab
+# ---------------------------------------------------------------------------
+
+INSPECTIONS_TAB = "Inspections"
+INSPECTIONS_HEADERS = [
+    "Date", "Record Type", "Permit #", "Permit Type",
+    "Inspection Type", "Status", "Inspector", "Notes",
+]
+
+
+def ensure_inspections_tab(sheets_svc, sheet_id: str) -> int:
+    """Ensure an 'Inspections' tab exists. Returns its sheetId."""
+    meta = sheets_svc.spreadsheets().get(spreadsheetId=sheet_id).execute()
+    existing = {s["properties"]["title"]: s["properties"]["sheetId"]
+                for s in meta.get("sheets", [])}
+
+    if INSPECTIONS_TAB in existing:
+        return existing[INSPECTIONS_TAB]
+
+    resp = sheets_svc.spreadsheets().batchUpdate(
+        spreadsheetId=sheet_id,
+        body={"requests": [{"addSheet": {"properties": {"title": INSPECTIONS_TAB}}}]},
+    ).execute()
+    tab_id = resp["replies"][0]["addSheet"]["properties"]["sheetId"]
+
+    # Write header row
+    sheets_svc.spreadsheets().values().update(
+        spreadsheetId=sheet_id,
+        range=f"{INSPECTIONS_TAB}!A1",
+        valueInputOption="RAW",
+        body={"values": [INSPECTIONS_HEADERS]},
+    ).execute()
+
+    # Freeze + style header
+    sheets_svc.spreadsheets().batchUpdate(
+        spreadsheetId=sheet_id,
+        body={
+            "requests": [
+                {
+                    "updateSheetProperties": {
+                        "properties": {
+                            "sheetId": tab_id,
+                            "gridProperties": {"frozenRowCount": 1},
+                        },
+                        "fields": "gridProperties.frozenRowCount",
+                    }
+                },
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": tab_id,
+                            "startRowIndex": 0, "endRowIndex": 1,
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "textFormat": {"bold": True},
+                                "backgroundColor": {"red": 0.18, "green": 0.18, "blue": 0.18},
+                                "foregroundColor": {"red": 1, "green": 1, "blue": 1},
+                            }
+                        },
+                        "fields": "userEnteredFormat(textFormat,backgroundColor,foregroundColor)",
+                    }
+                },
+            ]
+        },
+    ).execute()
+
+    return tab_id
+
+
+def read_inspections(sheets_svc, sheet_id: str) -> list[dict]:
+    """Read all rows from the Inspections tab. Returns [] if tab doesn't exist."""
+    try:
+        result = sheets_svc.spreadsheets().values().get(
+            spreadsheetId=sheet_id,
+            range=f"{INSPECTIONS_TAB}!A1:H500",
+        ).execute()
+    except Exception:
+        return []
+
+    rows = result.get("values", [])
+    if not rows or len(rows) < 2:
+        return []
+
+    headers = rows[0]
+    records = []
+    for row in rows[1:]:
+        padded = list(row) + [""] * (len(headers) - len(row))
+        rec = dict(zip(headers, padded))
+        if any(v.strip() for v in rec.values()):
+            records.append(rec)
+    return records
+
+
+def log_inspection_record(sheets_svc, sheet_id: str, record: dict) -> None:
+    """Append one record to the Inspections tab. Creates the tab if needed."""
+    ensure_inspections_tab(sheets_svc, sheet_id)
+
+    row = [
+        record.get("date", ""),
+        record.get("record_type", ""),
+        record.get("permit_number", ""),
+        record.get("permit_type", ""),
+        record.get("inspection_type", ""),
+        record.get("status", ""),
+        record.get("inspector", ""),
+        record.get("notes", ""),
+    ]
+
+    sheets_svc.spreadsheets().values().append(
+        spreadsheetId=sheet_id,
+        range=f"{INSPECTIONS_TAB}!A1",
+        valueInputOption="RAW",
+        insertDataOption="INSERT_ROWS",
+        body={"values": [row]},
+    ).execute()

@@ -30,15 +30,21 @@ import sys
 from datetime import datetime
 
 from home_builder_agent.classifiers.email import classify_thread
+from home_builder_agent.classifiers.invoice import is_invoice_email, extract_invoice_data
 from home_builder_agent.config import (
     INBOX_WATCHER_NOTIFY_HIGH,
     INBOX_WATCHER_TIMEOUT_SEC,
+    INVOICE_NOTIFY_THRESHOLD,
+    FINANCE_FOLDER_PATH,
+    FINANCE_PROJECT_NAME,
     WATCHER_MAX_ERRORS_PER_RUN,
     WATCHER_SOCKET_TIMEOUT,
 )
 from home_builder_agent.core.auth import get_credentials
 from home_builder_agent.core.claude_client import make_client
 from home_builder_agent.integrations import gmail as gmail_int
+from home_builder_agent.integrations import drive as drive_int
+from home_builder_agent.integrations.finance import add_invoice_row
 
 socket.setdefaulttimeout(WATCHER_SOCKET_TIMEOUT)
 
@@ -100,6 +106,96 @@ def notify_macos(title, body):
         )
     except Exception as e:
         log(f"notification failed: {e}")
+
+
+# ---------------------------------------------------------------------
+# Invoice detection + logging (best-effort, never crashes the watcher)
+# ---------------------------------------------------------------------
+
+def _find_active_cost_tracker(drive_svc, sheets_svc):
+    """Return the sheet_id of the active project's Cost Tracker, or None."""
+    try:
+        folder_id = drive_int.find_folder_by_path(drive_svc, FINANCE_FOLDER_PATH)
+        files = drive_int.find_files_by_name_pattern(
+            drive_svc, "Cost Tracker", folder_id,
+            mime_type="application/vnd.google-apps.spreadsheet",
+        )
+        if files:
+            return files[0]["id"]
+    except Exception:
+        pass
+    return None
+
+
+def _handle_possible_invoice(gmail_svc, client, drive_svc, sheets_svc,
+                              summary, thread_id):
+    """If the email looks like an invoice, extract data and log to Cost Tracker.
+
+    Returns True if an invoice was detected and logged, False otherwise.
+    All exceptions are swallowed — invoice detection must never crash the watcher.
+    """
+    try:
+        # Quick rule-based check — no API call
+        if not is_invoice_email(summary["subject"], summary["snippet"]):
+            return False
+
+        # Fetch the full message body (uses newest message in thread)
+        msg_ids = gmail_int.get_thread_message_ids(gmail_svc, thread_id)
+        if not msg_ids:
+            return False
+        body = gmail_int.get_message_body(gmail_svc, msg_ids[-1])
+
+        # Extract structured invoice data with Sonnet
+        invoice_data, _usage = extract_invoice_data(
+            client,
+            from_name=summary["from_name"],
+            from_email=summary["from_email"],
+            subject=summary["subject"],
+            body_text=body,
+        )
+
+        # If no amount could be determined, skip — too noisy to log
+        if not invoice_data.get("amount"):
+            return False
+
+        # Resolve the active Cost Tracker sheet
+        sheet_id = _find_active_cost_tracker(drive_svc, sheets_svc)
+        if not sheet_id:
+            log(f"INVOICE | {summary['from_name']} | "
+                f"${invoice_data['amount']:.0f} | no Cost Tracker found — not logged")
+            return True
+
+        # Write to Invoices tab
+        add_invoice_row(sheets_svc, sheet_id, {
+            "invoice_number": invoice_data.get("invoice_number", ""),
+            "vendor":         invoice_data.get("vendor", summary["from_name"]),
+            "description":    invoice_data.get("description", summary["subject"][:120]),
+            "amount":         invoice_data.get("amount", 0),
+            "invoice_date":   invoice_data.get("invoice_date", ""),
+            "due_date":       invoice_data.get("due_date", ""),
+            "status":         "Received",
+            "job":            invoice_data.get("job_hint", FINANCE_PROJECT_NAME),
+            "source":         "Email",
+            "notes":          f"Thread: {thread_id}",
+        })
+
+        amount = invoice_data["amount"]
+        log(f"INVOICE | {invoice_data.get('vendor', summary['from_name'])} | "
+            f"${amount:,.0f} | logged to Cost Tracker Invoices tab")
+
+        # Fire macOS notification for large invoices
+        if amount >= INVOICE_NOTIFY_THRESHOLD and INBOX_WATCHER_NOTIFY_HIGH:
+            notify_macos(
+                f"Invoice: ${amount:,.0f}",
+                f"{invoice_data.get('vendor', summary['from_name'])}: "
+                f"{invoice_data.get('description', summary['subject'])[:80]}",
+            )
+
+        return True
+
+    except Exception as e:
+        log(f"WARNING: invoice detection failed for {summary.get('subject','')[:60]}: {e}")
+        return False
 
 
 # ---------------------------------------------------------------------
@@ -173,6 +269,15 @@ def main():
     # Classify each new thread.
     client = make_client()
     try:
+        creds = get_credentials()
+        from googleapiclient.discovery import build as _goog_build
+        drive_svc     = drive_int.drive_service(creds)
+        sheets_svc_obj = _goog_build("sheets", "v4", credentials=creds)
+    except Exception:
+        drive_svc = None
+        sheets_svc_obj = None
+
+    try:
         my_email = gmail_int.get_my_email(gmail_svc)
     except Exception as e:
         log(f"ERROR: could not fetch user email: {e}")
@@ -180,6 +285,7 @@ def main():
 
     classified = 0
     high = 0
+    invoices_logged = 0
     errors = 0
 
     for tid in thread_ids:
@@ -192,6 +298,12 @@ def main():
             continue
         if not summary:
             continue
+
+        # Invoice detection runs alongside (not instead of) urgency classification
+        if drive_svc and sheets_svc_obj:
+            if _handle_possible_invoice(gmail_svc, client, drive_svc,
+                                        sheets_svc_obj, summary, tid):
+                invoices_logged += 1
 
         try:
             classification, _usage = classify_thread(client, summary)
@@ -221,9 +333,10 @@ def main():
     state["last_history_id"] = latest_history_id or last_history_id
     save_state(state)
 
-    if classified or errors:
+    if classified or errors or invoices_logged:
         log(f"Pass complete: classified={classified} high={high} "
-            f"errors={errors} new_threads={len(thread_ids)}")
+            f"invoices={invoices_logged} errors={errors} "
+            f"new_threads={len(thread_ids)}")
 
 
 if __name__ == "__main__":

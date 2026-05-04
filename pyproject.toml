@@ -37,6 +37,15 @@ hb-inbox = "home_builder_agent.agents.gmail_followup:main"
 hb-watcher = "home_builder_agent.watchers.dashboard:main"
 hb-inbox-watcher = "home_builder_agent.watchers.inbox:main"
 hb-help = "home_builder_agent.agents.help_desk:main"
+hb-finance = "home_builder_agent.agents.finance_agent:main"
+hb-receipt = "home_builder_agent.agents.receipt_agent:main"
+hb-ledger = "home_builder_agent.agents.ledger_agent:main"
+hb-brief = "home_builder_agent.agents.morning_brief:main"
+hb-change = "home_builder_agent.agents.change_order_agent:main"
+hb-client-update = "home_builder_agent.agents.client_update_agent:main"
+hb-inspect = "home_builder_agent.agents.inspection_tracker:main"
+hb-log = "home_builder_agent.agents.site_log_agent:main"
+hb-waiver = "home_builder_agent.agents.lien_waiver_agent:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

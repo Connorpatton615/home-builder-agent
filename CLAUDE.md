@@ -45,19 +45,38 @@ home-builder-agent/                 ← project root (~/Projects/home-builder-ag
 | Status updater | `agents/status_updater.py` | `hb-update "<NL update>"` | Parses NL → cascades through dependency graph → applies to Sheet → refreshes Dashboard (~$0.02/run) |
 | Dashboard refresher | `agents/dashboard_refresher.py` | `hb-dashboard` | Reads Master Schedule → writes Dashboard tab + visual formatting ($0/run) |
 | Gmail follow-up | `agents/gmail_followup.py` | `hb-inbox [--days N] [--upload]` | Lists threads → Haiku classifies → Sonnet writes Chad-voice checklist (~$0.05/run) |
+| Help desk | `agents/help_desk.py` | `hb-help "<question>"` | Answers questions about the system; auto-appends informative Q&A to the FAQ Google Doc (~$0.02–0.05/run) |
+| Finance Office | `agents/finance_agent.py` | `hb-finance` | Finds/creates "Chad's Finance Office" folder + Cost Tracker sheet (21 sections, pre-populated allowances, Invoices tab, Allowance Recon tab); writes Finance Summary KPI tab ($0/run) |
+| Receipt logger | `agents/receipt_agent.py` | `hb-receipt <photo>` | Photo → Sonnet Vision extracts vendor/amount/category → updates Cost Tracker Actual column + saves receipt to Drive + logs to Actuals Log (~$0.01/run) |
+| Finance ledger | `agents/ledger_agent.py` | `hb-ledger "<update>"` | Plain-English financial entry → Sonnet parses → routes to Actual/Billed/Invoice/Commitment in Cost Tracker (~$0.01/run) |
+| Morning brief | `agents/morning_brief.py` | `hb-brief [--dry-run]` | Daily 6 AM email: NOAA weather + weather-risk phases + project snapshot + invoices due + overnight high-urgency emails + action items (~$0.02/run) |
+| Change Order | `agents/change_order_agent.py` | `hb-change "<NL description>" [--client-email EMAIL] [--dry-run]` | NL → parses CO → assigns CO# → creates formal Drive doc → logs to Change Orders tab → updates Cost Tracker col C → updates schedule (if impact) → drafts Gmail approval to client (~$0.04/run) |
+| Procurement alerts | `agents/procurement_alerts.py` | _(auto-runs inside `hb-update`)_ | After every schedule change: checks affected phases for procurement lead-time windows → macOS notification + logs to Tracker "Procurement Alerts" tab. 22 material categories with tunable lead times in `config.py`. ($0/run — no Claude call) |
+| Client update email | `agents/client_update_agent.py` | `hb-client-update --to EMAIL --client-name "Name" [--send] [--dry-run]` | Weekly homeowner project summary in Chad's voice — reads schedule + COs → Sonnet writes polished email → Gmail draft by default (--send to auto-send). (~$0.02–0.03/run) |
+| Inspection tracker | `agents/inspection_tracker.py` | `hb-inspect` / `hb-inspect log "<NL>"` | Baldwin County 12-step inspection sequence tracker + 180-day permit expiry countdown. NL logging via Haiku. macOS notification at 150/165 days. Hooks into morning brief. (~$0.005/log, $0/status) |
+| Site log | `agents/site_log_agent.py` | `hb-log "<entry>"` / `--view` / `--tail [N]` | Timestamped append-only site log per project; lives in Drive `Site Logs/<Project> — Site Log`. No Claude rephrasing — Chad's actual words preserved verbatim for legal record integrity. ($0/run) |
+| Lien waiver tracker | `agents/lien_waiver_agent.py` | `hb-waiver` / `hb-waiver log "<NL>"` | Cross-references Cost Tracker Actuals Log against signed waivers; flags payments >$500 missing a waiver (lien risk). NL log via Haiku. Hooks into morning brief. (~$0.005/log, $0/status) |
 
-Active background process:
+Active background processes:
 - **Dashboard watcher** (`watchers/dashboard.py`) — runs every 60s via launchd. Polls GENERATED TIMELINES for modified Tracker sheets, refreshes their Dashboard tab. State in `.watcher_state.json`. Logs to `watcher.log`. Plist: `~/Library/LaunchAgents/com.chadhomes.dashboard-watcher.plist`.
+- **Inbox watcher** (`watchers/inbox.py`) — runs every 5 min via launchd. Polls Gmail for new INBOX messages since the last historyId, classifies via Haiku (using `classifiers/email.classify_thread`), fires a macOS notification on `urgency=high` hits. Also detects invoices via `classifiers/invoice.is_invoice_email` + `extract_invoice_data` and logs them to the Cost Tracker Invoices tab automatically. State in `.inbox_watcher_state.json`. Logs to `inbox_watcher.log`. Plist: `~/Library/LaunchAgents/com.chadhomes.inbox-watcher.plist`.
+- **Morning brief** (`agents/morning_brief.py`) — runs at 6:00 AM daily via launchd. Fetches NOAA weather for job site, reads project Tracker + Cost Tracker, checks inbox watcher log for overnight high-urgency emails, composes and sends Chad a daily brief email via Gmail API. Plist: `~/Library/LaunchAgents/com.chadhomes.morning-brief.plist`.
 
 ## Phase 2 backlog (in priority order)
 
-1. **Monday demo with Chad's real spec** (gating) — drop spec → run `hb-timeline` → hand Chad the output
-2. **Gmail watcher** (active Agent 1) — extend the launchd-polling pattern to inbox
-3. **Supplier-email watcher** — scan supplier emails → auto-update `KNOWLEDGE BASE/baldwin_county_supplier_research.md`
-4. **Chad UX (non-Terminal)** — drop-spec-into-folder + email/text notification when output is ready
-5. **Mobile access** — Chad interacts from phone on a job site
-6. **Knowledge base validation by Chad** — three categories where research couldn't verify his preferred suppliers
-7. **Pricing model** — one-time setup vs subscription vs per-project license
+1. ~~**Morning brief**~~ — SHIPPED: `hb-brief` sends daily 6 AM email with weather, weather-risk phases, project status, invoices, overnight email alerts. Live under launchd.
+2. ~~**Change Order agent**~~ — SHIPPED: `hb-change` parses NL → assigns CO# → creates Drive doc → updates Cost Tracker col C → adjusts schedule → drafts client approval email. (~$0.04/run)
+3. ~~**Procurement alert system**~~ — SHIPPED: auto-fires inside `hb-update` after every schedule change. 22 material categories, tunable lead times in `config.py`, macOS notification + "Procurement Alerts" tab in Tracker. ($0/run)
+4. ~~**Client update emails**~~ — SHIPPED: `hb-client-update --to EMAIL --client-name "Name"` generates homeowner email via Sonnet, creates Gmail draft by default. Add --send to auto-send. (~$0.02/run)
+4. ~~**Inspection/permit tracker**~~ — SHIPPED: `hb-inspect` shows permit health + 180-day countdown; `hb-inspect log "..."` logs events via Haiku NL parse; morning brief includes permit expiry warnings. 12-step Baldwin County sequence built-in.
+5. ~~**Daily site log**~~ — SHIPPED: `hb-log "..."` appends timestamped entry to per-project Drive doc. `--view` opens in browser, `--tail N` prints last N entries. Append-only, verbatim text — preserves legal record integrity.
+6. ~~**Lien waiver tracker**~~ — SHIPPED: `hb-waiver` cross-refs Actuals Log to Lien Waivers tab; flags unwaived payments >$500. `hb-waiver log "..."` records signed waivers via Haiku NL parse. Morning brief includes unwaived count.
+7. **Bid/estimate generator** — feed in new client project scope, pull from Whitfield allowances and cost history, generate preliminary estimate using Chad's actual cost data.
+8. **Code update watcher** — periodically scan each Baldwin County municipality's official website URLs (stored in each compliance guide) for code amendments; notify Chad when something changes. Municipality URLs are already documented in each Drive compliance doc.
+9. **Supplier-email watcher** — scan supplier emails → auto-update `KNOWLEDGE BASE/baldwin_county_supplier_research.md`
+10. **Mobile access** — Chad interacts from phone on a job site (AppSheet reads Tracker sheet natively — fastest path)
+11. **Knowledge base validation by Chad** — three categories where research couldn't verify his preferred suppliers
+12. **Pricing model** — one-time setup vs subscription vs per-project license
 
 ## Architectural decisions (load-bearing)
 
@@ -105,6 +124,11 @@ hb-timeline pelican_point.md
 hb-update "Phase 3 pushed 1 week"
 hb-dashboard
 hb-inbox --days 14
+
+# Morning brief
+hb-brief --dry-run          # preview without sending
+hb-brief                    # send now (also runs automatically at 6 AM via launchd)
+BRIEF_LAT=30.5 BRIEF_LNG=-87.9 hb-brief --dry-run   # custom job-site coordinates
 
 # Watcher health
 launchctl list | grep chadhomes

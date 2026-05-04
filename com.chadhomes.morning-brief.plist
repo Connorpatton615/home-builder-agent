@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd job for the morning brief agent.
+
+  Fires once daily at 6:00 AM, sources the project .env, and runs hb-brief.
+  The email lands in Chad's inbox before he heads to the job site.
+
+  Install:
+    cp com.chadhomes.morning-brief.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.chadhomes.morning-brief.plist
+
+  Stop / unload:
+    launchctl unload ~/Library/LaunchAgents/com.chadhomes.morning-brief.plist
+
+  Run immediately (for testing):
+    launchctl start com.chadhomes.morning-brief
+
+  Inspect:
+    launchctl list | grep chadhomes
+    tail -f /tmp/morning-brief.stdout.log
+    tail -f /tmp/morning-brief.stderr.log
+
+  To change delivery time, edit the StartCalendarInterval Hour/Minute values
+  and reload the plist.  Hour is 0–23, Minute is 0–59.
+
+  NOTE: If the Mac is asleep at 6:00 AM, launchd will fire as soon as it
+  wakes — so Chad still gets the brief, just a bit late.
+
+  GOOGLE AUTH NOTE: adding gmail.send scope to config.py requires deleting
+  token.json and re-authenticating once before the watcher can send email.
+  Run `hb-brief --dry-run` interactively first to trigger the OAuth prompt.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.chadhomes.morning-brief</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>set -a; source /Users/connorpattonequipassid/Projects/home-builder-agent/.env; set +a; exec /Library/Frameworks/Python.framework/Versions/3.14/bin/hb-brief</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/connorpattonequipassid/Projects/home-builder-agent</string>
+
+  <!-- 6:00 AM every day -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>6</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <!-- Don't fire at load time — only at 6 AM -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/morning-brief.stdout.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/morning-brief.stderr.log</string>
+</dict>
+</plist>

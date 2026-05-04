@@ -35,6 +35,9 @@ timeline_*.md
 .watcher_state.json
 .inbox_watcher_state.json
 .help_desk_state.json
+.brief_announcements.json
+.weather_cache.json
+.meeting_proposals.json
 .cost_log.jsonl
 watcher.log
 *.log

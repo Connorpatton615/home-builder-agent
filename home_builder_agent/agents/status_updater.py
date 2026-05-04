@@ -36,6 +36,11 @@ from home_builder_agent.core.claude_client import (
 )
 from home_builder_agent.core.knowledge_base import load_comm_rules
 from home_builder_agent.integrations import drive, sheets
+from home_builder_agent.agents.procurement_alerts import (
+    check_procurement_alerts,
+    fire_all_notifications,
+    print_alert_summary,
+)
 
 
 # ---------------------------------------------------------------------
@@ -43,7 +48,10 @@ from home_builder_agent.integrations import drive, sheets
 # ---------------------------------------------------------------------
 
 def parse_update_text(client, update_text, phases):
-    """Parse a NL update into structured JSON. Returns (change_dict, usage)."""
+    """Parse a NL update into structured JSON. Returns (list of change_dicts, usage).
+
+    Always returns a list — a single-phase update returns a one-element list.
+    """
     phase_list = "\n".join(
         f"  {p.get('#', '?')}. {p.get('Phase', '')} — {p.get('Status', '')}"
         for p in phases
@@ -57,9 +65,10 @@ PROJECT PHASES (number, name, current status):
 UPDATE FROM CHAD:
 "{update_text}"
 
-Return ONLY a JSON object (no markdown fence, no explanation, no preamble).
+Return ONLY a JSON array (no markdown fence, no explanation, no preamble).
+One element per phase mentioned. If only one phase is mentioned, return a single-element array.
 
-Schema:
+Each element schema:
 {{
   "phase_number": <int>,
   "change_type": "<delay|completed|started|blocked|unblocked|status_change>",
@@ -75,17 +84,14 @@ Field rules:
 - new_status: which Status dropdown value to set. Use "null" (string null, not the JSON value) if no status change implied.
 
 Examples:
-  Input: "Phase 3 pushed 1 week"
-  Output: {{"phase_number": 3, "change_type": "delay", "magnitude_weeks": 1.0, "reason": "schedule slip", "new_status": "Delayed"}}
-
   Input: "Foundation done"
-  Output: {{"phase_number": 3, "change_type": "completed", "magnitude_weeks": 0, "reason": "phase complete", "new_status": "Done"}}
+  Output: [{{"phase_number": 3, "change_type": "completed", "magnitude_weeks": 0, "reason": "phase complete", "new_status": "Done"}}]
 
   Input: "Started framing"
-  Output: {{"phase_number": 4, "change_type": "started", "magnitude_weeks": 0, "reason": "began work", "new_status": "In Progress"}}
+  Output: [{{"phase_number": 4, "change_type": "started", "magnitude_weeks": 0, "reason": "began work", "new_status": "In Progress"}}]
 
-  Input: "Phase 5 finished 3 days early"
-  Output: {{"phase_number": 5, "change_type": "completed", "magnitude_weeks": -0.43, "reason": "ahead of schedule", "new_status": "Done"}}
+  Input: "Roofing done and started insulation"
+  Output: [{{"phase_number": 7, "change_type": "completed", "magnitude_weeks": 0, "reason": "phase complete", "new_status": "Done"}}, {{"phase_number": 10, "change_type": "started", "magnitude_weeks": 0, "reason": "began work", "new_status": "In Progress"}}]
 """
 
     response = client.messages.create(
@@ -100,16 +106,25 @@ Examples:
     text = re.sub(r"\n?```\s*$", "", text)
 
     try:
-        change = json.loads(text)
+        parsed = json.loads(text)
     except json.JSONDecodeError as e:
         raise ValueError(
             f"Parser output not parseable as JSON. Raw:\n{text[:500]}\nError: {e}"
         )
 
-    if change.get("new_status") in ("null", "None", ""):
-        change["new_status"] = None
+    # Normalize: single object → wrap in list
+    if isinstance(parsed, dict):
+        parsed = [parsed]
 
-    return change, response.usage
+    changes = []
+    for change in parsed:
+        if not isinstance(change, dict):
+            continue
+        if change.get("new_status") in ("null", "None", ""):
+            change["new_status"] = None
+        changes.append(change)
+
+    return changes, response.usage
 
 
 # ---------------------------------------------------------------------
@@ -322,18 +337,32 @@ def main():
     print(f"  {len(phases)} phases loaded")
 
     print(f"\nParsing update via {CLASSIFIER_MODEL}...")
-    change, parser_usage = parse_update_text(client, update_text, phases)
-    print(f"  Phase #{change.get('phase_number')}, "
-          f"type={change.get('change_type')}, "
-          f"magnitude={change.get('magnitude_weeks')} weeks, "
-          f"new_status={change.get('new_status')}")
+    changes, parser_usage = parse_update_text(client, update_text, phases)
+    for change in changes:
+        print(f"  Phase #{change.get('phase_number')}, "
+              f"type={change.get('change_type')}, "
+              f"magnitude={change.get('magnitude_weeks')} weeks, "
+              f"new_status={change.get('new_status')}")
 
-    print("\nComputing cascade...")
-    updates = compute_cascade(phases, change)
-    print(f"  {len(updates)} phase rows will update")
+    # Apply each change sequentially; re-read phases after each so cascades
+    # from earlier changes are visible to later ones.
+    all_updates = []
+    working_phases = list(phases)
+    for change in changes:
+        print(f"\nComputing cascade for Phase #{change.get('phase_number')}...")
+        updates = compute_cascade(working_phases, change)
+        print(f"  {len(updates)} phase rows will update")
 
-    print("\nApplying to Master Schedule...")
-    sheets.apply_phase_updates(sheets_svc, tracker["id"], updates)
+        print("  Applying to Master Schedule...")
+        sheets.apply_phase_updates(sheets_svc, tracker["id"], updates)
+        all_updates.extend(updates)
+
+        # Refresh working_phases so the next change sees updated dates/status
+        working_phases = sheets.read_master_schedule(sheets_svc, tracker["id"])
+
+    # Use the last change for the summary (most recent event)
+    change = changes[-1]
+    updates = all_updates
 
     print("\nRefreshing Dashboard...")
     refreshed_phases = sheets.read_master_schedule(sheets_svc, tracker["id"])
@@ -341,6 +370,17 @@ def main():
     dashboard_sheet_id = sheets.ensure_dashboard_tab(sheets_svc, tracker["id"])
     sheets.write_dashboard(sheets_svc, tracker["id"], dashboard_sheet_id,
                            metrics, project_name)
+
+    # Procurement alert check — runs on every updated phase index
+    print("\nChecking procurement windows...")
+    updated_indices = {idx for idx, _ in all_updates}
+    proc_alerts = check_procurement_alerts(refreshed_phases, updated_indices=updated_indices)
+    if proc_alerts:
+        sheets.log_procurement_alerts(sheets_svc, tracker["id"], proc_alerts)
+        fire_all_notifications(proc_alerts)
+        print(f"  {len(proc_alerts)} alert(s) logged to Procurement Alerts tab")
+    else:
+        print("  No procurement windows triggered")
 
     print(f"\nGenerating summary via {WRITER_MODEL}...")
     summary, summary_usage = generate_summary(
@@ -361,6 +401,7 @@ def main():
     print(f"Cost:   parse=${parser_usd:.4f}, summary=${summary_usd:.4f}, "
           f"total=${parser_usd + summary_usd:.4f}")
     print()
+    print_alert_summary(proc_alerts)
 
 
 if __name__ == "__main__":

@@ -34,8 +34,10 @@ def find_folder_by_path(service, path):
     walked = []
     for name in path:
         walked.append(name)
+        # Drive query strings require apostrophes escaped as \'
+        escaped = name.replace("'", r"\'")
         query = (
-            f"name='{name}' "
+            f"name='{escaped}' "
             "and mimeType='application/vnd.google-apps.folder' "
             f"and '{parent_id}' in parents "
             "and trashed=false"

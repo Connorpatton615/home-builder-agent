@@ -31,6 +31,7 @@ KNOWLEDGE_BASE_DIR = "KNOWLEDGE BASE"
 PROJECT_SPECS_DIR = "PROJECT SPECS"
 GENERATED_TIMELINES_DIR = "GENERATED TIMELINES"
 ARCHIVE_DIR = "ARCHIVE"
+SITE_LOGS_DIR = "Site Logs"
 
 # Knowledge-base filenames (read at runtime by every agent that needs them)
 CONSTRUCTION_REF_FILE = "baldwin_county_construction_reference.md"
@@ -46,6 +47,26 @@ DRIVE_FOLDER_PATH = [
     "Home Building Agent V.1",
     "Home Builder Agent V.1",
     GENERATED_TIMELINES_DIR,
+]
+
+# Finance Office — folder path and active project name.
+# Changing FINANCE_PROJECT_NAME here switches hb-finance to a new project.
+FINANCE_FOLDER_PATH = [
+    "Home Building Agent V.1",
+    "Home Builder Agent V.1",
+    "Chad's Finance Office",
+]
+FINANCE_PROJECT_NAME = "Whitfield Residence"
+
+# Receipts folder name inside Chad's Finance Office (auto-created by hb-receipt)
+FINANCE_RECEIPTS_DIR = "Receipts"
+
+# Invoice watcher settings
+INVOICE_NOTIFY_THRESHOLD = 1000   # fire macOS notification for invoices >= $1,000
+INVOICE_SIGNAL_WORDS = [          # subject/snippet keywords that flag invoice emails
+    "invoice", "bill ", "billing", "statement", "payment due",
+    "balance due", "amount due", "please pay", "remittance",
+    "estimate", "proposal", "quote",
 ]
 
 # ---------------------------------------------------------------------
@@ -65,6 +86,8 @@ GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/documents",
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/gmail.compose",
 ]
 
 # ---------------------------------------------------------------------
@@ -135,3 +158,102 @@ HELP_DESK_DOC_FOLDER = [
     "Home Builder Agent V.1",
 ]
 HELP_DESK_STATE_FILE = ".help_desk_state.json"
+
+# ---------------------------------------------------------------------
+# Morning Brief
+# ---------------------------------------------------------------------
+
+# Recipient email address.  Switch to Chad's real email before going live.
+BRIEF_RECIPIENT_EMAIL = "aiwithconnor@gmail.com"
+
+# Sender display name (Gmail "From" label)
+BRIEF_SENDER_NAME = "Palmetto Custom Homes — AI Assistant"
+
+# Default job-site coordinates for NOAA weather lookup.
+# These point to central Baldwin County, AL (near Foley).
+# Override per-project by setting env vars BRIEF_LAT / BRIEF_LNG.
+import os as _os
+BRIEF_SITE_LAT = float(_os.environ.get("BRIEF_LAT", "30.4883"))
+BRIEF_SITE_LNG = float(_os.environ.get("BRIEF_LNG", "-87.7264"))
+
+# Job-site address string (human-readable, appears in email header).
+BRIEF_SITE_ADDRESS = _os.environ.get(
+    "BRIEF_SITE_ADDRESS", "Baldwin County, AL"
+)
+
+# Morning brief Sonnet max tokens
+BRIEF_MAX_TOKENS = 2000
+
+# Inbox watcher state + log (read by morning brief to surface overnight alerts)
+INBOX_WATCHER_STATE_FILE = ".inbox_watcher_state.json"
+INBOX_WATCHER_LOG_FILE   = "inbox_watcher.log"
+
+# ---------------------------------------------------------------------
+# Change Order agent
+# ---------------------------------------------------------------------
+
+# Sub-folder created inside Chad's Finance Office to store CO documents.
+CHANGE_ORDERS_DIR = "Change Orders"
+
+# Default client email for CO approval drafts (override per-project or via --client-email).
+CO_CLIENT_EMAIL = ""
+
+# Max tokens for the CO document generator prompt.
+CO_MAX_TOKENS = 2000
+
+# ---------------------------------------------------------------------
+# Procurement Alert System
+# ---------------------------------------------------------------------
+
+# Lead times (in weeks) keyed on lowercase substrings of phase names.
+# When a phase name contains one of these keywords, the system checks
+# whether today falls inside the ordering window (phase start - lead time).
+# Edit this dict to tune for Chad's real suppliers — no code change needed.
+PROCUREMENT_LEAD_TIMES: dict[str, int] = {
+    "window":        8,   # Anderson/PGT windows — 8-week factory lead
+    "door":          6,   # Exterior doors (entry, garage) — 6 weeks
+    "truss":         6,   # Roof trusses — 6 weeks
+    "lumber":        4,   # Dimensional lumber / framing package — 4 weeks
+    "cabinet":      10,   # Custom cabinets — 10 weeks
+    "appliance":     8,   # Appliances — 8 weeks
+    "hvac":          6,   # HVAC equipment (AHU, condenser) — 6 weeks
+    "elevator":     16,   # Elevator / lift — 16 weeks
+    "generator":     8,   # Whole-home generator — 8 weeks
+    "tile":          4,   # Tile / stone — 4 weeks
+    "flooring":      4,   # Hardwood / LVP flooring — 4 weeks
+    "roofing":       2,   # Roofing materials — 2 weeks
+    "plumbing":      3,   # Plumbing fixtures / rough-in materials — 3 weeks
+    "electrical":    3,   # Electrical fixtures / panel — 3 weeks
+    "insulation":    2,   # Insulation — 2 weeks
+    "drywall":       2,   # Drywall — 2 weeks
+    "concrete":      2,   # Concrete / flatwork — 2 weeks
+    "steel":         4,   # Structural steel / LVL beams — 4 weeks
+    "pool":         12,   # Pool equipment / shell — 12 weeks
+    "brick":         3,   # Brick / masonry — 3 weeks
+    "stucco":        2,   # Stucco / exterior finish — 2 weeks
+}
+
+# How many days before the order-by date to start firing "upcoming" alerts.
+PROCUREMENT_UPCOMING_DAYS = 14
+
+# Tab name in the Tracker sheet where alerts are logged.
+PROCUREMENT_ALERTS_TAB = "Procurement Alerts"
+
+# ---------------------------------------------------------------------
+# Lien Waiver Tracker
+# ---------------------------------------------------------------------
+
+# Tab name in the Cost Tracker sheet for the waiver log.
+LIEN_WAIVERS_TAB = "Lien Waivers"
+
+# Payments below this dollar amount are exempt from waiver tracking by default.
+# Most luxury builds collect waivers from any sub paid > $500, but this is
+# tunable per-tenant if Chad wants stricter or looser tracking.
+LIEN_WAIVER_THRESHOLD = 500.0
+
+# Days within which a waiver must be filed AFTER a payment to count as "matched".
+# 60 days is a conservative default — if no waiver in 60 days it's likely missing.
+LIEN_WAIVER_MATCH_WINDOW_DAYS = 60
+
+# Dollar tolerance when matching waiver amount to payment amount.
+LIEN_WAIVER_AMOUNT_TOLERANCE = 10.0
