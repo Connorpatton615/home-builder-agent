@@ -46,6 +46,7 @@ hb-client-update = "home_builder_agent.agents.client_update_agent:main"
 hb-inspect = "home_builder_agent.agents.inspection_tracker:main"
 hb-log = "home_builder_agent.agents.site_log_agent:main"
 hb-waiver = "home_builder_agent.agents.lien_waiver_agent:main"
+hb-schedule = "home_builder_agent.agents.schedule_agent:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
