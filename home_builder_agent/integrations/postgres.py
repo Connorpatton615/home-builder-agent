@@ -36,10 +36,17 @@ from contextlib import contextmanager
 from typing import Iterator
 
 import psycopg
+from dotenv import load_dotenv
 from psycopg.rows import dict_row
 
 
 DATABASE_URL_ENV = "DATABASE_URL"
+
+
+# Load .env on import so this module works regardless of whether
+# the entry point already called load_dotenv() (e.g. via claude_client).
+# Idempotent — calling it twice is a no-op.
+load_dotenv()
 
 
 class PostgresConfigError(RuntimeError):
