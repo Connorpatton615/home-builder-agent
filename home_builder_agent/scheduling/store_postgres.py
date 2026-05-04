@@ -175,6 +175,7 @@ def _row_to_phase(row: dict) -> Phase:
         status=row["status"],
         actual_start_date=row.get("actual_start_date"),
         actual_end_date=row.get("actual_end_date"),
+        db_id=row["id"],  # Canonical UUID from home_builder.phase.id — drives iOS UserAction.target_entity_id
     )
 
 

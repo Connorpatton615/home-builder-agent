@@ -152,6 +152,18 @@ hb-timeline pelican_point.md
 hb-update "Phase 3 pushed 1 week"
 hb-dashboard
 hb-inbox --days 14
+hb-schedule "Project Name" --target-completion 2026-12-15      # in-memory compute
+hb-schedule "Project Name" --from-postgres --view master       # load from Supabase
+hb-schedule --ping-db                                          # smoke test the DB connection
+
+# PYTHONPATH quirk on Python 3.14 + editable install:
+# If `hb-schedule` (or any other hb-* console_script) reports
+# "ModuleNotFoundError: No module named 'home_builder_agent'", the
+# editable-install .pth file isn't being discovered by your interpreter.
+# Workaround:
+#   PYTHONPATH=~/Projects/home-builder-agent hb-schedule ...
+# Or invoke via -m which always finds the package:
+#   python3 -m home_builder_agent.agents.schedule_agent ...
 
 # Morning brief
 hb-brief --dry-run          # preview without sending

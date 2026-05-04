@@ -48,11 +48,22 @@ class Phase:
     status: PhaseStatus = "not-started"
     actual_start_date: date | None = None
     actual_end_date: date | None = None
+    db_id: str | None = None          # Set when loaded from Postgres; None for in-memory schedules
 
     @property
     def id(self) -> str:
-        """Stable phase id within a project — index-based for V1 single-tenant."""
-        return f"phase-{self.sequence_index:02d}"
+        """Stable phase id within a project.
+
+        DB-loaded schedules emit the canonical UUID (load-bearing — the
+        iOS shell uses this as `target_entity_id` when emitting UserActions
+        against home_builder.user_action whose `target_entity_id` is a
+        UUID column).
+
+        In-memory schedules (no DB roundtrip) fall back to the synthetic
+        `phase-NN` form used by `hb-schedule --target-completion ...` when
+        the engine is run without a DB anchor — useful for local exploration.
+        """
+        return self.db_id if self.db_id else f"phase-{self.sequence_index:02d}"
 
     def to_dict(self) -> dict:
         """Serialize to view-model-compatible dict (snake_case, ISO dates)."""
