@@ -160,17 +160,32 @@ def _print_view_payload(payload: dict) -> None:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Run the Scheduling Engine for a project."
+        description="Run the Scheduling Engine for a project.",
+        epilog=(
+            "Modes (one required, except for --ping-db):\n"
+            "  --target-completion DATE      backwards-schedule from target end date\n"
+            "  --target-framing-start DATE   forward-schedule from framing anchor\n"
+            "  --from-postgres               load existing schedule rows from Supabase\n"
+            "  --ping-db                     smoke-test Postgres connection (no project_name needed)"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("project_name", help="Project name (e.g. 'Pelican Point')")
-    grp = parser.add_mutually_exclusive_group(required=True)
-    grp.add_argument(
+    parser.add_argument(
+        "project_name", nargs="?", default=None,
+        help="Project name (e.g. 'Pelican Point'). Optional with --ping-db.",
+    )
+    parser.add_argument(
         "--target-completion", dest="target_completion",
-        help="Target completion date (YYYY-MM-DD)",
+        help="Target completion date (YYYY-MM-DD) — backwards-schedule",
     )
-    grp.add_argument(
+    parser.add_argument(
         "--target-framing-start", dest="target_framing_start",
-        help="Target framing-start date (YYYY-MM-DD)",
+        help="Target framing-start date (YYYY-MM-DD) — forward-schedule",
+    )
+    parser.add_argument(
+        "--from-postgres", dest="from_postgres", action="store_true",
+        help="Load the project's schedule from Supabase Postgres instead of "
+             "computing from a target date. Looks up by project_name.",
     )
     parser.add_argument(
         "--view", choices=["master", "daily", "weekly", "monthly"], default="master",
@@ -180,12 +195,72 @@ def main():
         "--json", action="store_true",
         help="Output the view-model as JSON instead of pretty terminal display",
     )
+    parser.add_argument(
+        "--ping-db", action="store_true",
+        help="Smoke-test the Postgres connection and exit (no schedule rendered)",
+    )
     args = parser.parse_args()
+
+    # --ping-db short-circuit: doesn't need project_name or any of the date anchors
+    if args.ping_db:
+        from home_builder_agent.integrations.postgres import ping, PostgresConfigError
+        try:
+            result = ping()
+            print("✅ Postgres reachable")
+            print(f"   Server:   {result['server_version'][:80]}")
+            print(f"   home_builder schema: {'present' if result['schema_present'] else 'MISSING'}")
+            print(f"   tables in home_builder: {result['tables_in_home_builder']}")
+            return
+        except PostgresConfigError as e:
+            print(f"❌ Postgres config error: {e}")
+            sys.exit(1)
+        except Exception as e:
+            print(f"❌ Postgres ping failed: {type(e).__name__}: {e}")
+            sys.exit(1)
+
+    # Validate mode: project_name is required for non-ping operations,
+    # and exactly one of the three schedule-source flags must be set.
+    if not args.project_name:
+        parser.error("project_name is required (unless using --ping-db)")
+    mode_count = sum([
+        bool(args.target_completion),
+        bool(args.target_framing_start),
+        bool(args.from_postgres),
+    ])
+    if mode_count != 1:
+        parser.error(
+            "exactly one of --target-completion / --target-framing-start / --from-postgres is required"
+        )
 
     project_id = _slugify(args.project_name)
 
-    # Build the schedule from the target anchor
-    if args.target_completion:
+    # Build the schedule — three paths:
+    #   --target-completion       → backwards-schedule from target end date (in-memory)
+    #   --target-framing-start    → forward-schedule from framing anchor (in-memory)
+    #   --from-postgres           → load existing schedule rows from Supabase
+    if args.from_postgres:
+        from home_builder_agent.integrations.postgres import PostgresConfigError
+        from home_builder_agent.scheduling.store_postgres import (
+            compose_schedule_from_db,
+            load_project_by_name,
+        )
+        try:
+            project_row = load_project_by_name(args.project_name)
+        except PostgresConfigError as e:
+            print(f"❌ Postgres config error: {e}")
+            sys.exit(1)
+        except Exception as e:
+            print(f"❌ Postgres connection failed: {type(e).__name__}: {e}")
+            sys.exit(1)
+        if not project_row:
+            print(f"❌ No project found in Postgres with name '{args.project_name}'")
+            sys.exit(1)
+        schedule = compose_schedule_from_db(project_row["id"])
+        if not schedule:
+            print(f"❌ Project '{args.project_name}' exists but has no phases yet")
+            print("   (run hb-timeline to seed the schedule, or hb-update to flip phases)")
+            sys.exit(1)
+    elif args.target_completion:
         schedule = schedule_from_target_completion(
             project_id=project_id,
             project_name=args.project_name,
