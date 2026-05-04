@@ -202,8 +202,9 @@ def main():
 
     # Render the requested view
     if args.view == "master":
+        master_payload = project_master_view(schedule, drop_deads)
         if args.json:
-            print(json.dumps(project_master_view(schedule, drop_deads), indent=2))
+            print(json.dumps(master_payload.model_dump(mode="json", exclude_none=True), indent=2))
         else:
             _print_master(schedule, drop_deads)
         return
@@ -219,9 +220,9 @@ def main():
         payload = monthly_view(schedules, drop_dead_by_project)
 
     if args.json:
-        print(json.dumps(payload, indent=2))
+        print(json.dumps(payload.model_dump(mode="json", exclude_none=True), indent=2))
     else:
-        _print_view_payload(payload)
+        _print_view_payload(payload.model_dump(mode="json", exclude_none=True))
 
 
 if __name__ == "__main__":

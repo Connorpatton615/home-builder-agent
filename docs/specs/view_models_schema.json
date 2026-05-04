@@ -1,0 +1,1246 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://patton.ai/schemas/home-builder/view-models-v1.json",
+  "title": "Home Builder Service Turtle \u2014 View Model Schemas v1",
+  "description": "Canonical wire format for the six view-model payloads emitted by Home Builder Agent's Scheduling Engine. The Patton AI iOS Shell deserializes these without transformation. See docs/specs/canonical-data-model.md and patton-ai-ios docs/03_build/turtle_contract_v1.md.",
+  "version": "1.0.0",
+  "definitions": {
+    "MasterView": {
+      "$defs": {
+        "DropDeadDatePayload": {
+          "additionalProperties": false,
+          "description": "A computed drop-dead order date for a material category on a project.",
+          "properties": {
+            "material_category": {
+              "description": "e.g. 'window', 'cabinet', 'lumber'",
+              "title": "Material Category",
+              "type": "string"
+            },
+            "lead_time_days": {
+              "minimum": 0,
+              "title": "Lead Time Days",
+              "type": "integer"
+            },
+            "lead_time_source": {
+              "$ref": "#/$defs/LeadTimeSource",
+              "default": "category-default"
+            },
+            "install_phase_name": {
+              "title": "Install Phase Name",
+              "type": "string"
+            },
+            "install_date": {
+              "format": "date",
+              "title": "Install Date",
+              "type": "string"
+            },
+            "safety_buffer_days": {
+              "minimum": 0,
+              "title": "Safety Buffer Days",
+              "type": "integer"
+            },
+            "drop_dead_date": {
+              "format": "date",
+              "title": "Drop Dead Date",
+              "type": "string"
+            }
+          },
+          "required": [
+            "material_category",
+            "lead_time_days",
+            "install_phase_name",
+            "install_date",
+            "safety_buffer_days",
+            "drop_dead_date"
+          ],
+          "title": "DropDeadDatePayload",
+          "type": "object"
+        },
+        "LeadTimeSource": {
+          "description": "Per canonical-data-model.md \u00a7 entity 10 LeadTime.",
+          "enum": [
+            "vendor-sku-published",
+            "vendor-default",
+            "category-default",
+            "manual-override"
+          ],
+          "title": "LeadTimeSource",
+          "type": "string"
+        },
+        "MasterPhasePayload": {
+          "additionalProperties": false,
+          "description": "Phase + drop-dead dates aligned to it (master view only).",
+          "properties": {
+            "id": {
+              "description": "Stable phase id within a project",
+              "title": "Id",
+              "type": "string"
+            },
+            "phase_template_id": {
+              "description": "1\u201324 from CHECKLIST_PHASE_NAMES library",
+              "title": "Phase Template Id",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "sequence_index": {
+              "maximum": 24,
+              "minimum": 1,
+              "title": "Sequence Index",
+              "type": "integer"
+            },
+            "status": {
+              "$ref": "#/$defs/PhaseStatus"
+            },
+            "planned_start_date": {
+              "format": "date",
+              "title": "Planned Start Date",
+              "type": "string"
+            },
+            "planned_end_date": {
+              "format": "date",
+              "title": "Planned End Date",
+              "type": "string"
+            },
+            "actual_start_date": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Actual Start Date"
+            },
+            "actual_end_date": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Actual End Date"
+            },
+            "default_duration_days": {
+              "title": "Default Duration Days",
+              "type": "integer"
+            },
+            "duration_days": {
+              "description": "Effective duration after overrides",
+              "title": "Duration Days",
+              "type": "integer"
+            },
+            "drop_dead_dates": {
+              "items": {
+                "$ref": "#/$defs/DropDeadDatePayload"
+              },
+              "title": "Drop Dead Dates",
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "phase_template_id",
+            "name",
+            "sequence_index",
+            "status",
+            "planned_start_date",
+            "planned_end_date",
+            "default_duration_days",
+            "duration_days"
+          ],
+          "title": "MasterPhasePayload",
+          "type": "object"
+        },
+        "MilestonePayload": {
+          "additionalProperties": false,
+          "description": "Date-anchored event with no duration. Mirrors canonical-data-model.md \u00a7 entity 4.",
+          "properties": {
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "planned_date": {
+              "format": "date",
+              "title": "Planned Date",
+              "type": "string"
+            },
+            "actual_date": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Actual Date"
+            },
+            "phase_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Phase Id"
+            },
+            "status": {
+              "$ref": "#/$defs/MilestoneStatus",
+              "default": "pending"
+            }
+          },
+          "required": [
+            "name",
+            "planned_date"
+          ],
+          "title": "MilestonePayload",
+          "type": "object"
+        },
+        "MilestoneStatus": {
+          "enum": [
+            "pending",
+            "hit",
+            "missed",
+            "rescheduled"
+          ],
+          "title": "MilestoneStatus",
+          "type": "string"
+        },
+        "PhaseStatus": {
+          "description": "Phase lifecycle states. Stateful entity \u2192 hyphenated where multi-word.",
+          "enum": [
+            "not-started",
+            "in-progress",
+            "blocked-on-checklist",
+            "complete"
+          ],
+          "title": "PhaseStatus",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Full project Gantt-equivalent timeline + drop-dead overlay.\n\ncanonical-data-model.md \u00a7 Master schedule.",
+      "properties": {
+        "view_type": {
+          "const": "master",
+          "default": "master",
+          "title": "View Type",
+          "type": "string"
+        },
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "project_name": {
+          "title": "Project Name",
+          "type": "string"
+        },
+        "estimated_completion_date": {
+          "format": "date",
+          "title": "Estimated Completion Date",
+          "type": "string"
+        },
+        "target_completion_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Completion Date"
+        },
+        "target_framing_start_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Framing Start Date"
+        },
+        "phases": {
+          "items": {
+            "$ref": "#/$defs/MasterPhasePayload"
+          },
+          "title": "Phases",
+          "type": "array"
+        },
+        "milestones": {
+          "items": {
+            "$ref": "#/$defs/MilestonePayload"
+          },
+          "title": "Milestones",
+          "type": "array"
+        },
+        "drop_dead_dates": {
+          "description": "Full drop-dead list; also embedded per-phase above for renderer convenience",
+          "items": {
+            "$ref": "#/$defs/DropDeadDatePayload"
+          },
+          "title": "Drop Dead Dates",
+          "type": "array"
+        }
+      },
+      "required": [
+        "project_id",
+        "project_name",
+        "estimated_completion_date",
+        "phases",
+        "milestones",
+        "drop_dead_dates"
+      ],
+      "title": "MasterViewPayload",
+      "type": "object"
+    },
+    "DailyView": {
+      "$defs": {
+        "DailyItemKind": {
+          "enum": [
+            "phase-active",
+            "delivery",
+            "inspection",
+            "drop-dead",
+            "no-show"
+          ],
+          "title": "DailyItemKind",
+          "type": "string"
+        },
+        "DailyItemPayload": {
+          "additionalProperties": false,
+          "description": "One activity item in the daily view. Discriminator: `kind`.\n\nSpecific shape varies by kind. Common fields below; per-kind fields are\noptional at the schema level so renderers branch on `kind`.",
+          "properties": {
+            "kind": {
+              "$ref": "#/$defs/DailyItemKind"
+            },
+            "tap_action": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Deep-link target",
+              "title": "Tap Action"
+            },
+            "phase_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Phase Id"
+            },
+            "phase_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Phase Name"
+            },
+            "day_n": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Day N"
+            },
+            "of_total": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Of Total"
+            },
+            "material_category": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Material Category"
+            },
+            "install_phase_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Install Phase Name"
+            },
+            "install_date": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Install Date"
+            },
+            "lead_time_days": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Lead Time Days"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "title": "DailyItemPayload",
+          "type": "object"
+        },
+        "DailyProjectPayload": {
+          "additionalProperties": false,
+          "description": "Per-project group within the daily view.",
+          "properties": {
+            "project_id": {
+              "title": "Project Id",
+              "type": "string"
+            },
+            "project_name": {
+              "title": "Project Name",
+              "type": "string"
+            },
+            "items": {
+              "items": {
+                "$ref": "#/$defs/DailyItemPayload"
+              },
+              "title": "Items",
+              "type": "array"
+            }
+          },
+          "required": [
+            "project_id",
+            "project_name",
+            "items"
+          ],
+          "title": "DailyProjectPayload",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "view_type": {
+          "const": "daily",
+          "default": "daily",
+          "title": "View Type",
+          "type": "string"
+        },
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "projects": {
+          "items": {
+            "$ref": "#/$defs/DailyProjectPayload"
+          },
+          "title": "Projects",
+          "type": "array"
+        }
+      },
+      "required": [
+        "date",
+        "projects"
+      ],
+      "title": "DailyViewPayload",
+      "type": "object"
+    },
+    "WeeklyView": {
+      "$defs": {
+        "WeeklyItemKind": {
+          "enum": [
+            "phase",
+            "drop-dead",
+            "milestone"
+          ],
+          "title": "WeeklyItemKind",
+          "type": "string"
+        },
+        "WeeklyItemPayload": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "$ref": "#/$defs/WeeklyItemKind"
+            },
+            "tap_action": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Tap Action"
+            },
+            "phase_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Phase Id"
+            },
+            "phase_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Phase Name"
+            },
+            "planned_start_date": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Planned Start Date"
+            },
+            "planned_end_date": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Planned End Date"
+            },
+            "material_category": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Material Category"
+            },
+            "install_phase_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Install Phase Name"
+            },
+            "drop_dead_date": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Drop Dead Date"
+            },
+            "milestone_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Milestone Name"
+            },
+            "milestone_date": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Milestone Date"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "title": "WeeklyItemPayload",
+          "type": "object"
+        },
+        "WeeklyProjectPayload": {
+          "additionalProperties": false,
+          "properties": {
+            "project_id": {
+              "title": "Project Id",
+              "type": "string"
+            },
+            "project_name": {
+              "title": "Project Name",
+              "type": "string"
+            },
+            "items": {
+              "items": {
+                "$ref": "#/$defs/WeeklyItemPayload"
+              },
+              "title": "Items",
+              "type": "array"
+            }
+          },
+          "required": [
+            "project_id",
+            "project_name",
+            "items"
+          ],
+          "title": "WeeklyProjectPayload",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "view_type": {
+          "const": "weekly",
+          "default": "weekly",
+          "title": "View Type",
+          "type": "string"
+        },
+        "date_window_start": {
+          "format": "date",
+          "title": "Date Window Start",
+          "type": "string"
+        },
+        "date_window_end": {
+          "format": "date",
+          "title": "Date Window End",
+          "type": "string"
+        },
+        "projects": {
+          "items": {
+            "$ref": "#/$defs/WeeklyProjectPayload"
+          },
+          "title": "Projects",
+          "type": "array"
+        }
+      },
+      "required": [
+        "date_window_start",
+        "date_window_end",
+        "projects"
+      ],
+      "title": "WeeklyViewPayload",
+      "type": "object"
+    },
+    "MonthlyView": {
+      "$defs": {
+        "MonthlyPhaseInWindowPayload": {
+          "additionalProperties": false,
+          "properties": {
+            "phase_id": {
+              "title": "Phase Id",
+              "type": "string"
+            },
+            "phase_name": {
+              "title": "Phase Name",
+              "type": "string"
+            },
+            "planned_start_date": {
+              "format": "date",
+              "title": "Planned Start Date",
+              "type": "string"
+            },
+            "planned_end_date": {
+              "format": "date",
+              "title": "Planned End Date",
+              "type": "string"
+            },
+            "status": {
+              "$ref": "#/$defs/PhaseStatus"
+            }
+          },
+          "required": [
+            "phase_id",
+            "phase_name",
+            "planned_start_date",
+            "planned_end_date",
+            "status"
+          ],
+          "title": "MonthlyPhaseInWindowPayload",
+          "type": "object"
+        },
+        "MonthlyProjectPayload": {
+          "additionalProperties": false,
+          "properties": {
+            "project_id": {
+              "title": "Project Id",
+              "type": "string"
+            },
+            "project_name": {
+              "title": "Project Name",
+              "type": "string"
+            },
+            "pct_complete_vs_plan": {
+              "description": "Earned-time style \u2014 phases complete weighted by duration",
+              "maximum": 100,
+              "minimum": 0,
+              "title": "Pct Complete Vs Plan",
+              "type": "number"
+            },
+            "estimated_completion_date": {
+              "format": "date",
+              "title": "Estimated Completion Date",
+              "type": "string"
+            },
+            "next_drop_dead_date": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Next Drop Dead Date"
+            },
+            "next_drop_dead_material": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Next Drop Dead Material"
+            },
+            "phases_in_window": {
+              "items": {
+                "$ref": "#/$defs/MonthlyPhaseInWindowPayload"
+              },
+              "title": "Phases In Window",
+              "type": "array"
+            }
+          },
+          "required": [
+            "project_id",
+            "project_name",
+            "pct_complete_vs_plan",
+            "estimated_completion_date",
+            "phases_in_window"
+          ],
+          "title": "MonthlyProjectPayload",
+          "type": "object"
+        },
+        "PhaseStatus": {
+          "description": "Phase lifecycle states. Stateful entity \u2192 hyphenated where multi-word.",
+          "enum": [
+            "not-started",
+            "in-progress",
+            "blocked-on-checklist",
+            "complete"
+          ],
+          "title": "PhaseStatus",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "view_type": {
+          "const": "monthly",
+          "default": "monthly",
+          "title": "View Type",
+          "type": "string"
+        },
+        "date_window_start": {
+          "format": "date",
+          "title": "Date Window Start",
+          "type": "string"
+        },
+        "date_window_end": {
+          "format": "date",
+          "title": "Date Window End",
+          "type": "string"
+        },
+        "projects": {
+          "items": {
+            "$ref": "#/$defs/MonthlyProjectPayload"
+          },
+          "title": "Projects",
+          "type": "array"
+        }
+      },
+      "required": [
+        "date_window_start",
+        "date_window_end",
+        "projects"
+      ],
+      "title": "MonthlyViewPayload",
+      "type": "object"
+    },
+    "ChecklistGatesView": {
+      "$defs": {
+        "ChecklistGatesProjectPayload": {
+          "additionalProperties": false,
+          "properties": {
+            "project_id": {
+              "title": "Project Id",
+              "type": "string"
+            },
+            "project_name": {
+              "title": "Project Name",
+              "type": "string"
+            },
+            "checklists": {
+              "items": {
+                "$ref": "#/$defs/ChecklistPayload"
+              },
+              "title": "Checklists",
+              "type": "array"
+            }
+          },
+          "required": [
+            "project_id",
+            "project_name",
+            "checklists"
+          ],
+          "title": "ChecklistGatesProjectPayload",
+          "type": "object"
+        },
+        "ChecklistItemPayload": {
+          "additionalProperties": false,
+          "description": "Mirrors canonical-data-model.md \u00a7 entity 7 ChecklistItem.",
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "category": {
+              "description": "One of 10 for Precon (Client & Contract, Plans & Engineering, ...); smaller set for other phases",
+              "title": "Category",
+              "type": "string"
+            },
+            "label": {
+              "title": "Label",
+              "type": "string"
+            },
+            "is_complete": {
+              "title": "Is Complete",
+              "type": "boolean"
+            },
+            "completed_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Completed By"
+            },
+            "completed_at": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Completed At"
+            },
+            "notes": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Notes"
+            },
+            "tap_action": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Tap Action"
+            }
+          },
+          "required": [
+            "id",
+            "category",
+            "label",
+            "is_complete"
+          ],
+          "title": "ChecklistItemPayload",
+          "type": "object"
+        },
+        "ChecklistPayload": {
+          "additionalProperties": false,
+          "description": "Mirrors canonical-data-model.md \u00a7 entity 6 Checklist.",
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "phase_id": {
+              "title": "Phase Id",
+              "type": "string"
+            },
+            "template_version": {
+              "title": "Template Version",
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "open",
+                "closed"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "completed_count": {
+              "minimum": 0,
+              "title": "Completed Count",
+              "type": "integer"
+            },
+            "total_count": {
+              "minimum": 0,
+              "title": "Total Count",
+              "type": "integer"
+            },
+            "items_by_category": {
+              "additionalProperties": {
+                "items": {
+                  "$ref": "#/$defs/ChecklistItemPayload"
+                },
+                "type": "array"
+              },
+              "description": "Items grouped by category for renderer convenience",
+              "title": "Items By Category",
+              "type": "object"
+            }
+          },
+          "required": [
+            "id",
+            "phase_id",
+            "template_version",
+            "status",
+            "completed_count",
+            "total_count",
+            "items_by_category"
+          ],
+          "title": "ChecklistPayload",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "view_type": {
+          "const": "checklist-gates",
+          "default": "checklist-gates",
+          "title": "View Type",
+          "type": "string"
+        },
+        "projects": {
+          "items": {
+            "$ref": "#/$defs/ChecklistGatesProjectPayload"
+          },
+          "title": "Projects",
+          "type": "array"
+        }
+      },
+      "required": [
+        "projects"
+      ],
+      "title": "ChecklistGatesViewPayload",
+      "type": "object"
+    },
+    "NotificationFeedView": {
+      "$defs": {
+        "NotificationItemPayload": {
+          "additionalProperties": false,
+          "description": "One Event surfaced as a Notification. Mirrors entity 13 wrapping entity 17.",
+          "properties": {
+            "event_id": {
+              "title": "Event Id",
+              "type": "string"
+            },
+            "notification_id": {
+              "title": "Notification Id",
+              "type": "string"
+            },
+            "type": {
+              "description": "selection-deadline | weather-delay | material-no-show | sub-no-show | inspection-failure | schedule-slip | extensible",
+              "title": "Type",
+              "type": "string"
+            },
+            "severity": {
+              "$ref": "#/$defs/Severity"
+            },
+            "status": {
+              "$ref": "#/$defs/NotificationStatus"
+            },
+            "summary": {
+              "title": "Summary",
+              "type": "string"
+            },
+            "project_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Project Id"
+            },
+            "phase_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Phase Id"
+            },
+            "age_seconds": {
+              "minimum": 0,
+              "title": "Age Seconds",
+              "type": "integer"
+            },
+            "created_at": {
+              "format": "date",
+              "title": "Created At",
+              "type": "string"
+            },
+            "acknowledged_at": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Acknowledged At"
+            },
+            "resolved_at": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Resolved At"
+            },
+            "acknowledge_action": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "UserAction emit target",
+              "title": "Acknowledge Action"
+            },
+            "resolve_action": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "UserAction emit target",
+              "title": "Resolve Action"
+            },
+            "click_action": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Deep-link to related entity",
+              "title": "Click Action"
+            }
+          },
+          "required": [
+            "event_id",
+            "notification_id",
+            "type",
+            "severity",
+            "status",
+            "summary",
+            "age_seconds",
+            "created_at"
+          ],
+          "title": "NotificationItemPayload",
+          "type": "object"
+        },
+        "NotificationStatus": {
+          "enum": [
+            "open",
+            "acknowledged",
+            "resolved"
+          ],
+          "title": "NotificationStatus",
+          "type": "string"
+        },
+        "Severity": {
+          "enum": [
+            "info",
+            "warning",
+            "critical",
+            "blocking"
+          ],
+          "title": "Severity",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "view_type": {
+          "const": "notification-feed",
+          "default": "notification-feed",
+          "title": "View Type",
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/NotificationItemPayload"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "NotificationFeedViewPayload",
+      "type": "object"
+    }
+  }
+}
