@@ -199,6 +199,16 @@ def main():
         "--ping-db", action="store_true",
         help="Smoke-test the Postgres connection and exit (no schedule rendered)",
     )
+    parser.add_argument(
+        "--seed-postgres", action="store_true",
+        help="After computing the schedule, insert it into Postgres "
+             "(home_builder.project + .phase + .milestone). Returns the new project UUID. "
+             "Used for staging bootstrap + round-trip tests.",
+    )
+    parser.add_argument(
+        "--customer-name", default="TBD",
+        help="Customer name to record on the project row when --seed-postgres is set",
+    )
     args = parser.parse_args()
 
     # --ping-db short-circuit: doesn't need project_name or any of the date anchors
@@ -274,6 +284,34 @@ def main():
         )
 
     drop_deads = compute_drop_dead_dates(schedule)
+
+    # --seed-postgres: insert the computed schedule into Postgres before rendering
+    if args.seed_postgres:
+        if args.from_postgres:
+            print("❌ --seed-postgres is incompatible with --from-postgres "
+                  "(can't seed a schedule we just loaded from the DB)")
+            sys.exit(1)
+        from home_builder_agent.integrations.postgres import PostgresConfigError
+        from home_builder_agent.scheduling.store_postgres import seed_schedule_to_db
+        try:
+            new_project_id = seed_schedule_to_db(
+                schedule, customer_name=args.customer_name
+            )
+            print(f"✅ Seeded project to Postgres")
+            print(f"   project_id: {new_project_id}")
+            print(f"   project_name: {schedule.project_name}")
+            print(f"   phases: {len(schedule.phases)}")
+            print(f"   milestones: {len(schedule.milestones)}")
+            print()
+            print(f"Read it back with:")
+            print(f"   hb-schedule \"{schedule.project_name}\" --from-postgres")
+            print()
+        except PostgresConfigError as e:
+            print(f"❌ Postgres config error: {e}")
+            sys.exit(1)
+        except Exception as e:
+            print(f"❌ Seed failed: {type(e).__name__}: {e}")
+            sys.exit(1)
 
     # Render the requested view
     if args.view == "master":

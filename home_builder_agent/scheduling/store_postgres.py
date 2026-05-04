@@ -258,6 +258,143 @@ def compose_schedule_from_db(
 # Phase write paths
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Schedule seed (insert) — used by hb-schedule --seed-postgres
+# ---------------------------------------------------------------------------
+
+def seed_schedule_to_db(
+    schedule: Schedule,
+    customer_name: str = "TBD",
+    address: str | None = None,
+    drive_folder_id: str | None = None,
+    drive_folder_path: str | None = None,
+    conn: psycopg.Connection | None = None,
+) -> str:
+    """Insert a Project + its Phases + Milestones from a computed Schedule
+    into Postgres. Returns the new project_id (UUID).
+
+    Used to bootstrap staging data and for the round-trip test:
+      compute → seed → load back → verify equivalence.
+
+    Each call creates a NEW project row (UUIDs are random). If you want
+    idempotent re-seeds for the same name, delete the existing rows first
+    (CASCADE on project_id will clean up phases + milestones).
+    """
+    own_conn = conn is None
+    if own_conn:
+        from home_builder_agent.integrations.postgres import connection
+        conn_ctx = connection(application_name="hb-schedule-seed")
+        conn = conn_ctx.__enter__()
+
+    try:
+        with conn.cursor() as cur:
+            # 1. Insert Project
+            cur.execute(
+                """
+                INSERT INTO home_builder.project (
+                    name, customer_name, address,
+                    target_completion_date, target_framing_start_date,
+                    drive_folder_id, drive_folder_path,
+                    status
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, 'active')
+                RETURNING id::text AS id
+                """,
+                (
+                    schedule.project_name,
+                    customer_name,
+                    address,
+                    schedule.target_completion_date,
+                    schedule.target_framing_start_date,
+                    drive_folder_id,
+                    drive_folder_path,
+                ),
+            )
+            row = cur.fetchone()
+            project_uuid = row["id"]
+
+            # 2. Insert Phases
+            phase_id_by_seq: dict[int, str] = {}
+            for p in schedule.phases:
+                cur.execute(
+                    """
+                    INSERT INTO home_builder.phase (
+                        project_id, phase_template_id, name, sequence_index,
+                        status, planned_start_date, planned_end_date,
+                        default_duration_days, project_override_duration_days
+                    ) VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id::text AS id
+                    """,
+                    (
+                        project_uuid,
+                        _phase_template_slug(p.template.name),
+                        p.name,
+                        p.sequence_index,
+                        p.status,
+                        p.planned_start_date,
+                        p.planned_end_date,
+                        p.template.default_duration_days,
+                        p.duration_days if p.duration_days != p.template.default_duration_days else None,
+                    ),
+                )
+                phase_row = cur.fetchone()
+                phase_id_by_seq[p.sequence_index] = phase_row["id"]
+
+            # 3. Insert Milestones — link to Phase by name match where possible
+            for m in schedule.milestones:
+                # Engine milestones reference phase via Phase.id like "phase-XX";
+                # extract the sequence_index to map to the new DB phase UUID
+                target_phase_uuid = None
+                if m.phase_id and m.phase_id.startswith("phase-"):
+                    try:
+                        seq = int(m.phase_id.replace("phase-", ""))
+                        target_phase_uuid = phase_id_by_seq.get(seq)
+                    except ValueError:
+                        target_phase_uuid = None
+
+                cur.execute(
+                    """
+                    INSERT INTO home_builder.milestone (
+                        project_id, phase_id, name, planned_date, status
+                    ) VALUES (%s::uuid, %s::uuid, %s, %s, %s)
+                    """,
+                    (
+                        project_uuid,
+                        target_phase_uuid,
+                        m.name,
+                        m.planned_date,
+                        m.status,
+                    ),
+                )
+
+        if own_conn:
+            conn.commit()
+        return project_uuid
+
+    except Exception:
+        if own_conn:
+            conn.rollback()
+        raise
+    finally:
+        if own_conn:
+            conn.close()
+
+
+def _phase_template_slug(name: str) -> str:
+    """Convert phase name → stable slug for phase_template_id.
+
+    Per Q-E in the migration review: phase_template_id is TEXT slug
+    (e.g. 'precon', 'foundation'), not a UUID FK. The slug stays stable
+    if the template table is recreated.
+    """
+    return (
+        name.lower()
+        .replace(" & ", "-and-")
+        .replace(" + ", "-plus-")
+        .replace(" ", "-")
+        .replace("/", "-")
+    )
+
+
 def save_phase_status_change(
     phase_id: str,
     status: str,
