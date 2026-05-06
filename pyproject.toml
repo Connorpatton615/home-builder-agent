@@ -17,6 +17,8 @@ dependencies = [
     "google-auth>=2.30.0",
     "google-auth-oauthlib>=1.2.0",
     "google-api-python-client>=2.140.0",
+    "pydantic>=2.0",
+    "psycopg[binary]>=3.2",
 ]
 
 [project.optional-dependencies]
@@ -46,6 +48,8 @@ hb-client-update = "home_builder_agent.agents.client_update_agent:main"
 hb-inspect = "home_builder_agent.agents.inspection_tracker:main"
 hb-log = "home_builder_agent.agents.site_log_agent:main"
 hb-waiver = "home_builder_agent.agents.lien_waiver_agent:main"
+hb-schedule = "home_builder_agent.agents.schedule_agent:main"
+hb-reconcile = "home_builder_agent.agents.reconcile_agent:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
