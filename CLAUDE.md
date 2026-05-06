@@ -145,6 +145,8 @@ Active background processes:
 - **Don't commit `.env`, `credentials.json`, `token.json`.** They're gitignored, but double-check `git status` before committing.
 - **Don't put Anthropic prompts in `core/`.** Prompts are agent-specific (Chad voice, classification rules, etc.). Keep them in the agent file that uses them.
 - **Don't create a new `find_folder_*` or `get_credentials` function.** Use the ones in `integrations/drive.py` / `core/auth.py`. The whole point of the package was to kill those duplicates.
+- **Smoke-test `ensure_*_tab` against a FRESH tracker, not an existing one.** These functions early-return if the tab already exists, which means the create-and-style code path never runs against existing trackers. Three latent foregroundColor-placement bugs in `ensure_inspections_tab` / `ensure_procurement_tab` / `ensure_project_info_tab` lived undetected for sessions because the tabs got created on existing trackers in past sessions. The fix surfaced only when `--from-tracker` triggered tab creation on a tracker that didn't have one yet. Pattern: when adding a new ensure tab, run `hb-timeline` against a throwaway spec → exercise the new tab on that fresh tracker → verify creation succeeds before merging.
+- **After merging new console_scripts, re-run `pip install -e . --break-system-packages`** on the system Python (`/Library/Frameworks/Python.framework/Versions/3.14/bin/pip3`). Editable install only materializes new entry points at install time. Without this, launchd plists pointing at the new binaries fail with exit 126 ("command not found") even though the Python module exists. Verify with `ls /Library/Frameworks/Python.framework/Versions/3.14/bin/hb-*` after every merge that adds CLIs.
 
 ## Useful commands during development
 
