@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://patton.ai/schemas/home-builder/view-models-v1.json",
-  "title": "Home Builder Service Turtle \u2014 View Model Schemas v1",
-  "description": "Canonical wire format for the six view-model payloads emitted by Home Builder Agent's Scheduling Engine. The Patton AI iOS Shell deserializes these without transformation. See docs/specs/canonical-data-model.md and patton-ai-ios docs/03_build/turtle_contract_v1.md.",
-  "version": "1.0.0",
+  "title": "Home Builder Service Turtle \u2014 Wire Format Schemas v1",
+  "description": "Canonical wire formats emitted by the Home Builder Agent for the Patton AI iOS Shell to deserialize without transformation. Covers: the six view-model payloads (master/daily/weekly/monthly/checklist-gates/notification-feed), the engine_activity audit log row, and the six SSE event types streamed by /v1/turtles/home-builder/ask/stream (discriminated by the `type` field). See docs/specs/canonical-data-model.md, docs/specs/migration_003_review.md, and patton-ai-ios docs/03_build/turtle_contract_v1.md.",
+  "version": "1.1.0",
   "definitions": {
     "MasterView": {
       "$defs": {
@@ -1240,6 +1240,729 @@
         "items"
       ],
       "title": "NotificationFeedViewPayload",
+      "type": "object"
+    },
+    "HBEngineActivity": {
+      "$defs": {
+        "ActivityOutcome": {
+          "description": "Terminal outcome of an action dispatched by hb-router.",
+          "enum": [
+            "success",
+            "partial",
+            "error",
+            "rejected"
+          ],
+          "title": "ActivityOutcome",
+          "type": "string"
+        },
+        "ActivitySurface": {
+          "description": "Where a Claude-autonomous action originated. Mirrors the SQL CHECK.",
+          "enum": [
+            "chat",
+            "voice",
+            "cli",
+            "background"
+          ],
+          "title": "ActivitySurface",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "description": "One row from home_builder.engine_activity as it surfaces to iOS.\n\nWire format for the Activity tab. Each row represents one autonomous\nClaude action through hb-router. Lookup by actor_user_id (recent-first)\nis the default; per-project filtering is via the project_id field.",
+      "properties": {
+        "id": {
+          "description": "UUID of this activity row",
+          "title": "Id",
+          "type": "string"
+        },
+        "actor_user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "auth.users id of who triggered this. Null for background actions.",
+          "title": "Actor User Id"
+        },
+        "project_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Project UUID this action affects. Null for cross-project actions.",
+          "title": "Project Id"
+        },
+        "surface": {
+          "$ref": "#/$defs/ActivitySurface"
+        },
+        "invoked_agent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Which underlying agent ran (e.g. 'hb-receipt'). Null when classified as 'unknown' (no dispatch).",
+          "title": "Invoked Agent"
+        },
+        "user_intent": {
+          "description": "Chad's original NL input \u2014 what shows as the row's primary line.",
+          "title": "User Intent",
+          "type": "string"
+        },
+        "classified_command_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Router slug ('log-receipt', 'phase-update', etc.) for filtering/grouping.",
+          "title": "Classified Command Type"
+        },
+        "parameters": {
+          "additionalProperties": true,
+          "description": "Structured params extracted by the router.",
+          "title": "Parameters",
+          "type": "object"
+        },
+        "outcome": {
+          "$ref": "#/$defs/ActivityOutcome"
+        },
+        "result_summary": {
+          "default": "",
+          "description": "Human-readable summary for the row's secondary line. Empty allowed; iOS renders no-summary case as gray italic.",
+          "title": "Result Summary",
+          "type": "string"
+        },
+        "affected_entity_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "'phase' | 'invoice' | 'change-order' | etc. \u2014 for deep-link.",
+          "title": "Affected Entity Type"
+        },
+        "affected_entity_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "UUID of the affected entity. Tap to navigate to its detail screen.",
+          "title": "Affected Entity Id"
+        },
+        "cost_usd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Anthropic API cost for this single activity.",
+          "title": "Cost Usd"
+        },
+        "duration_ms": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Wall-clock duration end-to-end.",
+          "title": "Duration Ms"
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "If outcome=error or partial, what failed (plain text, not stack trace).",
+          "title": "Error Message"
+        },
+        "created_at": {
+          "description": "When the activity row was inserted.",
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "surface",
+        "user_intent",
+        "outcome",
+        "created_at"
+      ],
+      "title": "HBEngineActivityPayload",
+      "type": "object"
+    },
+    "HBAskStreamEnvelope": {
+      "$defs": {
+        "HBAskCitationAddedEvent": {
+          "additionalProperties": false,
+          "description": "A Drive file was opened (read_drive_file). Render as a citation chip immediately.",
+          "properties": {
+            "type": {
+              "const": "citation_added",
+              "default": "citation_added",
+              "title": "Type",
+              "type": "string"
+            },
+            "file_id": {
+              "title": "File Id",
+              "type": "string"
+            },
+            "name": {
+              "description": "Drive file display name (e.g. 'Tracker \u2013 Whitfield Residence').",
+              "title": "Name",
+              "type": "string"
+            },
+            "webViewLink": {
+              "description": "Direct Drive URL the chip opens on tap.",
+              "title": "Webviewlink",
+              "type": "string"
+            }
+          },
+          "required": [
+            "file_id",
+            "name",
+            "webViewLink"
+          ],
+          "title": "HBAskCitationAddedEvent",
+          "type": "object"
+        },
+        "HBAskErrorEvent": {
+          "additionalProperties": false,
+          "description": "Terminal event. Stream encountered an error before completing.",
+          "properties": {
+            "type": {
+              "const": "error",
+              "default": "error",
+              "title": "Type",
+              "type": "string"
+            },
+            "error_type": {
+              "description": "Pythonic exception class name or domain-specific code (e.g. 'AuthenticationError', 'MaxIterationsReached', 'stream_expired').",
+              "title": "Error Type",
+              "type": "string"
+            },
+            "message": {
+              "title": "Message",
+              "type": "string"
+            }
+          },
+          "required": [
+            "error_type",
+            "message"
+          ],
+          "title": "HBAskErrorEvent",
+          "type": "object"
+        },
+        "HBAskMessageCompleteEvent": {
+          "additionalProperties": false,
+          "description": "Terminal event. Full final answer + citations + cost + duration.",
+          "properties": {
+            "type": {
+              "const": "message_complete",
+              "default": "message_complete",
+              "title": "Type",
+              "type": "string"
+            },
+            "answer": {
+              "title": "Answer",
+              "type": "string"
+            },
+            "citations": {
+              "description": "All citations from this answer. Same shape as citation_added events.",
+              "items": {
+                "$ref": "#/$defs/HBAskCitationAddedEvent"
+              },
+              "title": "Citations",
+              "type": "array"
+            },
+            "tools_called": {
+              "description": "Audit log of tools invoked: [{name, input, duration_ms}, ...]",
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "title": "Tools Called",
+              "type": "array"
+            },
+            "model": {
+              "title": "Model",
+              "type": "string"
+            },
+            "cost_usd": {
+              "minimum": 0,
+              "title": "Cost Usd",
+              "type": "number"
+            },
+            "duration_ms": {
+              "minimum": 0,
+              "title": "Duration Ms",
+              "type": "integer"
+            },
+            "input_tokens": {
+              "minimum": 0,
+              "title": "Input Tokens",
+              "type": "integer"
+            },
+            "output_tokens": {
+              "minimum": 0,
+              "title": "Output Tokens",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "answer",
+            "model",
+            "cost_usd",
+            "duration_ms",
+            "input_tokens",
+            "output_tokens"
+          ],
+          "title": "HBAskMessageCompleteEvent",
+          "type": "object"
+        },
+        "HBAskTextDeltaEvent": {
+          "additionalProperties": false,
+          "description": "A token batch from Claude as it composes the answer.",
+          "properties": {
+            "type": {
+              "const": "text_delta",
+              "default": "text_delta",
+              "title": "Type",
+              "type": "string"
+            },
+            "delta": {
+              "description": "Token text to append to the active answer bubble.",
+              "title": "Delta",
+              "type": "string"
+            }
+          },
+          "required": [
+            "delta"
+          ],
+          "title": "HBAskTextDeltaEvent",
+          "type": "object"
+        },
+        "HBAskToolResultEvent": {
+          "additionalProperties": false,
+          "description": "Tool returned. Surface as a status update; full result feeds Claude's next turn server-side.",
+          "properties": {
+            "type": {
+              "const": "tool_result",
+              "default": "tool_result",
+              "title": "Type",
+              "type": "string"
+            },
+            "id": {
+              "description": "Matches the corresponding tool_use event's id.",
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "duration_ms": {
+              "minimum": 0,
+              "title": "Duration Ms",
+              "type": "integer"
+            },
+            "summary": {
+              "description": "One-line summary, truncated to ~160 chars.",
+              "title": "Summary",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "duration_ms",
+            "summary"
+          ],
+          "title": "HBAskToolResultEvent",
+          "type": "object"
+        },
+        "HBAskToolUseEvent": {
+          "additionalProperties": false,
+          "description": "Claude invoked a tool. Surface as a 'thinking\u2026' indicator with the tool name.",
+          "properties": {
+            "type": {
+              "const": "tool_use",
+              "default": "tool_use",
+              "title": "Type",
+              "type": "string"
+            },
+            "id": {
+              "description": "Anthropic tool_use block id; pairs this event with the matching tool_result.",
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "description": "Tool name (e.g. 'list_projects', 'search_drive').",
+              "title": "Name",
+              "type": "string"
+            },
+            "input": {
+              "additionalProperties": true,
+              "description": "Full tool input.",
+              "title": "Input",
+              "type": "object"
+            }
+          },
+          "required": [
+            "id",
+            "name"
+          ],
+          "title": "HBAskToolUseEvent",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Full SSE event as it's surfaced to clients \u2014 id + type discriminator + payload.\n\nThe engine emits (event_id, event_type, payload) tuples. The route handler\nserializes them into SSE wire format (id: ..., event: ..., data: {...}).\niOS reconstructs an envelope per emitted event by combining the SSE id +\nevent lines with the data payload. Pinning the envelope as a Pydantic model\nso iOS Codable matches what's actually on the wire.",
+      "properties": {
+        "event_id": {
+          "description": "Monotonic per-stream ID. Matches SSE 'id:' line.",
+          "minimum": 1,
+          "title": "Event Id",
+          "type": "integer"
+        },
+        "event": {
+          "discriminator": {
+            "mapping": {
+              "citation_added": "#/$defs/HBAskCitationAddedEvent",
+              "error": "#/$defs/HBAskErrorEvent",
+              "message_complete": "#/$defs/HBAskMessageCompleteEvent",
+              "text_delta": "#/$defs/HBAskTextDeltaEvent",
+              "tool_result": "#/$defs/HBAskToolResultEvent",
+              "tool_use": "#/$defs/HBAskToolUseEvent"
+            },
+            "propertyName": "type"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/HBAskTextDeltaEvent"
+            },
+            {
+              "$ref": "#/$defs/HBAskToolUseEvent"
+            },
+            {
+              "$ref": "#/$defs/HBAskToolResultEvent"
+            },
+            {
+              "$ref": "#/$defs/HBAskCitationAddedEvent"
+            },
+            {
+              "$ref": "#/$defs/HBAskMessageCompleteEvent"
+            },
+            {
+              "$ref": "#/$defs/HBAskErrorEvent"
+            }
+          ],
+          "title": "Event"
+        }
+      },
+      "required": [
+        "event_id",
+        "event"
+      ],
+      "title": "HBAskStreamEventEnvelope",
+      "type": "object"
+    },
+    "HBAskTextDelta": {
+      "additionalProperties": false,
+      "description": "A token batch from Claude as it composes the answer.",
+      "properties": {
+        "type": {
+          "const": "text_delta",
+          "default": "text_delta",
+          "title": "Type",
+          "type": "string"
+        },
+        "delta": {
+          "description": "Token text to append to the active answer bubble.",
+          "title": "Delta",
+          "type": "string"
+        }
+      },
+      "required": [
+        "delta"
+      ],
+      "title": "HBAskTextDeltaEvent",
+      "type": "object"
+    },
+    "HBAskToolUse": {
+      "additionalProperties": false,
+      "description": "Claude invoked a tool. Surface as a 'thinking\u2026' indicator with the tool name.",
+      "properties": {
+        "type": {
+          "const": "tool_use",
+          "default": "tool_use",
+          "title": "Type",
+          "type": "string"
+        },
+        "id": {
+          "description": "Anthropic tool_use block id; pairs this event with the matching tool_result.",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "description": "Tool name (e.g. 'list_projects', 'search_drive').",
+          "title": "Name",
+          "type": "string"
+        },
+        "input": {
+          "additionalProperties": true,
+          "description": "Full tool input.",
+          "title": "Input",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "HBAskToolUseEvent",
+      "type": "object"
+    },
+    "HBAskToolResult": {
+      "additionalProperties": false,
+      "description": "Tool returned. Surface as a status update; full result feeds Claude's next turn server-side.",
+      "properties": {
+        "type": {
+          "const": "tool_result",
+          "default": "tool_result",
+          "title": "Type",
+          "type": "string"
+        },
+        "id": {
+          "description": "Matches the corresponding tool_use event's id.",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "duration_ms": {
+          "minimum": 0,
+          "title": "Duration Ms",
+          "type": "integer"
+        },
+        "summary": {
+          "description": "One-line summary, truncated to ~160 chars.",
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "duration_ms",
+        "summary"
+      ],
+      "title": "HBAskToolResultEvent",
+      "type": "object"
+    },
+    "HBAskCitationAdded": {
+      "additionalProperties": false,
+      "description": "A Drive file was opened (read_drive_file). Render as a citation chip immediately.",
+      "properties": {
+        "type": {
+          "const": "citation_added",
+          "default": "citation_added",
+          "title": "Type",
+          "type": "string"
+        },
+        "file_id": {
+          "title": "File Id",
+          "type": "string"
+        },
+        "name": {
+          "description": "Drive file display name (e.g. 'Tracker \u2013 Whitfield Residence').",
+          "title": "Name",
+          "type": "string"
+        },
+        "webViewLink": {
+          "description": "Direct Drive URL the chip opens on tap.",
+          "title": "Webviewlink",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file_id",
+        "name",
+        "webViewLink"
+      ],
+      "title": "HBAskCitationAddedEvent",
+      "type": "object"
+    },
+    "HBAskMessageComplete": {
+      "$defs": {
+        "HBAskCitationAddedEvent": {
+          "additionalProperties": false,
+          "description": "A Drive file was opened (read_drive_file). Render as a citation chip immediately.",
+          "properties": {
+            "type": {
+              "const": "citation_added",
+              "default": "citation_added",
+              "title": "Type",
+              "type": "string"
+            },
+            "file_id": {
+              "title": "File Id",
+              "type": "string"
+            },
+            "name": {
+              "description": "Drive file display name (e.g. 'Tracker \u2013 Whitfield Residence').",
+              "title": "Name",
+              "type": "string"
+            },
+            "webViewLink": {
+              "description": "Direct Drive URL the chip opens on tap.",
+              "title": "Webviewlink",
+              "type": "string"
+            }
+          },
+          "required": [
+            "file_id",
+            "name",
+            "webViewLink"
+          ],
+          "title": "HBAskCitationAddedEvent",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Terminal event. Full final answer + citations + cost + duration.",
+      "properties": {
+        "type": {
+          "const": "message_complete",
+          "default": "message_complete",
+          "title": "Type",
+          "type": "string"
+        },
+        "answer": {
+          "title": "Answer",
+          "type": "string"
+        },
+        "citations": {
+          "description": "All citations from this answer. Same shape as citation_added events.",
+          "items": {
+            "$ref": "#/$defs/HBAskCitationAddedEvent"
+          },
+          "title": "Citations",
+          "type": "array"
+        },
+        "tools_called": {
+          "description": "Audit log of tools invoked: [{name, input, duration_ms}, ...]",
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Tools Called",
+          "type": "array"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "cost_usd": {
+          "minimum": 0,
+          "title": "Cost Usd",
+          "type": "number"
+        },
+        "duration_ms": {
+          "minimum": 0,
+          "title": "Duration Ms",
+          "type": "integer"
+        },
+        "input_tokens": {
+          "minimum": 0,
+          "title": "Input Tokens",
+          "type": "integer"
+        },
+        "output_tokens": {
+          "minimum": 0,
+          "title": "Output Tokens",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "answer",
+        "model",
+        "cost_usd",
+        "duration_ms",
+        "input_tokens",
+        "output_tokens"
+      ],
+      "title": "HBAskMessageCompleteEvent",
+      "type": "object"
+    },
+    "HBAskError": {
+      "additionalProperties": false,
+      "description": "Terminal event. Stream encountered an error before completing.",
+      "properties": {
+        "type": {
+          "const": "error",
+          "default": "error",
+          "title": "Type",
+          "type": "string"
+        },
+        "error_type": {
+          "description": "Pythonic exception class name or domain-specific code (e.g. 'AuthenticationError', 'MaxIterationsReached', 'stream_expired').",
+          "title": "Error Type",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "error_type",
+        "message"
+      ],
+      "title": "HBAskErrorEvent",
       "type": "object"
     }
   }

@@ -73,9 +73,15 @@ INVOICE_SIGNAL_WORDS = [          # subject/snippet keywords that flag invoice e
 # Google OAuth
 # ---------------------------------------------------------------------
 
-# Credentials live in the project root next to .env (gitignored, never committed)
-CREDENTIALS_FILE = "credentials.json"
-TOKEN_FILE = "token.json"
+# Credentials live in the project root next to .env (gitignored, never committed).
+# Resolve to absolute paths so the engine works regardless of caller's cwd —
+# launchd plists set WorkingDirectory to the repo, but cross-process callers
+# (e.g., the iOS shell's FastAPI importing home_builder_agent) run from their
+# own cwd and need the absolute paths.
+from pathlib import Path as _Path
+_PACKAGE_ROOT = _Path(__file__).resolve().parent.parent
+CREDENTIALS_FILE = str(_PACKAGE_ROOT / "credentials.json")
+TOKEN_FILE = str(_PACKAGE_ROOT / "token.json")
 
 # Full scope set — every agent gets every scope so a single token.json works
 # across all of them. The Gmail agent NEEDS gmail.readonly; the others don't,

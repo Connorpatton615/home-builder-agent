@@ -28,9 +28,9 @@ Cross-references:
 
 from __future__ import annotations
 
-from datetime import date as _date
+from datetime import date as _date, datetime as _datetime
 from enum import Enum
-from typing import Literal
+from typing import Annotated, Any, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -383,34 +383,242 @@ ViewPayload = (
 
 
 # ---------------------------------------------------------------------------
+# HBEngineActivity — audit log row for /v1/turtles/home-builder/activity
+# ---------------------------------------------------------------------------
+#
+# Shape mirrors home_builder.engine_activity from migration 003. Returned as
+# a list payload from the route handler with pagination params.
+
+class ActivitySurface(str, Enum):
+    """Where a Claude-autonomous action originated. Mirrors the SQL CHECK."""
+    CHAT = "chat"
+    VOICE = "voice"
+    CLI = "cli"
+    BACKGROUND = "background"
+
+
+class ActivityOutcome(str, Enum):
+    """Terminal outcome of an action dispatched by hb-router."""
+    SUCCESS = "success"
+    PARTIAL = "partial"
+    ERROR = "error"
+    REJECTED = "rejected"
+
+
+class HBEngineActivityPayload(_Base):
+    """One row from home_builder.engine_activity as it surfaces to iOS.
+
+    Wire format for the Activity tab. Each row represents one autonomous
+    Claude action through hb-router. Lookup by actor_user_id (recent-first)
+    is the default; per-project filtering is via the project_id field.
+    """
+
+    id: str = Field(description="UUID of this activity row")
+    actor_user_id: str | None = Field(
+        default=None,
+        description="auth.users id of who triggered this. Null for background actions.",
+    )
+    project_id: str | None = Field(
+        default=None,
+        description="Project UUID this action affects. Null for cross-project actions.",
+    )
+    surface: ActivitySurface
+    invoked_agent: str | None = Field(
+        default=None,
+        description="Which underlying agent ran (e.g. 'hb-receipt'). Null when classified as 'unknown' (no dispatch).",
+    )
+    user_intent: str = Field(
+        description="Chad's original NL input — what shows as the row's primary line.",
+    )
+    classified_command_type: str | None = Field(
+        default=None,
+        description="Router slug ('log-receipt', 'phase-update', etc.) for filtering/grouping.",
+    )
+    parameters: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Structured params extracted by the router.",
+    )
+    outcome: ActivityOutcome
+    result_summary: str = Field(
+        default="",
+        description="Human-readable summary for the row's secondary line. Empty allowed; iOS renders no-summary case as gray italic.",
+    )
+    affected_entity_type: str | None = Field(
+        default=None,
+        description="'phase' | 'invoice' | 'change-order' | etc. — for deep-link.",
+    )
+    affected_entity_id: str | None = Field(
+        default=None,
+        description="UUID of the affected entity. Tap to navigate to its detail screen.",
+    )
+    cost_usd: float | None = Field(
+        default=None,
+        description="Anthropic API cost for this single activity.",
+    )
+    duration_ms: int | None = Field(
+        default=None,
+        description="Wall-clock duration end-to-end.",
+    )
+    error_message: str | None = Field(
+        default=None,
+        description="If outcome=error or partial, what failed (plain text, not stack trace).",
+    )
+    created_at: _datetime = Field(description="When the activity row was inserted.")
+
+
+# ---------------------------------------------------------------------------
+# HBAskStreamEvent — discriminated union over the 6 SSE event types
+# ---------------------------------------------------------------------------
+#
+# Per migration_003_review.md § SSE stream contract. The engine yields
+# (event_id, event_type, payload) tuples; the route handler serializes
+# them into SSE wire format. iOS-side, each event's `data:` JSON parses
+# as one of these typed payloads. The discriminator is the SSE `event:`
+# line value, copied into the `type` field on the payload.
+#
+# All six event types share the discriminator field name `type` (literal
+# const) so a Swift Codable enum can switch on it cleanly.
+
+class HBAskTextDeltaEvent(_Base):
+    """A token batch from Claude as it composes the answer."""
+    type: Literal["text_delta"] = "text_delta"
+    delta: str = Field(description="Token text to append to the active answer bubble.")
+
+
+class HBAskToolUseEvent(_Base):
+    """Claude invoked a tool. Surface as a 'thinking…' indicator with the tool name."""
+    type: Literal["tool_use"] = "tool_use"
+    id: str = Field(description="Anthropic tool_use block id; pairs this event with the matching tool_result.")
+    name: str = Field(description="Tool name (e.g. 'list_projects', 'search_drive').")
+    input: dict[str, Any] = Field(default_factory=dict, description="Full tool input.")
+
+
+class HBAskToolResultEvent(_Base):
+    """Tool returned. Surface as a status update; full result feeds Claude's next turn server-side."""
+    type: Literal["tool_result"] = "tool_result"
+    id: str = Field(description="Matches the corresponding tool_use event's id.")
+    name: str
+    duration_ms: int = Field(ge=0)
+    summary: str = Field(description="One-line summary, truncated to ~160 chars.")
+
+
+class HBAskCitationAddedEvent(_Base):
+    """A Drive file was opened (read_drive_file). Render as a citation chip immediately."""
+    type: Literal["citation_added"] = "citation_added"
+    file_id: str
+    name: str = Field(description="Drive file display name (e.g. 'Tracker – Whitfield Residence').")
+    webViewLink: str = Field(description="Direct Drive URL the chip opens on tap.")
+
+
+class HBAskMessageCompleteEvent(_Base):
+    """Terminal event. Full final answer + citations + cost + duration."""
+    type: Literal["message_complete"] = "message_complete"
+    answer: str
+    citations: list[HBAskCitationAddedEvent] = Field(
+        default_factory=list,
+        description="All citations from this answer. Same shape as citation_added events.",
+    )
+    tools_called: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Audit log of tools invoked: [{name, input, duration_ms}, ...]",
+    )
+    model: str
+    cost_usd: float = Field(ge=0)
+    duration_ms: int = Field(ge=0)
+    input_tokens: int = Field(ge=0)
+    output_tokens: int = Field(ge=0)
+
+
+class HBAskErrorEvent(_Base):
+    """Terminal event. Stream encountered an error before completing."""
+    type: Literal["error"] = "error"
+    error_type: str = Field(
+        description="Pythonic exception class name or domain-specific code "
+                    "(e.g. 'AuthenticationError', 'MaxIterationsReached', 'stream_expired').",
+    )
+    message: str
+
+
+# Discriminated union — Pydantic v2 picks the right model based on `type`.
+# iOS-side: this becomes a `HBAskStreamEvent` Swift enum with associated values
+# per case, decoded via `init(from decoder:)` switching on the `type` field.
+HBAskStreamEvent = Annotated[
+    Union[
+        HBAskTextDeltaEvent,
+        HBAskToolUseEvent,
+        HBAskToolResultEvent,
+        HBAskCitationAddedEvent,
+        HBAskMessageCompleteEvent,
+        HBAskErrorEvent,
+    ],
+    Field(discriminator="type"),
+]
+
+
+class HBAskStreamEventEnvelope(_Base):
+    """Full SSE event as it's surfaced to clients — id + type discriminator + payload.
+
+    The engine emits (event_id, event_type, payload) tuples. The route handler
+    serializes them into SSE wire format (id: ..., event: ..., data: {...}).
+    iOS reconstructs an envelope per emitted event by combining the SSE id +
+    event lines with the data payload. Pinning the envelope as a Pydantic model
+    so iOS Codable matches what's actually on the wire.
+    """
+
+    event_id: int = Field(ge=1, description="Monotonic per-stream ID. Matches SSE 'id:' line.")
+    event: HBAskStreamEvent
+
+
+# ---------------------------------------------------------------------------
 # JSON Schema export (called by docs/specs build pipeline)
 # ---------------------------------------------------------------------------
 
 def export_combined_json_schema() -> dict:
-    """Build a single JSON Schema document covering all six view-model shapes.
+    """Build a single JSON Schema document covering all canonical wire formats.
 
     Output is suitable for Swift Codable generation, OpenAPI extension, or any
-    other downstream type-generation tool.
+    other downstream type-generation tool. iOS-side, all wire types come out
+    of this single artifact — no other source of truth.
+
+    Sections:
+      - Six view-model payloads (master/daily/weekly/monthly + checklist/notification stubs)
+      - HBEngineActivity (audit log row for /activity)
+      - Six HBAskStream event payloads + the discriminated-union envelope
+        (for /ask/stream SSE consumer)
     """
     schemas = {
+        # View models
         "MasterView": MasterViewPayload.model_json_schema(),
         "DailyView": DailyViewPayload.model_json_schema(),
         "WeeklyView": WeeklyViewPayload.model_json_schema(),
         "MonthlyView": MonthlyViewPayload.model_json_schema(),
         "ChecklistGatesView": ChecklistGatesViewPayload.model_json_schema(),
         "NotificationFeedView": NotificationFeedViewPayload.model_json_schema(),
+        # Activity log
+        "HBEngineActivity": HBEngineActivityPayload.model_json_schema(),
+        # SSE stream events (discriminated by `type`)
+        "HBAskStreamEnvelope": HBAskStreamEventEnvelope.model_json_schema(),
+        "HBAskTextDelta": HBAskTextDeltaEvent.model_json_schema(),
+        "HBAskToolUse": HBAskToolUseEvent.model_json_schema(),
+        "HBAskToolResult": HBAskToolResultEvent.model_json_schema(),
+        "HBAskCitationAdded": HBAskCitationAddedEvent.model_json_schema(),
+        "HBAskMessageComplete": HBAskMessageCompleteEvent.model_json_schema(),
+        "HBAskError": HBAskErrorEvent.model_json_schema(),
     }
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": "https://patton.ai/schemas/home-builder/view-models-v1.json",
-        "title": "Home Builder Service Turtle — View Model Schemas v1",
+        "title": "Home Builder Service Turtle — Wire Format Schemas v1",
         "description": (
-            "Canonical wire format for the six view-model payloads emitted by "
-            "Home Builder Agent's Scheduling Engine. The Patton AI iOS Shell "
-            "deserializes these without transformation. See "
-            "docs/specs/canonical-data-model.md and "
-            "patton-ai-ios docs/03_build/turtle_contract_v1.md."
+            "Canonical wire formats emitted by the Home Builder Agent for the "
+            "Patton AI iOS Shell to deserialize without transformation. Covers: "
+            "the six view-model payloads (master/daily/weekly/monthly/checklist-gates/"
+            "notification-feed), the engine_activity audit log row, and the six "
+            "SSE event types streamed by /v1/turtles/home-builder/ask/stream "
+            "(discriminated by the `type` field). See "
+            "docs/specs/canonical-data-model.md, docs/specs/migration_003_review.md, "
+            "and patton-ai-ios docs/03_build/turtle_contract_v1.md."
         ),
-        "version": "1.0.0",
+        "version": "1.1.0",
         "definitions": schemas,
     }
