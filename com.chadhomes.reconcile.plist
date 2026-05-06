@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd job for the engine reconcile pass.
+
+  Fires every 60 seconds, sources the project .env (DATABASE_URL etc.),
+  and runs hb-reconcile. Picks up any UserAction rows the iOS shell has
+  inserted into home_builder.user_action since the last watermark, dispatches
+  them to engine handlers, advances the watermark.
+
+  Watermark: .reconcile_watermark.json in the project root. Persists
+  across runs.
+
+  Install:
+    cp com.chadhomes.reconcile.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.chadhomes.reconcile.plist
+
+  Stop / unload:
+    launchctl unload ~/Library/LaunchAgents/com.chadhomes.reconcile.plist
+
+  Run immediately (for testing):
+    launchctl start com.chadhomes.reconcile
+
+  Inspect:
+    launchctl list | grep chadhomes
+    tail -f /tmp/reconcile.stdout.log
+    tail -f /tmp/reconcile.stderr.log
+
+  Cadence note: 60s is fine for v0 — reconcile is cheap (one indexed
+  scan + tiny dispatch per action) and most polls find nothing to do.
+  If log volume becomes annoying, throttle to 300s. If we ever need
+  sub-second latency, switch to Postgres LISTEN/NOTIFY (Phase B work).
+
+  Phase B note: when home-builder migrates off Mac Mini to Modal/Railway
+  workers, this plist gets deleted and replaced by a worker schedule.
+  The hb-reconcile binary itself doesn't change.
+
+  Exit codes (from reconcile_agent.main):
+    0 — pass completed cleanly (any combination of applied/skipped/unknown rows)
+    2 — pass crashed (DB unreachable, etc.) — launchd retries on next interval
+    3 — pass had handler errors that will retry next run (rows did NOT
+        advance the watermark; safe to leave running)
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.chadhomes.reconcile</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>set -a; source /Users/connorpattonequipassid/Projects/home-builder-agent/.env; set +a; exec /Library/Frameworks/Python.framework/Versions/3.14/bin/hb-reconcile</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/connorpattonequipassid/Projects/home-builder-agent</string>
+
+  <!-- Every 60 seconds -->
+  <key>StartInterval</key>
+  <integer>60</integer>
+
+  <!-- Fire on load too, so installing the plist immediately starts the loop -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/reconcile.stdout.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/reconcile.stderr.log</string>
+</dict>
+</plist>

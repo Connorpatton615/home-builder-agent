@@ -280,12 +280,17 @@ def main():
         description="Generate and draft a homeowner weekly project update email."
     )
     parser.add_argument(
-        "--to", required=True,
-        help="Homeowner email address"
+        "--to", default=None,
+        help="Homeowner email address (or use --from-tracker)"
     )
     parser.add_argument(
-        "--client-name", required=True, dest="client_name",
-        help='Homeowner name(s), e.g. "John & Mary Smith"'
+        "--client-name", default=None, dest="client_name",
+        help='Homeowner name(s), e.g. "John & Mary Smith" (or use --from-tracker)'
+    )
+    parser.add_argument(
+        "--from-tracker", action="store_true", dest="from_tracker",
+        help="Read recipient + name from the Tracker's Project Info tab "
+             "(use this when running from a cron — no flags needed)"
     )
     parser.add_argument(
         "--send", action="store_true",
@@ -299,8 +304,11 @@ def main():
 
     today = date.today()
 
-    print(f"Client update email — {args.client_name} <{args.to}>")
-    print(f"Mode: {'DRY RUN' if args.dry_run else 'SEND' if args.send else 'DRAFT'}\n")
+    # Validate recipient source — must have either explicit flags OR --from-tracker
+    if not args.from_tracker and (not args.to or not args.client_name):
+        parser.error(
+            "must provide either (--to AND --client-name) OR --from-tracker"
+        )
 
     print("Authenticating...")
     creds = get_credentials()
@@ -313,6 +321,32 @@ def main():
     tracker = drive.find_latest_tracker(drive_svc, DRIVE_FOLDER_PATH)
     project_name = drive.extract_project_name(tracker["name"])
     print(f"  Project: {project_name}")
+
+    # Resolve recipient — flags override Tracker, then fallback to Tracker if --from-tracker
+    recipient_email = args.to
+    recipient_name = args.client_name
+    if args.from_tracker:
+        print("Reading Project Info tab...")
+        info = sheets.read_project_info(sheets_svc, tracker["id"])
+        if not info:
+            print(f"  ⚠️  No Project Info tab on Tracker. Run hb-finance-style setup or fill the tab first.")
+            print(f"  → Adding empty Project Info tab now; please populate Customer Name + Customer Email and re-run.")
+            sheets.ensure_project_info_tab(sheets_svc, tracker["id"])
+            sys.exit(1)
+        # Fall back to Tracker values when CLI flags weren't passed
+        if not recipient_email:
+            recipient_email = info.get("Customer Email", "").strip()
+        if not recipient_name:
+            recipient_name = info.get("Customer Name", "").strip()
+        print(f"  Customer Name:  {recipient_name or '(empty)'}")
+        print(f"  Customer Email: {recipient_email or '(empty)'}")
+        if not recipient_email or not recipient_name:
+            print(f"\n❌ Project Info tab is missing Customer Name and/or Customer Email.")
+            print(f"   Open the Tracker's 'Project Info' tab and fill column B for both fields, then re-run.")
+            sys.exit(1)
+
+    print(f"\nClient update email — {recipient_name} <{recipient_email}>")
+    print(f"Mode: {'DRY RUN' if args.dry_run else 'SEND' if args.send else 'DRAFT'}\n")
 
     print("Reading schedule...")
     phases = sheets.read_master_schedule(sheets_svc, tracker["id"])
@@ -335,7 +369,7 @@ def main():
 
     print(f"\nGenerating email via {WRITER_MODEL}...")
     subject, html_body, usage = generate_client_email(
-        client, project_name, args.client_name, snapshot, recent_cos, today
+        client, project_name, recipient_name, snapshot, recent_cos, today
     )
 
     usd = sonnet_cost(usage)["total"]
@@ -343,7 +377,7 @@ def main():
     print(f"\n{'='*60}")
     print("CLIENT UPDATE EMAIL")
     print(f"{'='*60}")
-    print(f"To:      {args.to}")
+    print(f"To:      {recipient_email}")
     print(f"Subject: {subject}")
     print()
 
@@ -365,19 +399,19 @@ def main():
         print("Sending email...")
         result = gmail.send_email(
             gmail_svc,
-            to=args.to,
+            to=recipient_email,
             subject=subject,
             html_body=html_body,
             sender_name=sender_name,
         )
         print(f"  Sent. Message ID: {result.get('id')}")
         print(f"\n{'='*60}")
-        print(f"Email sent to {args.to}")
+        print(f"Email sent to {recipient_email}")
     else:
         print("Creating Gmail draft...")
         result = gmail.create_draft(
             gmail_svc,
-            to=args.to,
+            to=recipient_email,
             subject=subject,
             html_body=html_body,
             sender_name=sender_name,

@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd job for the weekly client update email.
+
+  Fires once a week — Monday at 7:00 AM — sources the project .env, and
+  runs `hb-client-update --from-tracker --send`. The agent reads the
+  homeowner's name + email from the Tracker's "Project Info" tab (column B
+  of rows "Customer Name" and "Customer Email"), composes a polished
+  weekly status email in Chad's voice, and sends it directly.
+
+  PREREQUISITE: the Tracker's Project Info tab must be populated. On
+  first install, run `hb-client-update --from-tracker` once interactively;
+  if the tab is missing it gets created with empty fields, and the agent
+  exits with a clear error telling Chad to fill in column B.
+
+  Install:
+    cp com.chadhomes.client-update.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.chadhomes.client-update.plist
+
+  Stop / unload:
+    launchctl unload ~/Library/LaunchAgents/com.chadhomes.client-update.plist
+
+  Run immediately (for testing):
+    launchctl start com.chadhomes.client-update
+
+  Inspect:
+    launchctl list | grep chadhomes
+    tail -f /tmp/client-update.stdout.log
+    tail -f /tmp/client-update.stderr.log
+
+  To change delivery time: edit StartCalendarInterval Hour/Minute/Weekday
+  and reload the plist.
+
+  Weekday values: 0 = Sunday, 1 = Monday, 2 = Tuesday, ... 6 = Saturday.
+
+  Mac sleeping at 7 AM Monday: launchd fires as soon as it wakes — the
+  email lands a bit late but Chad still gets it. If it's been off all of
+  Monday, the run is skipped (KeepAlive is false).
+
+  GOOGLE AUTH NOTE: hb-client-update --send needs gmail.send scope. If
+  it's the first time this runs after a config.py scope change, delete
+  token.json and re-authenticate interactively first.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.chadhomes.client-update</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>set -a; source /Users/connorpattonequipassid/Projects/home-builder-agent/.env; set +a; exec /Library/Frameworks/Python.framework/Versions/3.14/bin/hb-client-update --from-tracker --send</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/connorpattonequipassid/Projects/home-builder-agent</string>
+
+  <!-- Mondays at 7:00 AM -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key>
+    <integer>1</integer>
+    <key>Hour</key>
+    <integer>7</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <!-- Don't fire at load time — only at the scheduled day/hour -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/client-update.stdout.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/client-update.stderr.log</string>
+</dict>
+</plist>

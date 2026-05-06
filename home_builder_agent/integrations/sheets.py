@@ -1358,12 +1358,14 @@ def ensure_procurement_tab(sheets_svc, sheet_id: str) -> int:
                         },
                         "cell": {
                             "userEnteredFormat": {
-                                "textFormat": {"bold": True},
                                 "backgroundColor": {"red": 0.18, "green": 0.18, "blue": 0.18},
-                                "foregroundColor": {"red": 1, "green": 1, "blue": 1},
+                                "textFormat": {
+                                    "bold": True,
+                                    "foregroundColor": {"red": 1, "green": 1, "blue": 1},
+                                },
                             }
                         },
-                        "fields": "userEnteredFormat(textFormat,backgroundColor,foregroundColor)",
+                        "fields": "userEnteredFormat(backgroundColor,textFormat)",
                     }
                 },
             ]
@@ -1473,12 +1475,14 @@ def ensure_inspections_tab(sheets_svc, sheet_id: str) -> int:
                         },
                         "cell": {
                             "userEnteredFormat": {
-                                "textFormat": {"bold": True},
                                 "backgroundColor": {"red": 0.18, "green": 0.18, "blue": 0.18},
-                                "foregroundColor": {"red": 1, "green": 1, "blue": 1},
+                                "textFormat": {
+                                    "bold": True,
+                                    "foregroundColor": {"red": 1, "green": 1, "blue": 1},
+                                },
                             }
                         },
-                        "fields": "userEnteredFormat(textFormat,backgroundColor,foregroundColor)",
+                        "fields": "userEnteredFormat(backgroundColor,textFormat)",
                     }
                 },
             ]
@@ -1534,3 +1538,150 @@ def log_inspection_record(sheets_svc, sheet_id: str, record: dict) -> None:
         insertDataOption="INSERT_ROWS",
         body={"values": [row]},
     ).execute()
+
+
+# ---------------------------------------------------------------------------
+# Project Info tab — single-source for client/project metadata
+# ---------------------------------------------------------------------------
+#
+# Used by per-project agents that need client name + email without per-call
+# CLI flags (e.g., the weekly client-update cron). Pattern mirrors the
+# Project Info tab on Spec Sheet 2026.xlsx — one row per field, values in
+# column B.
+
+PROJECT_INFO_TAB = "Project Info"
+
+PROJECT_INFO_FIELDS = [
+    ("Customer Name", ""),
+    ("Customer Email", ""),
+    ("Customer Phone", ""),
+    ("Project Address", ""),
+    ("Job Code", ""),
+    ("Builder", "Palmetto Custom Homes"),
+    ("Notes", ""),
+]
+
+
+def ensure_project_info_tab(sheets_svc, sheet_id: str) -> int:
+    """Find or create the 'Project Info' tab on a Tracker. Returns its sheetId.
+
+    On creation, seeds the tab with the canonical field names in column A
+    and empty values (or sensible defaults) in column B. Chad fills in
+    column B once per project; agents read those values.
+    """
+    meta = sheets_svc.spreadsheets().get(spreadsheetId=sheet_id).execute()
+    existing = {s["properties"]["title"]: s["properties"]["sheetId"]
+                for s in meta.get("sheets", [])}
+
+    if PROJECT_INFO_TAB in existing:
+        return existing[PROJECT_INFO_TAB]
+
+    resp = sheets_svc.spreadsheets().batchUpdate(
+        spreadsheetId=sheet_id,
+        body={"requests": [{"addSheet": {"properties": {"title": PROJECT_INFO_TAB}}}]},
+    ).execute()
+    tab_id = resp["replies"][0]["addSheet"]["properties"]["sheetId"]
+
+    # Seed rows
+    rows = [["Field", "Value"]]
+    for field, default in PROJECT_INFO_FIELDS:
+        rows.append([field, default])
+
+    sheets_svc.spreadsheets().values().update(
+        spreadsheetId=sheet_id,
+        range=f"{PROJECT_INFO_TAB}!A1",
+        valueInputOption="RAW",
+        body={"values": rows},
+    ).execute()
+
+    # Style the header row + first column
+    sheets_svc.spreadsheets().batchUpdate(
+        spreadsheetId=sheet_id,
+        body={
+            "requests": [
+                {
+                    "updateSheetProperties": {
+                        "properties": {
+                            "sheetId": tab_id,
+                            "gridProperties": {"frozenRowCount": 1},
+                        },
+                        "fields": "gridProperties.frozenRowCount",
+                    }
+                },
+                {
+                    "repeatCell": {
+                        "range": {"sheetId": tab_id, "startRowIndex": 0, "endRowIndex": 1},
+                        "cell": {
+                            "userEnteredFormat": {
+                                "backgroundColor": {"red": 0.18, "green": 0.18, "blue": 0.18},
+                                "textFormat": {
+                                    "bold": True,
+                                    "foregroundColor": {"red": 1, "green": 1, "blue": 1},
+                                },
+                            }
+                        },
+                        "fields": "userEnteredFormat(backgroundColor,textFormat)",
+                    }
+                },
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": tab_id,
+                            "startRowIndex": 1, "endRowIndex": len(rows),
+                            "startColumnIndex": 0, "endColumnIndex": 1,
+                        },
+                        "cell": {"userEnteredFormat": {"textFormat": {"bold": True}}},
+                        "fields": "userEnteredFormat.textFormat",
+                    }
+                },
+                {
+                    "updateDimensionProperties": {
+                        "range": {"sheetId": tab_id, "dimension": "COLUMNS",
+                                  "startIndex": 0, "endIndex": 1},
+                        "properties": {"pixelSize": 180},
+                        "fields": "pixelSize",
+                    }
+                },
+                {
+                    "updateDimensionProperties": {
+                        "range": {"sheetId": tab_id, "dimension": "COLUMNS",
+                                  "startIndex": 1, "endIndex": 2},
+                        "properties": {"pixelSize": 360},
+                        "fields": "pixelSize",
+                    }
+                },
+            ]
+        },
+    ).execute()
+
+    return tab_id
+
+
+def read_project_info(sheets_svc, sheet_id: str) -> dict:
+    """Read the Project Info tab and return field/value pairs as a dict.
+
+    Returns {} if the tab doesn't exist. Empty values are returned as
+    empty strings (NOT omitted) so callers can detect "field exists but
+    Chad hasn't filled it in" vs "field doesn't exist on this tracker".
+    """
+    try:
+        result = sheets_svc.spreadsheets().values().get(
+            spreadsheetId=sheet_id,
+            range=f"{PROJECT_INFO_TAB}!A1:B100",
+        ).execute()
+    except Exception:
+        return {}
+
+    rows = result.get("values", [])
+    if not rows or len(rows) < 2:
+        return {}
+
+    info: dict[str, str] = {}
+    for row in rows[1:]:  # skip header
+        if not row:
+            continue
+        field = row[0].strip() if len(row) > 0 else ""
+        value = row[1].strip() if len(row) > 1 else ""
+        if field:
+            info[field] = value
+    return info
