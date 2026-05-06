@@ -52,6 +52,7 @@ hb-schedule = "home_builder_agent.agents.schedule_agent:main"
 hb-reconcile = "home_builder_agent.agents.reconcile_agent:main"
 hb-bridge = "home_builder_agent.agents.bridge_agent:main"
 hb-ask = "home_builder_agent.agents.ask_agent:main"
+hb-router = "home_builder_agent.agents.router_agent:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
