@@ -499,6 +499,216 @@ def ask_question(question: str, *, verbose: bool = False) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Streaming generator — for SSE consumption by /v1/turtles/home-builder/ask
+# ---------------------------------------------------------------------------
+#
+# Per migration_003_review.md SSE stream contract: the engine yields
+# (event_id, event_type, payload) tuples. The route handler is responsible
+# for serializing to SSE wire format AND maintaining the Redis 5-min TTL
+# replay buffer for Last-Event-ID reconnection.
+#
+# Engine doesn't know about Redis or SSE wire format — clean boundary.
+#
+# Event types emitted (from spec):
+#   text_delta       — token batches as Claude composes answer text
+#   tool_use         — Claude invokes a tool (after full input is known)
+#   tool_result      — tool returned (with summary + duration)
+#   citation_added   — file opened via read_drive_file
+#   message_complete — terminal: full answer + citations + cost + duration
+#   error            — terminal: error envelope
+
+from typing import Iterator
+
+
+def ask_question_stream(
+    question: str,
+    *,
+    verbose: bool = False,
+) -> Iterator[tuple[int, str, dict]]:
+    """Streaming version of ask_question.
+
+    Yields (event_id, event_type, payload) tuples. Event IDs are monotonic
+    per stream, starting at 1. Stream is terminated by either a
+    `message_complete` or an `error` event — caller breaks out of iteration
+    after either.
+
+    Usage (from a FastAPI route handler):
+
+        async def ask_stream(question: str):
+            for event_id, event_type, payload in ask_question_stream(question):
+                yield f"id: {event_id}\\n"
+                yield f"event: {event_type}\\n"
+                yield f"data: {json.dumps(payload)}\\n\\n"
+                # plus Redis buffer write per the reconnection spec
+    """
+    started_at = time.time()
+    event_id_counter = 0
+
+    def emit(event_type: str, payload: dict) -> tuple[int, str, dict]:
+        nonlocal event_id_counter
+        event_id_counter += 1
+        return (event_id_counter, event_type, payload)
+
+    # Setup — same as ask_question but kept inline so we can yield error
+    # events on setup failure (instead of raising)
+    try:
+        creds = get_credentials()
+        drive_svc = drive.drive_service(creds)
+        ss = sheets_service(creds)
+        ctx = AskContext(drive_svc=drive_svc, sheets_svc=ss)
+        client = make_client()
+    except Exception as e:
+        yield emit("error", {
+            "type": type(e).__name__,
+            "message": f"setup failed: {e}",
+        })
+        return
+
+    system = SYSTEM_PROMPT.replace("{today}", date.today().strftime("%A, %B %-d, %Y"))
+    messages: list[dict] = [{"role": "user", "content": question}]
+
+    total_input_tokens = 0
+    total_output_tokens = 0
+
+    try:
+        for iteration in range(MAX_TOOL_LOOP_ITERATIONS):
+            if verbose:
+                print(f"\n[stream iter {iteration + 1}] calling Claude...", file=sys.stderr)
+
+            # Stream the response. Claude SDK's stream context manager
+            # yields content_block events; we surface text_deltas to the
+            # caller and accumulate the full message for tool_use processing
+            # at message_stop.
+            with client.messages.stream(
+                model=ASK_MODEL,
+                max_tokens=ASK_MAX_TOKENS,
+                system=system,
+                tools=TOOLS,
+                messages=messages,
+            ) as stream:
+                for event in stream:
+                    # The SDK emits multiple event types. We only forward
+                    # text_delta to the caller — tool_use events are
+                    # emitted from the FINAL message after the stream
+                    # completes (see below).
+                    if event.type == "content_block_delta" and event.delta.type == "text_delta":
+                        yield emit("text_delta", {"delta": event.delta.text})
+
+                final_message = stream.get_final_message()
+
+            total_input_tokens += final_message.usage.input_tokens
+            total_output_tokens += final_message.usage.output_tokens
+
+            # Branch on stop_reason
+            if final_message.stop_reason == "end_turn":
+                # Compose final answer text
+                final_text = ""
+                for block in final_message.content:
+                    if block.type == "text":
+                        final_text += block.text
+
+                cost = (total_input_tokens / 1e6) * 15.0 + (total_output_tokens / 1e6) * 75.0
+
+                yield emit("message_complete", {
+                    "answer": final_text.strip() or "(no answer produced)",
+                    "citations": list(ctx.cited_files.values()),
+                    "tools_called": ctx.tool_log,
+                    "model": ASK_MODEL,
+                    "cost_usd": round(cost, 4),
+                    "duration_ms": int((time.time() - started_at) * 1000),
+                    "input_tokens": total_input_tokens,
+                    "output_tokens": total_output_tokens,
+                })
+                return
+
+            if final_message.stop_reason == "tool_use":
+                # Append the assistant turn (with tool_use blocks) to messages
+                messages.append({"role": "assistant", "content": final_message.content})
+
+                tool_results_for_next_turn = []
+                for block in final_message.content:
+                    if block.type != "tool_use":
+                        continue
+
+                    # Emit tool_use event with full input now that the
+                    # message has streamed completely
+                    yield emit("tool_use", {
+                        "id": block.id,
+                        "name": block.name,
+                        "input": block.input or {},
+                    })
+
+                    # Execute the tool
+                    tool_started = time.time()
+                    handler = TOOL_DISPATCH.get(block.name)
+                    if handler is None:
+                        result_text = f"ERROR: unknown tool {block.name!r}"
+                    else:
+                        try:
+                            result_text = handler(ctx, **(block.input or {}))
+                        except Exception as e:
+                            result_text = f"ERROR: {type(e).__name__}: {e}"
+
+                    duration_ms = int((time.time() - tool_started) * 1000)
+                    ctx.tool_log.append({
+                        "name": block.name,
+                        "input": block.input or {},
+                        "duration_ms": duration_ms,
+                    })
+
+                    # If this tool was read_drive_file, the file just got
+                    # added to ctx.cited_files. Emit a citation_added event
+                    # so iOS renders the citation chip immediately rather
+                    # than waiting for message_complete.
+                    if block.name == "read_drive_file":
+                        file_id = (block.input or {}).get("file_id")
+                        if file_id and file_id in ctx.cited_files:
+                            yield emit("citation_added", ctx.cited_files[file_id])
+
+                    # Emit tool_result with a one-line summary (full result
+                    # goes into messages for Claude's next turn but iOS
+                    # only needs a short status line)
+                    summary = result_text.split("\n")[0][:160]
+                    yield emit("tool_result", {
+                        "id": block.id,
+                        "name": block.name,
+                        "duration_ms": duration_ms,
+                        "summary": summary,
+                    })
+
+                    tool_results_for_next_turn.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": result_text,
+                    })
+
+                messages.append({"role": "user", "content": tool_results_for_next_turn})
+                continue
+
+            # Unexpected stop reason — surface as error and terminate
+            yield emit("error", {
+                "type": "UnexpectedStopReason",
+                "message": f"Stream ended with stop_reason={final_message.stop_reason!r}",
+            })
+            return
+
+        # Exited loop without end_turn — hit MAX_TOOL_LOOP_ITERATIONS
+        yield emit("error", {
+            "type": "MaxIterationsReached",
+            "message": (
+                f"Tool loop exceeded {MAX_TOOL_LOOP_ITERATIONS} iterations "
+                "without Claude composing a final answer"
+            ),
+        })
+
+    except Exception as e:
+        yield emit("error", {
+            "type": type(e).__name__,
+            "message": str(e),
+        })
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
