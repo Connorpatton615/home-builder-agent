@@ -133,6 +133,13 @@ a derived projection computed at request time per the contract.
 -- Home-builder canonical schema + iOS shell auth bridge.
 -- See ~/Projects/home-builder-agent/docs/specs/canonical-data-model.md
 -- for entity definitions and ownership rules.
+--
+-- PREREQUISITES (provided by 001_initial_schema.sql, confirmed):
+--   • pgcrypto extension
+--   • public.is_master() function — defined at 001 lines 114-126,
+--     SECURITY DEFINER with `SET search_path = public`. Visible to
+--     home_builder.* helpers below because their search_path includes public.
+--   • auth.users table (Supabase-provided)
 -- =============================================================================
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
@@ -185,6 +192,8 @@ CREATE TABLE IF NOT EXISTS public.device_tokens (
 
 CREATE INDEX IF NOT EXISTS idx_device_tokens_user
     ON public.device_tokens (user_id);
+CREATE INDEX IF NOT EXISTS idx_device_tokens_apns_token
+    ON public.device_tokens (apns_token);  -- Nit-7: invalid-token cleanup path
 
 -- -----------------------------------------------------------------------------
 -- home_builder.user_can_access_project — RLS helper
@@ -323,25 +332,41 @@ CREATE TABLE IF NOT EXISTS home_builder.milestone (
 );
 
 -- 5. dependency ---------------------------------------------------------------
--- Polymorphic — predecessor/successor can each be a phase OR task.
--- See open question Q-A.
+-- Typed FKs per Q-A round-1 review. Predecessor and successor each point
+-- at exactly ONE of phase or task; CHECK constraints enforce the
+-- exactly-one rule and prevent self-references. Real FK integrity, no
+-- engine-side validation needed for referential checks.
 CREATE TABLE IF NOT EXISTS home_builder.dependency (
-    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id          UUID NOT NULL                 -- denormalized for RLS
-                        REFERENCES home_builder.project(id) ON DELETE CASCADE,
-    predecessor_type    TEXT NOT NULL CHECK (predecessor_type IN ('phase', 'task')),
-    predecessor_id      UUID NOT NULL,                -- no FK; polymorphic
-    successor_type      TEXT NOT NULL CHECK (successor_type IN ('phase', 'task')),
-    successor_id        UUID NOT NULL,                -- no FK; polymorphic
-    dependency_kind     TEXT NOT NULL DEFAULT 'finish-to-start'
-                        CHECK (dependency_kind IN (
-                            'finish-to-start', 'start-to-start',
-                            'finish-to-finish', 'start-to-finish'
-                        )),
-    offset_days         INTEGER NOT NULL DEFAULT 0,
-    tenant_id           UUID NULL,
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CHECK (NOT (predecessor_type = successor_type AND predecessor_id = successor_id))
+    id                          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id                  UUID NOT NULL                 -- denormalized for RLS
+                                REFERENCES home_builder.project(id) ON DELETE CASCADE,
+    predecessor_phase_id        UUID REFERENCES home_builder.phase(id) ON DELETE CASCADE,
+    predecessor_task_id         UUID REFERENCES home_builder.task(id)  ON DELETE CASCADE,
+    successor_phase_id          UUID REFERENCES home_builder.phase(id) ON DELETE CASCADE,
+    successor_task_id           UUID REFERENCES home_builder.task(id)  ON DELETE CASCADE,
+    dependency_kind             TEXT NOT NULL DEFAULT 'finish-to-start'
+                                CHECK (dependency_kind IN (
+                                    'finish-to-start', 'start-to-start',
+                                    'finish-to-finish', 'start-to-finish'
+                                )),
+    offset_days                 INTEGER NOT NULL DEFAULT 0,
+    tenant_id                   UUID NULL,
+    created_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- Exactly one predecessor (phase OR task), exactly one successor (phase OR task)
+    CHECK (
+        (predecessor_phase_id IS NOT NULL)::int +
+        (predecessor_task_id  IS NOT NULL)::int = 1
+    ),
+    CHECK (
+        (successor_phase_id IS NOT NULL)::int +
+        (successor_task_id  IS NOT NULL)::int = 1
+    ),
+    -- No self-references (phase pointing at itself, task pointing at itself)
+    CHECK (
+        NOT (predecessor_phase_id IS NOT NULL AND predecessor_phase_id = successor_phase_id)
+        AND
+        NOT (predecessor_task_id  IS NOT NULL AND predecessor_task_id  = successor_task_id)
+    )
 );
 
 -- 6. checklist ----------------------------------------------------------------
@@ -490,8 +515,14 @@ CREATE TABLE IF NOT EXISTS home_builder.inspection (
 
 -- 13. notification ------------------------------------------------------------
 -- Engine-owned record. Shell dispatcher writes delivered_at/viewed_at/push_id
--- as the "authorized exception" you're landing in canonical-data-model.md.
--- See open question Q-B.
+-- as the authorized-dispatcher exception (canonical-data-model.md commit
+-- a62a984 codifies this). See Q-B in round-1 review.
+--
+-- ORDER NOTE (cyclic-FK pattern, Nit-5): this table is created BEFORE event
+-- because notification has no fields event references back, but event has
+-- fields notification needs to FK to. The FK from notification.event_id →
+-- event.id is added at the bottom of this migration via ALTER TABLE once
+-- event exists. Cyclic in spirit, ordered in execution.
 CREATE TABLE IF NOT EXISTS home_builder.notification (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     event_id        UUID NOT NULL,                     -- FK added below after event exists
@@ -544,9 +575,9 @@ CREATE TABLE IF NOT EXISTS home_builder.user_action (
     recorded_at             TIMESTAMPTZ NOT NULL,      -- when actor performed it (offline-safe)
     synced_at               TIMESTAMPTZ NOT NULL DEFAULT now(),  -- when engine received it
     conflict_resolution     TEXT,                      -- 'server-wins', 'client-wins', 'last-write-wins', NULL if none
-    idempotency_key         UUID,                      -- client-generated; engine dedupes on this
+    idempotency_key         UUID NOT NULL DEFAULT gen_random_uuid(),  -- Nit-3: client supplies for retry safety; default kills multi-NULL UNIQUE trap
     tenant_id               UUID NULL,
-    UNIQUE (actor_user_id, idempotency_key)            -- per-actor dedup; NULLs allowed (Postgres default)
+    UNIQUE (actor_user_id, idempotency_key)            -- per-actor dedup; idempotency_key is now NOT NULL so multi-NULL trap is gone
 );
 
 -- 16. event -------------------------------------------------------------------
@@ -587,6 +618,7 @@ ALTER TABLE home_builder.notification
 -- project
 CREATE INDEX IF NOT EXISTS idx_hb_project_status      ON home_builder.project(status);
 CREATE INDEX IF NOT EXISTS idx_hb_project_tenant      ON home_builder.project(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_hb_project_name        ON home_builder.project(name);  -- Nit-2: hb-schedule "Pelican Point" lookups
 
 -- phase
 CREATE INDEX IF NOT EXISTS idx_hb_phase_project_seq   ON home_builder.phase(project_id, sequence_index);
@@ -601,10 +633,12 @@ CREATE INDEX IF NOT EXISTS idx_hb_task_planned_start  ON home_builder.task(plann
 -- milestone
 CREATE INDEX IF NOT EXISTS idx_hb_milestone_project   ON home_builder.milestone(project_id, planned_date);
 
--- dependency
-CREATE INDEX IF NOT EXISTS idx_hb_dep_project         ON home_builder.dependency(project_id);
-CREATE INDEX IF NOT EXISTS idx_hb_dep_predecessor     ON home_builder.dependency(predecessor_type, predecessor_id);
-CREATE INDEX IF NOT EXISTS idx_hb_dep_successor       ON home_builder.dependency(successor_type, successor_id);
+-- dependency (typed FK indexes per Q-A; partial WHERE so we don't index NULL halves)
+CREATE INDEX IF NOT EXISTS idx_hb_dep_project              ON home_builder.dependency(project_id);
+CREATE INDEX IF NOT EXISTS idx_hb_dep_predecessor_phase    ON home_builder.dependency(predecessor_phase_id) WHERE predecessor_phase_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_hb_dep_predecessor_task     ON home_builder.dependency(predecessor_task_id)  WHERE predecessor_task_id  IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_hb_dep_successor_phase      ON home_builder.dependency(successor_phase_id)   WHERE successor_phase_id   IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_hb_dep_successor_task       ON home_builder.dependency(successor_task_id)    WHERE successor_task_id    IS NOT NULL;
 
 -- checklist + items
 CREATE INDEX IF NOT EXISTS idx_hb_checklist_project   ON home_builder.checklist(project_id);
@@ -625,6 +659,8 @@ CREATE INDEX IF NOT EXISTS idx_hb_delivery_status_late ON home_builder.delivery(
 
 -- inspection
 CREATE INDEX IF NOT EXISTS idx_hb_inspection_proj     ON home_builder.inspection(project_id, scheduled_date);
+CREATE INDEX IF NOT EXISTS idx_hb_inspection_open     ON home_builder.inspection(project_id, scheduled_date)
+    WHERE status IN ('scheduled', 'reinspect-needed');  -- Nit-6: morning-brief permit-expiry scan
 
 -- notification
 CREATE INDEX IF NOT EXISTS idx_hb_notification_event  ON home_builder.notification(event_id);
@@ -639,6 +675,7 @@ CREATE INDEX IF NOT EXISTS idx_hb_weather_proj_window ON home_builder.weather_im
 CREATE INDEX IF NOT EXISTS idx_hb_user_action_actor   ON home_builder.user_action(actor_user_id, recorded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_hb_user_action_proj    ON home_builder.user_action(project_id, recorded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_hb_user_action_target  ON home_builder.user_action(target_entity_type, target_entity_id);
+CREATE INDEX IF NOT EXISTS idx_hb_user_action_synced  ON home_builder.user_action(synced_at DESC);  -- Q-G(b): engine reconcile-pass scan
 
 -- event
 CREATE INDEX IF NOT EXISTS idx_hb_event_proj_status   ON home_builder.event(project_id, status, created_at DESC);
@@ -692,23 +729,33 @@ ALTER TABLE home_builder.weather_impact   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE home_builder.user_action      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE home_builder.event            ENABLE ROW LEVEL SECURITY;
 
--- Project-scoped read template (project_id is direct on table)
+-- home_builder.project — explicit policy (uses id, not project_id) per Nit-1.
+-- Pulled out of the loop so the hot-path policy expression is a clean
+-- column reference instead of a CASE that the planner would have to
+-- reason through on every query.
+DROP POLICY IF EXISTS hb_project_select ON home_builder.project;
+CREATE POLICY hb_project_select ON home_builder.project
+    FOR SELECT USING (home_builder.user_can_access_project(id));
+
+DROP POLICY IF EXISTS hb_project_write_service_only ON home_builder.project;
+CREATE POLICY hb_project_write_service_only ON home_builder.project
+    FOR ALL USING (auth.role() = 'service_role')
+    WITH CHECK (auth.role() = 'service_role');
+
+-- All other project-scoped tables use a uniform template (project_id direct).
+-- No CASE in policy expression — each table reads project_id by name.
 DO $$
 DECLARE t TEXT;
 BEGIN
     FOR t IN SELECT unnest(ARRAY[
-        'project', 'phase', 'task', 'milestone', 'dependency',
+        'phase', 'task', 'milestone', 'dependency',
         'checklist', 'checklist_item', 'delivery', 'inspection',
         'weather_impact'
     ]) LOOP
         EXECUTE format($f$
             DROP POLICY IF EXISTS hb_%1$s_select ON home_builder.%1$s;
             CREATE POLICY hb_%1$s_select ON home_builder.%1$s
-                FOR SELECT USING (
-                    home_builder.user_can_access_project(
-                        CASE '%1$s' WHEN 'project' THEN id ELSE project_id END
-                    )
-                );
+                FOR SELECT USING (home_builder.user_can_access_project(project_id));
             DROP POLICY IF EXISTS hb_%1$s_write_service_only ON home_builder.%1$s;
             CREATE POLICY hb_%1$s_write_service_only ON home_builder.%1$s
                 FOR ALL USING (auth.role() = 'service_role')
@@ -1243,3 +1290,69 @@ Engine refactor (c) is blocked on 002 landing. While you cut, I'll:
 3. **Standby for 003 reference-data drafting** when 002 is green.
 
 Ready when you are.
+
+---
+
+## Round 2 — Revisions Applied (patton-ai-ios CTO)
+
+All 9 revisions from "Home-Builder Review (round 1)" baked into the SQL
+block above. Verifications:
+
+| # | Revision | Where it landed |
+|---|---|---|
+| 1 | `dependency` typed FK (Q-A) | Entity-table block 5; predecessor/successor split into 4 typed FK columns + exactly-one CHECK + no-self-reference CHECK. |
+| 2 | `user_action.synced_at` index (Q-G) | Indexes block, `idx_hb_user_action_synced ON (synced_at DESC)`. |
+| 3 | RLS template refactor (Nit-1) | RLS block; `home_builder.project` policy extracted explicitly above the DO-loop, loop now omits `'project'` and uses direct `project_id` reference (no CASE). |
+| 4 | `idx_hb_project_name` (Nit-2) | Indexes block under `-- project`. |
+| 5 | `idempotency_key NOT NULL DEFAULT gen_random_uuid()` (Nit-3) | Entity-table block 15 (user_action). |
+| 6 | `is_master()` confirmed (Nit-4) | Migration header now lists it explicitly under PREREQUISITES with the 001 line range. No SQL change required — function is reachable because the helpers' search_path includes `public`. |
+| 7 | Cyclic-FK comment on `notification` (Nit-5) | Entity-table block 13 header comment expanded with ORDER NOTE. |
+| 8 | `idx_hb_inspection_open` partial (Nit-6) | Indexes block under `-- inspection`. |
+| 9 | `idx_device_tokens_apns_token` (Nit-7) | After `idx_device_tokens_user` in the `public.device_tokens` block. |
+
+Plus the secondary changes that flow from #1:
+
+- Dropped `idx_hb_dep_predecessor` and `idx_hb_dep_successor` (the
+  polymorphic indexes that no longer make sense).
+- Added four typed-FK indexes:
+  `idx_hb_dep_predecessor_phase`, `idx_hb_dep_predecessor_task`,
+  `idx_hb_dep_successor_phase`, `idx_hb_dep_successor_task`. All are
+  partial (`WHERE x_phase_id IS NOT NULL` / `WHERE x_task_id IS NOT NULL`)
+  so we don't waste index space on the NULL halves.
+
+**Deferred (your "optional for round 2" item):** `lead_time.scope_id`
+→ `scope_ref` rename. Not landed in this round. If you want it in `002`,
+flag and I'll edit; otherwise we leave it as-is and revisit in `003` if
+the engine's resolver code makes the conflation painful.
+
+**Status:** Greenlit per your "cut after the 9 revisions land" gate.
+Cutting `002_home_builder_schema.sql` next.
+
+---
+
+## Cut log
+
+- **2026-05-04 — Migration cut.**
+  `~/Projects/patton-ai-ios/backend/migrations/002_home_builder_schema.sql`
+  written verbatim from the SQL block above (719 lines, 39 KB).
+- **2026-05-04 — Applied to staging Supabase** (project
+  `neovanarazgxwpihuhep`). `psql -X --single-transaction
+  -v ON_ERROR_STOP=1 -f migrations/002_home_builder_schema.sql`. Exit
+  code 0. Verified post-apply:
+  - 16 `home_builder.*` tables present (project, phase, task, milestone,
+    dependency, checklist, checklist_item, delivery, inspection, event,
+    notification, weather_impact, user_action, vendor, vendor_item,
+    lead_time).
+  - 2 `public.*` tables added (user_turtle_projects, device_tokens).
+  - 2 helper functions (`user_can_access_project`,
+    `user_has_any_home_builder_project`).
+  - RLS enabled on all 18 affected tables.
+  - 36 policies registered (2 per table — select + service-role write).
+  - 54 indexes in `home_builder` schema.
+  - Server: PostgreSQL 17.6 (Supabase).
+  - All `NOTICE` lines were the expected "policy does not exist, skipping"
+    from the `DROP POLICY IF EXISTS` guards on first apply. No errors.
+- **DATABASE_URL shape** for engine adapter on Mac Mini:
+  `postgresql://postgres:<REDACTED>@db.neovanarazgxwpihuhep.supabase.co:5432/postgres`
+  (Connor pulls actual password from `~/Projects/patton-ai-ios/backend/.env`
+  on his end — same secret already used by the iOS shell backend.)
