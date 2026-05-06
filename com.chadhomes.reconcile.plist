@@ -56,6 +56,17 @@
   <key>WorkingDirectory</key>
   <string>/Users/connorpattonequipassid/Projects/home-builder-agent</string>
 
+  <!-- PYTHONPATH is required because Python 3.14's editable-install .pth
+       finder doesn't fire reliably under launchd's daemon environment
+       (same quirk that hits `python -m home_builder_agent.*` invocations).
+       Without this, hb-reconcile fails on import with
+       `ModuleNotFoundError: No module named 'home_builder_agent'`. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONPATH</key>
+    <string>/Users/connorpattonequipassid/Projects/home-builder-agent</string>
+  </dict>
+
   <!-- Every 60 seconds -->
   <key>StartInterval</key>
   <integer>60</integer>

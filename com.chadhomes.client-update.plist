@@ -57,6 +57,14 @@
   <key>WorkingDirectory</key>
   <string>/Users/connorpattonequipassid/Projects/home-builder-agent</string>
 
+  <!-- PYTHONPATH required for Python 3.14 editable-install under launchd
+       (.pth finder doesn't fire reliably in daemon context). -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONPATH</key>
+    <string>/Users/connorpattonequipassid/Projects/home-builder-agent</string>
+  </dict>
+
   <!-- Mondays at 7:00 AM -->
   <key>StartCalendarInterval</key>
   <dict>
