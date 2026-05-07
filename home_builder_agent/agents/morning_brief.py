@@ -19,10 +19,12 @@ Cost: ~$0.03–0.05/run (one Sonnet call).
 
 import argparse
 import json
+import logging
 import os
 import re
 import sys
 import urllib.request
+import uuid
 from datetime import date, datetime, timedelta
 
 from home_builder_agent.config import (
@@ -46,6 +48,9 @@ from home_builder_agent.core.heartbeat import beat_on_success
 from home_builder_agent.integrations import drive, sheets
 from home_builder_agent.integrations import gmail as gmail_int
 from home_builder_agent.integrations.finance import get_aging_report
+from home_builder_agent.observability.json_log import configure_json_logging
+
+logger = logging.getLogger(__name__)
 
 try:
     from googleapiclient.discovery import build as _goog_build
@@ -583,6 +588,10 @@ Output ONLY a JSON object with keys "subject" and "html". No markdown fence, no 
 
 @beat_on_success("morning-brief", stale_after_seconds=90000)
 def main():
+    configure_json_logging("hb-brief")
+    correlation_id = uuid.uuid4().hex
+    logger.info("pass_starting", extra={"event": "pass_starting", "correlation_id": correlation_id})
+
     parser = argparse.ArgumentParser(
         description="Send the daily morning brief to Chad."
     )
@@ -753,6 +762,16 @@ def main():
     )
     print(f"  ✅  Sent — message ID: {sent.get('id', '?')}")
     print(f"  Cost: ${usd:.4f}")
+    logger.info(
+        "pass_complete",
+        extra={
+            "event": "pass_complete",
+            "correlation_id": correlation_id,
+            "recipient": args.to,
+            "message_id": sent.get("id"),
+            "cost_usd": round(usd, 4),
+        },
+    )
 
 
 if __name__ == "__main__":

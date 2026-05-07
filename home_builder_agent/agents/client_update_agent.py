@@ -16,7 +16,9 @@ Cost: ~$0.02–0.03/run (one Sonnet call).
 """
 
 import argparse
+import logging
 import sys
+import uuid
 from datetime import date, datetime, timedelta
 
 from home_builder_agent.config import (
@@ -32,6 +34,9 @@ from home_builder_agent.core.chad_voice import (
 )
 from home_builder_agent.core.claude_client import make_client, sonnet_cost
 from home_builder_agent.core.heartbeat import beat_on_success
+from home_builder_agent.observability.json_log import configure_json_logging
+
+logger = logging.getLogger(__name__)
 from home_builder_agent.integrations import drive, gmail, sheets
 
 
@@ -276,6 +281,10 @@ Chad's signature block:
 
 @beat_on_success("client-update", stale_after_seconds=691200)
 def main():
+    configure_json_logging("hb-client-update")
+    correlation_id = uuid.uuid4().hex
+    logger.info("pass_starting", extra={"event": "pass_starting", "correlation_id": correlation_id})
+
     parser = argparse.ArgumentParser(
         description="Generate and draft a homeowner weekly project update email."
     )
@@ -424,6 +433,18 @@ def main():
 
     print(f"Cost: ${usd:.4f}")
     print()
+
+    logger.info(
+        "pass_complete",
+        extra={
+            "event": "pass_complete",
+            "correlation_id": correlation_id,
+            "mode": "send" if args.send else "draft",
+            "recipient": recipient_email,
+            "message_id": result.get("id"),
+            "cost_usd": round(usd, 4),
+        },
+    )
 
 
 if __name__ == "__main__":

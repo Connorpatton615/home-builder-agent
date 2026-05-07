@@ -21,10 +21,12 @@ Chad/Connor edits a cell does modifiedTime change beyond what we saved.
 """
 
 import json
+import logging
 import os
 import signal
 import socket
 import sys
+import uuid
 from datetime import datetime
 
 # Per-socket timeout so any blocking Drive/Sheets call cannot hang indefinitely.
@@ -39,6 +41,9 @@ from home_builder_agent.config import (
 from home_builder_agent.core.auth import get_credentials
 from home_builder_agent.core.heartbeat import beat_on_success
 from home_builder_agent.integrations import drive, sheets
+from home_builder_agent.observability.json_log import configure_json_logging
+
+logger = logging.getLogger(__name__)
 
 socket.setdefaulttimeout(WATCHER_SOCKET_TIMEOUT)
 
@@ -122,6 +127,10 @@ def _timeout_handler(signum, frame):
 
 @beat_on_success("dashboard-watcher", stale_after_seconds=300)
 def main():
+    configure_json_logging("hb-dashboard-watcher")
+    correlation_id = uuid.uuid4().hex
+    logger.info("pass_starting", extra={"event": "pass_starting", "correlation_id": correlation_id})
+
     # Hard kill if not done in WATCHER_TIMEOUT_SEC — belt-and-suspenders
     # alongside the per-socket timeout. Covers stalls outside socket calls.
     signal.signal(signal.SIGALRM, _timeout_handler)
@@ -184,6 +193,17 @@ def main():
     if refreshed or errors:
         log(f"Pass complete: refreshed={refreshed} errors={errors} "
             f"trackers_seen={len(seen_ids)}")
+
+    logger.info(
+        "pass_complete",
+        extra={
+            "event": "pass_complete",
+            "correlation_id": correlation_id,
+            "trackers_seen": len(seen_ids),
+            "refreshed": refreshed,
+            "errors": errors,
+        },
+    )
 
 
 if __name__ == "__main__":

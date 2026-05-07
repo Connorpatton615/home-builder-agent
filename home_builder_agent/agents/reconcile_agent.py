@@ -43,7 +43,7 @@ from home_builder_agent.scheduling.reconcile import (
     reconcile_pass,
 )
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def _parse_since(raw: str) -> datetime:
@@ -129,7 +129,7 @@ def main():
             since_override = _parse_since(args.since)
         except ValueError as e:
             print(f"❌ Invalid --since value: {e}")
-            log.error(
+            logger.error(
                 "since_parse_failed",
                 extra={"event": "since_parse_failed", "raw_since": args.since,
                        "error": str(e)},
@@ -137,7 +137,7 @@ def main():
             sys.exit(1)
 
     correlation_id = uuid.uuid4().hex
-    log.info(
+    logger.info(
         "pass_starting",
         extra={
             "event": "pass_starting",
@@ -153,7 +153,7 @@ def main():
             dry_run=args.dry_run,
         )
     except Exception as e:
-        log.exception(
+        logger.exception(
             "pass_failed",
             extra={
                 "event": "pass_failed",
@@ -183,7 +183,7 @@ def main():
     error_count = sum(
         1 for r in report.results if r.outcome == DispatchOutcome.ERROR
     )
-    log.info(
+    logger.info(
         "pass_complete",
         extra={
             "event": "pass_complete",

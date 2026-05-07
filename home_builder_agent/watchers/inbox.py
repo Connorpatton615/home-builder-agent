@@ -22,11 +22,13 @@ classifier on the very first poll.
 """
 
 import json
+import logging
 import os
 import signal
 import socket
 import subprocess
 import sys
+import uuid
 from datetime import datetime
 
 from home_builder_agent.classifiers.email import classify_thread
@@ -43,6 +45,9 @@ from home_builder_agent.config import (
 from home_builder_agent.core.auth import get_credentials
 from home_builder_agent.core.claude_client import make_client
 from home_builder_agent.core.heartbeat import beat_on_success
+from home_builder_agent.observability.json_log import configure_json_logging
+
+logger = logging.getLogger(__name__)
 from home_builder_agent.integrations import gmail as gmail_int
 from home_builder_agent.integrations import drive as drive_int
 from home_builder_agent.integrations.finance import add_invoice_row
@@ -211,6 +216,10 @@ def _timeout_handler(signum, frame):
 
 @beat_on_success("inbox-watcher", stale_after_seconds=1500)
 def main():
+    configure_json_logging("hb-inbox-watcher")
+    correlation_id = uuid.uuid4().hex
+    logger.info("pass_starting", extra={"event": "pass_starting", "correlation_id": correlation_id})
+
     signal.signal(signal.SIGALRM, _timeout_handler)
     signal.alarm(INBOX_WATCHER_TIMEOUT_SEC)
 
@@ -339,6 +348,19 @@ def main():
         log(f"Pass complete: classified={classified} high={high} "
             f"invoices={invoices_logged} errors={errors} "
             f"new_threads={len(thread_ids)}")
+
+    logger.info(
+        "pass_complete",
+        extra={
+            "event": "pass_complete",
+            "correlation_id": correlation_id,
+            "classified": classified,
+            "high_urgency": high,
+            "invoices_logged": invoices_logged,
+            "errors": errors,
+            "new_threads": len(thread_ids),
+        },
+    )
 
 
 if __name__ == "__main__":

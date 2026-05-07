@@ -22,17 +22,22 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
+import uuid
 from datetime import datetime, timezone
 
 from home_builder_agent.config import DRIVE_FOLDER_PATH
 from home_builder_agent.core.auth import get_credentials
 from home_builder_agent.integrations import drive, sheets
+from home_builder_agent.observability.json_log import configure_json_logging
 from home_builder_agent.scheduling.bridge import (
     TrackerSyncResult,
     sync_all_trackers,
     sync_tracker,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _print_pretty(results: list[TrackerSyncResult]) -> None:
@@ -102,6 +107,10 @@ def _list_trackers_only(drive_svc) -> None:
 
 
 def main():
+    configure_json_logging("hb-bridge")
+    correlation_id = uuid.uuid4().hex
+    logger.info("pass_starting", extra={"event": "pass_starting", "correlation_id": correlation_id})
+
     parser = argparse.ArgumentParser(
         description="Sync Drive Tracker sheets into Postgres engine state."
     )
@@ -174,6 +183,18 @@ def main():
     # Exit non-zero if any tracker failed
     any_error = any(r.error or any(p.outcome == "error" for p in r.phase_outcomes)
                     for r in results)
+
+    logger.info(
+        "pass_complete",
+        extra={
+            "event": "pass_complete",
+            "correlation_id": correlation_id,
+            "tracker_count": len(results),
+            "any_error": any_error,
+            "dry_run": bool(args.dry_run),
+            "filter": args.name_filter,
+        },
+    )
     sys.exit(2 if any_error else 0)
 
 
