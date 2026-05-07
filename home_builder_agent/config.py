@@ -76,12 +76,35 @@ INVOICE_SIGNAL_WORDS = [          # subject/snippet keywords that flag invoice e
 # Credentials live in the project root next to .env (gitignored, never committed).
 # Resolve to absolute paths so the engine works regardless of caller's cwd —
 # launchd plists set WorkingDirectory to the repo, but cross-process callers
-# (e.g., the iOS shell's FastAPI importing home_builder_agent) run from their
-# own cwd and need the absolute paths.
+# (e.g., the iOS shell's FastAPI importing home_builder_agent, or a Claude
+# Code worktree which has its own home_builder_agent/ subdir but no
+# credentials.json) run from their own cwd and need the absolute paths.
 from pathlib import Path as _Path
 _PACKAGE_ROOT = _Path(__file__).resolve().parent.parent
-CREDENTIALS_FILE = str(_PACKAGE_ROOT / "credentials.json")
-TOKEN_FILE = str(_PACKAGE_ROOT / "token.json")
+# Fallback to the canonical install location for cases where the package
+# loaded is a copy without credentials adjacent (e.g., Claude Code worktrees).
+_CANONICAL_ROOT = _Path.home() / "Projects" / "home-builder-agent"
+
+
+def find_project_file(name: str) -> str:
+    """Resolve a project-root file (.env, credentials.json, token.json).
+
+    Try PACKAGE_ROOT first (the dir the loaded module lives in); fall back to
+    the canonical install path if the file isn't adjacent. Returns the
+    PACKAGE_ROOT path if neither exists, so error messages keep pointing at
+    the expected location.
+    """
+    candidate = _PACKAGE_ROOT / name
+    if candidate.exists():
+        return str(candidate)
+    fallback = _CANONICAL_ROOT / name
+    if fallback.exists():
+        return str(fallback)
+    return str(candidate)
+
+
+CREDENTIALS_FILE = find_project_file("credentials.json")
+TOKEN_FILE = find_project_file("token.json")
 
 # Full scope set — every agent gets every scope so a single token.json works
 # across all of them. The Gmail agent NEEDS gmail.readonly; the others don't,
