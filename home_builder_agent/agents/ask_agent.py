@@ -178,6 +178,46 @@ TOOLS = [
         },
     },
     {
+        "name": "get_recent_activity",
+        "description": (
+            "Get recent autonomous actions Chad's AI took on his behalf "
+            "via hb-router (logging receipts, updating phases, drafting "
+            "change orders, etc.). Returns rows newest-first with the "
+            "user intent, what was actually done, outcome, cost, and "
+            "duration. Use for ANY question about what the AI did, "
+            "what's been logged recently, audit-trail / accountability "
+            "questions, or 'what happened with X' on a specific project. "
+            "Optional project_id to scope to one project."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_id": {
+                    "type": "string",
+                    "description": (
+                        "Optional. Project UUID to filter to one project. "
+                        "Omit to see activity across ALL projects."
+                    ),
+                },
+                "since_hours": {
+                    "type": "integer",
+                    "description": (
+                        "Optional. Only include actions from the last N hours "
+                        "(e.g. 24 for 'today', 168 for 'this week'). Omit "
+                        "for the most recent rows regardless of age."
+                    ),
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": (
+                        "Max rows to return. Default 25. Cap 100."
+                    ),
+                },
+            },
+            "required": [],
+        },
+    },
+    {
         "name": "get_procurement_alerts",
         "description": (
             "Get a project's currently actionable procurement alerts: "
@@ -381,6 +421,98 @@ def _tool_read_drive_file(ctx: AskContext, *, file_id: str) -> str:
     return header + "\n" + result["content"]
 
 
+def _tool_get_recent_activity(
+    ctx: AskContext,
+    *,
+    project_id: str | None = None,
+    since_hours: int | None = None,
+    limit: int = 25,
+) -> str:
+    """Return recent engine_activity rows as compact text."""
+    from home_builder_agent.scheduling.store_postgres import load_recent_engine_activity
+
+    # Cap the limit so we don't blow context if Claude asks for 1000.
+    limit = max(1, min(int(limit or 25), 100))
+
+    try:
+        rows = load_recent_engine_activity(
+            project_id=project_id,
+            since_hours=since_hours,
+            limit=limit,
+        )
+    except Exception as e:
+        return f"ERROR reading engine_activity: {type(e).__name__}: {e}"
+
+    scope_bits = []
+    if project_id:
+        scope_bits.append(f"project_id={project_id}")
+    if since_hours:
+        scope_bits.append(f"last {since_hours}h")
+    scope_str = " | ".join(scope_bits) if scope_bits else "all projects, no time filter"
+
+    lines = [f"RECENT ACTIVITY ({scope_str}, limit {limit})"]
+
+    if not rows:
+        lines.append("  (no activity rows match these filters)")
+        return "\n".join(lines)
+
+    # Aggregate stats up top — Chad-relevant summary.
+    outcomes = {"success": 0, "partial": 0, "error": 0, "rejected": 0}
+    total_cost = 0.0
+    by_command: dict[str, int] = {}
+    for r in rows:
+        outcome = (r.get("outcome") or "").lower()
+        if outcome in outcomes:
+            outcomes[outcome] += 1
+        if r.get("cost_usd"):
+            total_cost += r["cost_usd"]
+        cmd = r.get("classified_command_type") or "unknown"
+        by_command[cmd] = by_command.get(cmd, 0) + 1
+
+    lines.append(
+        f"  totals: {len(rows)} rows | "
+        f"success={outcomes['success']} | partial={outcomes['partial']} | "
+        f"error={outcomes['error']} | rejected={outcomes['rejected']} | "
+        f"AI cost ${total_cost:.4f}"
+    )
+    if by_command:
+        cmd_str = ", ".join(f"{c}={n}" for c, n in sorted(by_command.items(), key=lambda x: -x[1]))
+        lines.append(f"  commands: {cmd_str}")
+
+    lines.append("")
+    for r in rows:
+        ts = r.get("created_at") or ""
+        # Trim ISO to YYYY-MM-DD HH:MM for compactness
+        ts_short = ts.replace("T", " ")[:16] if ts else "?"
+        outcome = (r.get("outcome") or "?").upper()
+        cmd = r.get("classified_command_type") or "?"
+        cost = r.get("cost_usd")
+        dur = r.get("duration_ms")
+        intent = (r.get("user_intent") or "").strip().replace("\n", " ")
+        if len(intent) > 100:
+            intent = intent[:97] + "..."
+        summary = (r.get("result_summary") or "").strip().replace("\n", " ")
+        if len(summary) > 100:
+            summary = summary[:97] + "..."
+
+        cost_str = f"${cost:.4f}" if cost is not None else "—"
+        dur_str = f"{dur}ms" if dur is not None else "—"
+
+        lines.append(
+            f"  [{ts_short}] {outcome:<8} {cmd:<22} {cost_str:>9} {dur_str:>7}"
+        )
+        lines.append(f"      intent: {intent}")
+        if summary:
+            lines.append(f"      result: {summary}")
+        if r.get("error_message"):
+            err = r["error_message"].strip().replace("\n", " ")
+            if len(err) > 120:
+                err = err[:117] + "..."
+            lines.append(f"      error:  {err}")
+
+    return "\n".join(lines)
+
+
 def _tool_get_procurement_alerts(ctx: AskContext, *, project_id: str) -> str:
     """Return live procurement alerts for a project as compact text."""
     from home_builder_agent.scheduling.lead_times import compute_live_procurement_alerts
@@ -531,6 +663,7 @@ TOOL_DISPATCH = {
     "read_knowledge_base":        _tool_read_knowledge_base,
     "get_cost_tracker_summary":   _tool_get_cost_tracker_summary,
     "get_procurement_alerts":     _tool_get_procurement_alerts,
+    "get_recent_activity":        _tool_get_recent_activity,
 }
 
 
@@ -556,6 +689,10 @@ You have tools to retrieve context from his project data:
   - get_procurement_alerts: actionable order alerts grouped by urgency
     (use for ANY question about ordering, lead times, what's overdue,
     what to order this week, supply-chain risk)
+  - get_recent_activity: recent autonomous actions the AI took on Chad's
+    behalf via hb-router (receipts logged, phases updated, change orders
+    drafted, etc.) — use for ANY "what did the AI do" / accountability /
+    audit-trail question. Optional project_id + since_hours filters.
   - search_drive: keyword-search his Google Drive
   - read_drive_file: open a specific file (THIS counts as a citation)
   - read_knowledge_base: Baldwin County codes, supplier list, Chad's voice rules

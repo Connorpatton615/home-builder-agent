@@ -470,3 +470,84 @@ def _query_many(
         with c.cursor() as cur:
             cur.execute(sql, params)
             return list(cur.fetchall())
+
+
+# ---------------------------------------------------------------------------
+# Engine activity audit log — read-side
+# ---------------------------------------------------------------------------
+#
+# hb-router is the sole writer to home_builder.engine_activity (Rule 3).
+# Readers — hb-ask's get_recent_activity tool today, the iOS Activity tab
+# route tomorrow — go through this loader so the column projection and
+# ordering stay consistent.
+
+def load_recent_engine_activity(
+    *,
+    project_id: str | None = None,
+    actor_user_id: str | None = None,
+    since_hours: int | None = None,
+    limit: int = 25,
+    conn: psycopg.Connection | None = None,
+) -> list[dict]:
+    """Read recent rows from home_builder.engine_activity, newest first.
+
+    Args:
+        project_id:     If set, filter to actions on this project.
+        actor_user_id:  If set, filter to actions triggered by this user.
+        since_hours:    If set, only include rows from the last N hours.
+        limit:          Max rows to return (default 25).
+        conn:           Reuse an existing connection; opens its own otherwise.
+
+    Returns dicts with the engine_activity columns as keys, plus
+    `created_at` rendered as a tz-aware ISO string for downstream
+    display. Sorted by created_at DESC.
+    """
+    where: list[str] = []
+    params: list = []
+
+    if project_id is not None:
+        where.append("project_id = %s::uuid")
+        params.append(project_id)
+    if actor_user_id is not None:
+        where.append("actor_user_id = %s::uuid")
+        params.append(actor_user_id)
+    if since_hours is not None and since_hours > 0:
+        where.append("created_at >= NOW() - (%s || ' hours')::interval")
+        params.append(str(since_hours))
+
+    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+
+    sql = f"""
+        SELECT
+            id::text                    AS id,
+            actor_user_id::text         AS actor_user_id,
+            project_id::text            AS project_id,
+            surface,
+            invoked_agent,
+            user_intent,
+            classified_command_type,
+            parameters,
+            outcome,
+            result_summary,
+            affected_entity_type,
+            affected_entity_id::text    AS affected_entity_id,
+            cost_usd,
+            duration_ms,
+            error_message,
+            created_at
+        FROM home_builder.engine_activity
+        {where_sql}
+        ORDER BY created_at DESC
+        LIMIT %s
+    """
+    params.append(limit)
+
+    rows = _query_many(sql, tuple(params), conn=conn)
+
+    # Normalize: ISO-format created_at, decimal→float for cost.
+    for r in rows:
+        if r.get("created_at") is not None:
+            r["created_at"] = r["created_at"].isoformat()
+        if r.get("cost_usd") is not None:
+            r["cost_usd"] = float(r["cost_usd"])
+    return rows
