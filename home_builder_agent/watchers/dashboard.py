@@ -37,6 +37,7 @@ from home_builder_agent.config import (
     WATCHER_TIMEOUT_SEC,
 )
 from home_builder_agent.core.auth import get_credentials
+from home_builder_agent.core.heartbeat import beat_on_success
 from home_builder_agent.integrations import drive, sheets
 
 socket.setdefaulttimeout(WATCHER_SOCKET_TIMEOUT)
@@ -119,6 +120,7 @@ def _timeout_handler(signum, frame):
     sys.exit(1)
 
 
+@beat_on_success("dashboard-watcher", stale_after_seconds=300)
 def main():
     # Hard kill if not done in WATCHER_TIMEOUT_SEC — belt-and-suspenders
     # alongside the per-socket timeout. Covers stalls outside socket calls.

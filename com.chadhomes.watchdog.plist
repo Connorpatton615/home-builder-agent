@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd job for the heartbeat watchdog.
+
+  Reads .heartbeats/*.json every 10 minutes. If any heartbeat is older than
+  its stale_after_seconds, appends to .heartbeat_alerts.log AND fires a
+  macOS notification listing the stale jobs.
+
+  Install:
+    cp com.chadhomes.watchdog.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.chadhomes.watchdog.plist
+
+  Stop:
+    launchctl unload ~/Library/LaunchAgents/com.chadhomes.watchdog.plist
+
+  Reload after edits:
+    launchctl unload ~/Library/LaunchAgents/com.chadhomes.watchdog.plist
+    launchctl load   ~/Library/LaunchAgents/com.chadhomes.watchdog.plist
+
+  Inspect:
+    launchctl list | grep chadhomes
+    tail -f ~/Projects/home-builder-agent/.heartbeat_alerts.log
+    tail -f /tmp/watchdog.stdout.log
+
+  StartInterval: 600 = 10 min. Aligns with the most aggressive watcher
+  threshold (300s for dashboard / reconcile) — within two watchdog ticks
+  a stale 60s-cadence watcher fires a notification.
+
+  RunAtLoad: true so loading the plist immediately produces an initial
+  status line in the stdout log even if no heartbeats exist yet.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.chadhomes.watchdog</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Library/Frameworks/Python.framework/Versions/3.14/bin/python3</string>
+    <string>-m</string>
+    <string>home_builder_agent.watchers.watchdog</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/connorpatton/Projects/home-builder-agent</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONPATH</key>
+    <string>/Users/connorpatton/Projects/home-builder-agent</string>
+  </dict>
+
+  <key>StartInterval</key>
+  <integer>600</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/watchdog.stdout.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/watchdog.stderr.log</string>
+</dict>
+</plist>

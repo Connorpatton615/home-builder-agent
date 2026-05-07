@@ -33,6 +33,7 @@ import os
 import sys
 from datetime import datetime, timezone
 
+from home_builder_agent.core.heartbeat import beat_on_success
 from home_builder_agent.scheduling.reconcile import (
     DispatchOutcome,
     WATERMARK_PATH,
@@ -82,6 +83,7 @@ def _print_pretty(report) -> None:
     print(f"\n{'='*64}\n")
 
 
+@beat_on_success("reconcile", stale_after_seconds=300, success_codes=(0, 3))
 def main():
     parser = argparse.ArgumentParser(
         description="Run one engine reconcile pass over home_builder.user_action."

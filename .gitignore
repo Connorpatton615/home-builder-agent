@@ -43,6 +43,9 @@ timeline_*.md
 watcher.log
 *.log
 
+# Heartbeat-watchdog runtime state — written every successful watcher run
+.heartbeats/
+
 # Claude Code worktrees — managed by Claude Code, not part of repo
 .claude/worktrees/
 

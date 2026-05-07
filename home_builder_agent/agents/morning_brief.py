@@ -41,6 +41,7 @@ from home_builder_agent.config import (
 )
 from home_builder_agent.core.auth import get_credentials
 from home_builder_agent.core.claude_client import make_client, sonnet_cost
+from home_builder_agent.core.heartbeat import beat_on_success
 from home_builder_agent.integrations import drive, sheets
 from home_builder_agent.integrations import gmail as gmail_int
 from home_builder_agent.integrations.finance import get_aging_report
@@ -580,6 +581,7 @@ Output ONLY a JSON object with keys "subject" and "html". No markdown fence, no 
 # Main
 # ---------------------------------------------------------------------------
 
+@beat_on_success("morning-brief", stale_after_seconds=90000)
 def main():
     parser = argparse.ArgumentParser(
         description="Send the daily morning brief to Chad."

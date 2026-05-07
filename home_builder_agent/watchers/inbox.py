@@ -42,6 +42,7 @@ from home_builder_agent.config import (
 )
 from home_builder_agent.core.auth import get_credentials
 from home_builder_agent.core.claude_client import make_client
+from home_builder_agent.core.heartbeat import beat_on_success
 from home_builder_agent.integrations import gmail as gmail_int
 from home_builder_agent.integrations import drive as drive_int
 from home_builder_agent.integrations.finance import add_invoice_row
@@ -208,6 +209,7 @@ def _timeout_handler(signum, frame):
     sys.exit(1)
 
 
+@beat_on_success("inbox-watcher", stale_after_seconds=1500)
 def main():
     signal.signal(signal.SIGALRM, _timeout_handler)
     signal.alarm(INBOX_WATCHER_TIMEOUT_SEC)

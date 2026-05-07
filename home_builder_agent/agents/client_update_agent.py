@@ -26,6 +26,7 @@ from home_builder_agent.config import (
 )
 from home_builder_agent.core.auth import get_credentials
 from home_builder_agent.core.claude_client import make_client, sonnet_cost
+from home_builder_agent.core.heartbeat import beat_on_success
 from home_builder_agent.integrations import drive, gmail, sheets
 
 
@@ -275,6 +276,7 @@ Baldwin County, Alabama
 # Main
 # ---------------------------------------------------------------------------
 
+@beat_on_success("client-update", stale_after_seconds=691200)
 def main():
     parser = argparse.ArgumentParser(
         description="Generate and draft a homeowner weekly project update email."
