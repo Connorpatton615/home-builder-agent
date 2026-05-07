@@ -34,8 +34,10 @@ def make_client():
     # find_project_file resolves .env via PACKAGE_ROOT first then falls
     # back to the canonical install dir — same pattern as credentials.json
     # and token.json — so agents work from any CWD (worktree, IDE, launchd).
+    # override=True so a parent process injecting an EMPTY ANTHROPIC_API_KEY
+    # (e.g. some IDE sessions) doesn't shadow the real value in .env.
     env_path = find_project_file(".env")
-    load_dotenv(env_path)
+    load_dotenv(env_path, override=True)
     key = os.environ.get("ANTHROPIC_API_KEY")
     if not key:
         raise RuntimeError(
