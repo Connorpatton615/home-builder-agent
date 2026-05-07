@@ -25,8 +25,11 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+from datetime import datetime as _datetime, timezone as _timezone
+
 from home_builder_agent.scheduling.checklists import Checklist, ChecklistItem
 from home_builder_agent.scheduling.engine import Phase, Schedule
+from home_builder_agent.scheduling.events import Event, click_action_for
 from home_builder_agent.scheduling.lead_times import DropDeadDate
 from home_builder_agent.scheduling.schemas import (
     ChecklistGatesProjectPayload,
@@ -47,7 +50,10 @@ from home_builder_agent.scheduling.schemas import (
     MonthlyProjectPayload,
     MonthlyViewPayload,
     NotificationFeedViewPayload,
+    NotificationItemPayload,
+    NotificationStatus,
     PhaseStatus,
+    Severity,
     WeeklyItemKind,
     WeeklyItemPayload,
     WeeklyProjectPayload,
@@ -397,6 +403,72 @@ def checklist_gates_view(
     return ChecklistGatesViewPayload(projects=projects)
 
 
-def notification_feed_view(*_args, **_kwargs) -> NotificationFeedViewPayload:
-    """V2 — returns empty payload until Event store is wired up."""
-    return NotificationFeedViewPayload(items=[])
+def _event_to_notification_payload(
+    event: Event,
+    *,
+    notification_id: str | None = None,
+    now: _datetime | None = None,
+) -> NotificationItemPayload:
+    """Project an engine Event into the wire NotificationItemPayload.
+
+    `notification_id` is supplied by the persistence layer when the Event
+    has been wrapped by an actual Notification row; in v0 (in-app feed
+    only, no APNs yet) the projection synthesizes one 1:1 with the event
+    so the wire shape is honored.
+    """
+    age = event.age_seconds(now=now)
+    nid = notification_id or f"notif:{event.id}"
+
+    return NotificationItemPayload(
+        event_id=event.id,
+        notification_id=nid,
+        type=event.type,
+        severity=Severity(event.severity),
+        status=NotificationStatus(event.status),
+        summary=event.summary(),
+        project_id=event.project_id,
+        phase_id=event.phase_id,
+        age_seconds=age,
+        created_at=event.created_at.date() if hasattr(event.created_at, "date") else event.created_at,
+        acknowledged_at=event.acknowledged_at.date() if event.acknowledged_at else None,
+        resolved_at=event.resolved_at.date() if event.resolved_at else None,
+        acknowledge_action=f"event-acknowledge:{event.id}",
+        resolve_action=f"event-resolve:{event.id}",
+        click_action=click_action_for(event),
+    )
+
+
+def notification_feed_view(
+    events: list[Event] | None = None,
+    *,
+    notification_ids_by_event: dict[str, str] | None = None,
+    now: _datetime | None = None,
+) -> NotificationFeedViewPayload:
+    """Project a list of engine Events into the notification-feed view payload.
+
+    Caller supplies the events (typically from store_postgres.load_recent_events
+    over a project or actor scope). Items are returned in newest-first order.
+
+    `notification_ids_by_event` is optional — when the engine has already
+    persisted Notification rows (one per channel), the caller can pass the
+    in-app surface's notification_id per event. Without it, this projection
+    synthesizes a stable id per event for the in-app feed (notif:<event_id>).
+    """
+    events = events or []
+    notification_ids_by_event = notification_ids_by_event or {}
+    now = now or _datetime.now(_timezone.utc)
+
+    # Newest-first
+    sorted_events = sorted(
+        events, key=lambda e: e.created_at, reverse=True,
+    )
+
+    items = [
+        _event_to_notification_payload(
+            e,
+            notification_id=notification_ids_by_event.get(e.id),
+            now=now,
+        )
+        for e in sorted_events
+    ]
+    return NotificationFeedViewPayload(items=items)

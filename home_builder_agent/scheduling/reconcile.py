@@ -46,6 +46,8 @@ import psycopg
 
 from home_builder_agent.integrations.postgres import connection
 from home_builder_agent.scheduling.store_postgres import (
+    acknowledge_event,
+    resolve_event,
     save_phase_status_change,
     update_checklist_item,
 )
@@ -436,6 +438,89 @@ def _dispatch_checklist_tick(
     return base
 
 
+def _dispatch_event_acknowledge(
+    action: dict,
+    conn: psycopg.Connection,
+) -> DispatchResult:
+    """Apply an event-acknowledge UserAction.
+
+    target_entity_type is "event"; target_entity_id is the Event UUID.
+    Acknowledgement is idempotent — re-acking an already-acked event
+    leaves status='acknowledged' and updates updated_at.
+
+    The actor (`acknowledgement_actor`) is taken from action.actor_user_id.
+    Resolved events are NOT downgraded back to acknowledged — the SQL
+    guard in acknowledge_event() filters those out.
+    """
+    target_type = action["target_entity_type"]
+    target_id = action["target_entity_id"]
+
+    base = DispatchResult(
+        action_id=action["id"],
+        action_type="event-acknowledge",
+        target_entity_type=target_type,
+        target_entity_id=target_id,
+        outcome=DispatchOutcome.SKIPPED,
+        synced_at=action["synced_at"],
+    )
+
+    if target_type != "event":
+        base.notes = f"target_entity_type={target_type!r}; event-acknowledge must target 'event'"
+        return base
+
+    ok = acknowledge_event(
+        event_id=target_id,
+        actor_user_id=action.get("actor_user_id"),
+        conn=conn,
+    )
+    if ok:
+        base.outcome = DispatchOutcome.APPLIED
+        base.notes = f"event {target_id[:8]}… acknowledged"
+    else:
+        base.outcome = DispatchOutcome.SKIPPED
+        base.notes = f"event {target_id[:8]}… not found OR already resolved"
+    return base
+
+
+def _dispatch_event_resolve(
+    action: dict,
+    conn: psycopg.Connection,
+) -> DispatchResult:
+    """Apply an event-resolve UserAction.
+
+    Same shape as event-acknowledge but flips to status='resolved' and
+    stamps resolved_at. Acknowledged_at is set if not already.
+    """
+    target_type = action["target_entity_type"]
+    target_id = action["target_entity_id"]
+
+    base = DispatchResult(
+        action_id=action["id"],
+        action_type="event-resolve",
+        target_entity_type=target_type,
+        target_entity_id=target_id,
+        outcome=DispatchOutcome.SKIPPED,
+        synced_at=action["synced_at"],
+    )
+
+    if target_type != "event":
+        base.notes = f"target_entity_type={target_type!r}; event-resolve must target 'event'"
+        return base
+
+    ok = resolve_event(
+        event_id=target_id,
+        actor_user_id=action.get("actor_user_id"),
+        conn=conn,
+    )
+    if ok:
+        base.outcome = DispatchOutcome.APPLIED
+        base.notes = f"event {target_id[:8]}… resolved"
+    else:
+        base.outcome = DispatchOutcome.SKIPPED
+        base.notes = f"event {target_id[:8]}… not found OR already resolved"
+    return base
+
+
 def _dispatch_unknown(action_type: str) -> Callable[[dict, psycopg.Connection], DispatchResult]:
     """Factory for action types we know about but haven't implemented yet."""
     def _handler(action: dict, conn: psycopg.Connection) -> DispatchResult:
@@ -456,6 +541,8 @@ DISPATCHERS: dict[str, Callable[[dict, psycopg.Connection], DispatchResult]] = {
     "inspection-result":         _dispatch_inspection_result,
     "schedule-override":         _dispatch_schedule_override,
     "checklist-tick":            _dispatch_checklist_tick,
+    "event-acknowledge":         _dispatch_event_acknowledge,
+    "event-resolve":             _dispatch_event_resolve,
     "material-delivery-confirm": _dispatch_unknown("material-delivery-confirm"),
     "sub-checkin":               _dispatch_unknown("sub-checkin"),
     "vendor-pin":                _dispatch_unknown("vendor-pin"),

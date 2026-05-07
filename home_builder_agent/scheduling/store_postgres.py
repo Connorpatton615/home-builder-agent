@@ -40,6 +40,13 @@ from home_builder_agent.scheduling.checklists import (
     STUB_TEMPLATE_VERSION,
     load_template,
 )
+from home_builder_agent.scheduling.events import (
+    Event,
+    EventStatus,
+    Notification,
+    NotificationChannel,
+    NotificationSurface,
+)
 from home_builder_agent.scheduling.engine import (
     Milestone,
     Phase,
@@ -692,6 +699,243 @@ def update_checklist_item(
     with connection(application_name="hb-engine-checklist-write") as c:
         with c.cursor() as cur:
             cur.execute(sql, tuple(params))
+            return cur.rowcount > 0
+
+
+# ---------------------------------------------------------------------------
+# Event + Notification read/write paths (migration 006)
+# ---------------------------------------------------------------------------
+#
+# Engine OWNS the canonical Event store per canonical-data-model.md § 17.
+# Other layers (Vendor Intelligence, supplier-email watcher, weather
+# subsystem, permit ingestion) emit Events by calling insert_event() —
+# they do not maintain parallel Event stores. Renderers consume Events
+# via load_recent_events_for_project + the notification_feed_view
+# projection. Acknowledge/resolve flow through reconcile dispatch from
+# UserAction:event-acknowledge / event-resolve.
+#
+# The in-app Notification is created 1:1 with the Event on insert (Phase
+# A — only the in-app surface exists). When push / email / SMS dispatch
+# come online, that's the Notification dispatcher's job; this layer just
+# stores the rows.
+
+import json as _json
+
+
+def insert_event(
+    event: Event,
+    *,
+    create_default_notification: bool = True,
+    conn: psycopg.Connection | None = None,
+) -> str:
+    """Persist an Event. Returns the event row's UUID (string).
+
+    If `create_default_notification` is True (default), also inserts a
+    1:1 in-app Notification row pointing at the notification-feed
+    surface. That covers the V0 case where the only delivery channel is
+    "show it on the feed when Chad opens the app."
+    """
+    sql_event = """
+        INSERT INTO home_builder.event (
+            id, type, severity, status,
+            project_id, phase_id, task_id, vendor_id, sku_id,
+            payload, source, created_at
+        )
+        VALUES (
+            %s::uuid, %s, %s, %s,
+            %s, %s, %s, %s, %s,
+            %s::jsonb, %s, %s
+        )
+        RETURNING id::text AS id
+    """
+    params = (
+        event.id,
+        event.type,
+        event.severity,
+        event.status,
+        event.project_id,
+        event.phase_id,
+        event.task_id,
+        event.vendor_id,
+        event.sku_id,
+        _json.dumps(event.payload or {}),
+        event.source,
+        event.created_at,
+    )
+
+    if conn is not None:
+        with conn.cursor() as cur:
+            cur.execute(sql_event, params)
+            row = cur.fetchone()
+            event_id = row["id"]
+            if create_default_notification:
+                _insert_default_in_app_notification(event_id, conn)
+            return event_id
+
+    with connection(application_name="hb-engine-event-write") as c:
+        with c.cursor() as cur:
+            cur.execute(sql_event, params)
+            row = cur.fetchone()
+            event_id = row["id"]
+            if create_default_notification:
+                _insert_default_in_app_notification(event_id, c)
+            return event_id
+
+
+def _insert_default_in_app_notification(
+    event_id: str,
+    conn: psycopg.Connection,
+) -> str:
+    """Insert a 1:1 in-app Notification on the notification-feed surface.
+
+    Phase A only knows about the in-app surface. When APNs / email come
+    online, the Notification dispatcher will insert additional rows per
+    severity-driven channel.
+    """
+    sql = """
+        INSERT INTO home_builder.notification (
+            event_id, channel, surface_target
+        )
+        VALUES (%s::uuid, %s, %s)
+        RETURNING id::text AS id
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql, (
+            event_id,
+            NotificationChannel.IN_APP.value,
+            NotificationSurface.NOTIFICATION_FEED.value,
+        ))
+        return cur.fetchone()["id"]
+
+
+def load_recent_events_for_project(
+    project_id: str | None = None,
+    *,
+    since_hours: int | None = 168,
+    status_in: tuple[str, ...] = (EventStatus.OPEN.value, EventStatus.ACKNOWLEDGED.value),
+    limit: int = 50,
+    conn: psycopg.Connection | None = None,
+) -> list[Event]:
+    """Load Events newest-first. By default returns the last 7 days of
+    open + acknowledged events (resolved excluded — they don't belong
+    on the active feed).
+
+    `project_id=None` returns events across all projects (master-feed
+    pattern).
+    """
+    where: list[str] = []
+    params: list = []
+
+    if project_id is not None:
+        where.append("project_id = %s::uuid")
+        params.append(project_id)
+    if status_in:
+        where.append("status = ANY(%s::text[])")
+        params.append(list(status_in))
+    if since_hours is not None and since_hours > 0:
+        where.append("created_at >= NOW() - (%s || ' hours')::interval")
+        params.append(str(since_hours))
+
+    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+
+    sql = f"""
+        SELECT
+            id::text                  AS id,
+            type, severity, status,
+            project_id::text          AS project_id,
+            phase_id::text            AS phase_id,
+            task_id::text             AS task_id,
+            vendor_id::text           AS vendor_id,
+            sku_id::text              AS sku_id,
+            payload,
+            source,
+            acknowledgement_actor::text AS acknowledgement_actor,
+            created_at, acknowledged_at, resolved_at
+        FROM home_builder.event
+        {where_sql}
+        ORDER BY created_at DESC
+        LIMIT %s
+    """
+    params.append(limit)
+    rows = _query_many(sql, tuple(params), conn=conn)
+
+    return [
+        Event(
+            id=r["id"],
+            type=r["type"],
+            severity=r["severity"],
+            status=r["status"],
+            created_at=r["created_at"],
+            project_id=r.get("project_id"),
+            phase_id=r.get("phase_id"),
+            task_id=r.get("task_id"),
+            vendor_id=r.get("vendor_id"),
+            sku_id=r.get("sku_id"),
+            payload=r.get("payload") or {},
+            source=r.get("source") or "scheduling-engine",
+            acknowledged_at=r.get("acknowledged_at"),
+            resolved_at=r.get("resolved_at"),
+            acknowledgement_actor=r.get("acknowledgement_actor"),
+        )
+        for r in rows
+    ]
+
+
+def acknowledge_event(
+    event_id: str,
+    *,
+    actor_user_id: str | None = None,
+    conn: psycopg.Connection | None = None,
+) -> bool:
+    """Flip an Event from open → acknowledged. Idempotent. Returns False
+    if the row doesn't exist."""
+    sql = """
+        UPDATE home_builder.event
+        SET status = 'acknowledged',
+            acknowledged_at = COALESCE(acknowledged_at, NOW()),
+            acknowledgement_actor = COALESCE(%s::uuid, acknowledgement_actor),
+            updated_at = NOW()
+        WHERE id = %s::uuid
+          AND status IN ('open', 'acknowledged')
+    """
+    params = (actor_user_id, event_id)
+    if conn is not None:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            return cur.rowcount > 0
+    with connection(application_name="hb-engine-event-ack") as c:
+        with c.cursor() as cur:
+            cur.execute(sql, params)
+            return cur.rowcount > 0
+
+
+def resolve_event(
+    event_id: str,
+    *,
+    actor_user_id: str | None = None,
+    conn: psycopg.Connection | None = None,
+) -> bool:
+    """Flip an Event to resolved. Stamps resolved_at; if not yet
+    acknowledged, stamps acknowledged_at too. Returns False if the row
+    doesn't exist or is already resolved."""
+    sql = """
+        UPDATE home_builder.event
+        SET status = 'resolved',
+            resolved_at = COALESCE(resolved_at, NOW()),
+            acknowledged_at = COALESCE(acknowledged_at, NOW()),
+            acknowledgement_actor = COALESCE(%s::uuid, acknowledgement_actor),
+            updated_at = NOW()
+        WHERE id = %s::uuid
+          AND status IN ('open', 'acknowledged')
+    """
+    params = (actor_user_id, event_id)
+    if conn is not None:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            return cur.rowcount > 0
+    with connection(application_name="hb-engine-event-resolve") as c:
+        with c.cursor() as cur:
+            cur.execute(sql, params)
             return cur.rowcount > 0
 
 
