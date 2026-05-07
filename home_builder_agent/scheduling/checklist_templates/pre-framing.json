@@ -1,0 +1,73 @@
+{
+  "phase_name": "Pre-framing",
+  "template_version": "v1.0-2026-05-07",
+  "description": "All foundation, site, permit, material, and crew prerequisites verified on the ground before the first stick of lumber is stood \u2014 nothing starts until every item closes.",
+  "categories": [
+    {
+      "name": "Permits & Approvals",
+      "items": [
+        "Baldwin County building permit posted on-site in weatherproof holder",
+        "Approved permit set (stamped drawings) physically on-site and accessible to inspectors",
+        "Septic permit approved and copy on file (or sewer tap fee paid and receipt on file)",
+        "Electrical and plumbing permits approved and posted or on file per Baldwin County requirement",
+        "Any HOA or coastal setback approval documents received and on file",
+        "Flood zone determination confirmed; if AE or VE zone, first-floor elevation verified against LOMA/BFE requirement and noted in file"
+      ]
+    },
+    {
+      "name": "Foundation Acceptance",
+      "items": [
+        "Baldwin County foundation/footing inspection passed and inspection card signed off",
+        "Slab or stem-wall concrete cylinder break results on file, minimum PSI per structural engineer's spec achieved",
+        "Slab flatness tolerance verified \u2014 maximum 3/16\" in 10 ft for living areas per spec",
+        "All anchor bolts (or strap embed locations) mapped against structural engineer's anchor schedule; any deviations documented and EOR-approved in writing",
+        "Foundation dimensions field-verified against architectural plans: overall footprint, bearing wall centerlines, garage slab drop, step-downs at covered porches",
+        "Slab curing complete \u2014 minimum 7 days (or engineer's specified cure time) before framing load applied",
+        "All slab penetrations (plumbing rough stubs, conduit sleeves) confirmed at correct location per MEP plans and protected/capped"
+      ]
+    },
+    {
+      "name": "Site Conditions",
+      "items": [
+        "Erosion controls (silt fence, inlet protection) inspected and intact before framing activity increases disturbed area",
+        "Temporary construction entrance (min. 6\" compacted gravel) in place to prevent tracked mud on public road",
+        "Grade around foundation confirmed positive drainage away from slab on all sides (min. 6\" drop in first 10 ft per IRC R401.3)",
+        "Dumpster and debris staging area established and not blocking material delivery or crane path",
+        "Temporary power (100A min. construction meter) energized and GFCI-protected outlets functional",
+        "Portable restroom on-site and positioned per OSHA 29 CFR 1926.51 proximity requirements"
+      ]
+    },
+    {
+      "name": "Materials On-Site & Staged",
+      "items": [
+        "Lumber package delivered, quantity verified against framing takeoff, and inspected for species/grade matching structural engineer's spec (typically #2 SPF or better)",
+        "Lumber stored off ground on bearers, covered with breathable tarps, stacked by member type for efficient crane or manual set",
+        "Engineered lumber (LVL, I-joists, PSL) confirmed on delivery ticket against structural engineer's beam and header schedule; no substitutions without EOR sign-off",
+        "Window and exterior door rough opening headers and support hardware on-site and cross-referenced to window/door schedule on approved plans",
+        "Structural hardware package (holdowns, straps, joist hangers, post caps, anchor bolt plates) on-site and verified against structural engineer's hardware schedule",
+        "Treated sill plate lumber (min. 0.40 CCA or approved equivalent per IRC R317) on-site and confirmed pressure-treated stamp visible",
+        "Sill seal gasket material on-site for full perimeter installation under all bottom plates bearing on concrete"
+      ]
+    },
+    {
+      "name": "Crew & Schedule",
+      "items": [
+        "Framing crew lead confirmed start date in writing; crew size and composition verified as sufficient for schedule (crew size documented in superintendent's log)",
+        "Framing foreman has reviewed approved structural plans, engineer's hardware schedule, and anchor bolt layout before mobilization",
+        "Crane or telehandler reserved and delivery/pickup dates confirmed if required by structural plan (two-story, heavy timber, long LVL spans)",
+        "Framing sub's certificate of insurance (GL + WC) current and on file; expiration dates checked against project duration",
+        "Framing schedule milestone dates communicated to MEP subs (rough-in follows frame) and confirmed they are still holding their reserved slots",
+        "Superintendent site walk scheduled with framing foreman the morning of Day 1 to review plan set, critical dims, and quality expectations before work begins"
+      ]
+    },
+    {
+      "name": "Pre-Framing Superintendent Sign-Off",
+      "items": [
+        "Superintendent has personally walked the slab and verified no condition exists that would prevent compliant framing (cracked concrete, mis-set anchors, out-of-square footprint) \u2014 deficiencies resolved or EOR-approved before proceeding",
+        "Project manager notified in writing (text or email) that all Pre-framing items are closed and framing is authorized to begin",
+        "Baseline framing photos taken and uploaded to project Drive folder (all four elevations of slab, anchor bolt layout, staged materials)",
+        "Any open RFIs or plan discrepancies identified during Pre-framing review submitted to architect and resolved before Day 1 of framing"
+      ]
+    }
+  ]
+}

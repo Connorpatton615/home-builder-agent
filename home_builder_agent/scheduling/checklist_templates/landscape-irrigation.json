@@ -1,0 +1,84 @@
+{
+  "phase_name": "Landscape & Irrigation",
+  "template_version": "v1.0-2026-05-07",
+  "description": "Closes when all grading, drainage, irrigation, sod/planting, and exterior finish-grade elements are installed, tested, and accepted by client \u2014 lot is move-in ready from the ground plane out.",
+  "categories": [
+    {
+      "name": "Pre-Install Verification",
+      "items": [
+        "Final grade elevations confirmed against civil/grading plan \u2014 positive drainage away from foundation minimum 6 inches in first 10 feet per IRC R401.3",
+        "All underground utilities (irrigation sleeves, low-voltage, gas, electrical) located and flagged before any digging begins",
+        "Landscape plan reviewed and approved by client \u2014 plant species, sizes (caliper/height), quantities, and placement confirmed in writing",
+        "Irrigation design plan on file \u2014 head layout, zone map, GPM per zone, and backflow preventer location confirmed",
+        "Sod or seed variety confirmed with client (e.g., Zoysia, Bermuda, St. Augustine) and availability verified with supplier",
+        "Any HOA or Baldwin County landscape buffers or tree-preservation requirements verified and flagged on plan",
+        "All hardscape (driveway, walkways, patios) fully complete and cured before bed preparation and sod install begins"
+      ]
+    },
+    {
+      "name": "Grading & Drainage",
+      "items": [
+        "Rough grade scraped, debris removed, and subgrade compacted to accept topsoil or sod bed",
+        "Topsoil depth minimum 4 inches across all turf areas, 6 inches in planting beds \u2014 verified by probe in at least 6 locations",
+        "Swales graded and confirmed to carry stormwater to street or detention area without pooling within 24 hours of a 1-inch rain event",
+        "French drains or area drains installed per plan \u2014 inlet grates set flush to grade, outfall confirmed daylighting clear of structure",
+        "Erosion control measures (silt fence, check dams) removed after final grade is stabilized",
+        "Final grade confirmed at all foundation vents, AC pad, and HVAC line sets \u2014 no soil contact with wood framing or stucco/fiber cement"
+      ]
+    },
+    {
+      "name": "Irrigation Installation",
+      "items": [
+        "Backflow preventer installed per Alabama Dept. of Environmental Management (ADEM) requirements and Baldwin County code \u2014 accessible for annual testing",
+        "All mainline and lateral lines installed at minimum 8-inch depth; sleeved under all hardscape at minimum 12-inch depth",
+        "Each zone mapped and labeled on controller \u2014 zone number, area served, and head type recorded on as-built zone map",
+        "Head type and spacing appropriate for zone: rotors on turf, drip emitters or bubblers in planting beds \u2014 no overspray onto structure, fencing, or hardscape",
+        "Static water pressure at meter and dynamic pressure at zone heads measured and recorded \u2014 head pressure within manufacturer's specified operating range (typically 30\u201345 PSI)",
+        "All zones run full cycle and inspected by superintendent: full coverage confirmed, no misting from over-pressure, no dry spots greater than 12 inches in diameter",
+        "Rain/freeze sensor installed and wired to controller \u2014 tested for automatic shutoff function"
+      ]
+    },
+    {
+      "name": "Planting & Sod Installation",
+      "items": [
+        "All planting bed edges cleanly defined \u2014 beds mulched with minimum 3-inch depth hardwood or pine straw (client-selected), pulled back 2 inches from plant stems",
+        "Trees planted with root flare at or slightly above finished grade \u2014 no trunk burial; staked only if caliper is under 2 inches or site is high-wind exposure",
+        "Shrubs and groundcover installed per plan spacing; root balls confirmed intact and watered in at time of install",
+        "Sod installed within 24 hours of delivery \u2014 no yellowed or dried rolls accepted; joints staggered, edges cut tight to beds and hardscape",
+        "Sod rolled after install to ensure full soil contact \u2014 no air pockets or lifted edges visible",
+        "All plant material is Florida #1 grade or better (FNGLA standard) \u2014 superintendent verified species and size against landscape plan at delivery"
+      ]
+    },
+    {
+      "name": "Exterior Site Furnishings & Lighting",
+      "items": [
+        "Mailbox installed per USPS and subdivision/HOA requirements \u2014 post plumb and set in concrete",
+        "Low-voltage landscape lighting installed per plan \u2014 transformer load calculated and within 80% of rated capacity; all fixtures aimed and operational",
+        "House numbers installed and visible from street per Baldwin County addressing requirements",
+        "Any address monument, entry columns, or decorative fencing confirmed complete, plumb, and matching approved design",
+        "Outdoor shower, hose bibs, and exterior GFCI outlets confirmed functional and not obstructed by planting"
+      ]
+    },
+    {
+      "name": "Quality & Punch",
+      "items": [
+        "Full perimeter walk with superintendent: no exposed bare soil in turf areas, no standing water, no hardscape damage from landscape equipment",
+        "All tree wrap, burlap, wire, and nursery tags removed from installed plant material",
+        "Concrete driveway, walkways, and pool coping cleaned of all soil, mulch, and plant debris \u2014 pressure washed if needed",
+        "Irrigation controller programmed with initial seasonal schedule, labeled, and manual left with client or stored in control box",
+        "Landscape contractor punch list issued and all items closed before client walkthrough"
+      ]
+    },
+    {
+      "name": "Client Walkthrough & Closeout",
+      "items": [
+        "Client walkthrough completed \u2014 superintendent and landscape contractor present; client signs landscape acceptance form",
+        "Irrigation orientation completed with client: zone map reviewed, manual operation demonstrated, rain sensor tested, winterization procedure explained",
+        "Plant warranty documentation provided to client \u2014 minimum 1-year warranty on trees and shrubs standard for Palmetto builds; warranty terms in writing",
+        "Landscape contractor's final lien waiver received and filed",
+        "As-built irrigation zone map scanned and uploaded to project Drive folder",
+        "Turf and plant care instructions (watering schedule, fertilization, mowing height by species) provided to client in writing"
+      ]
+    }
+  ]
+}

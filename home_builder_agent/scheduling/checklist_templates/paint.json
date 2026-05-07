@@ -1,0 +1,79 @@
+{
+  "phase_name": "Paint",
+  "template_version": "v1.0-2026-05-07",
+  "description": "All interior and exterior paint and primer work is complete, inspected, and accepted by superintendent before punch-list and client walkthrough begin.",
+  "categories": [
+    {
+      "name": "Pre-Paint Verification",
+      "items": [
+        "Drywall finish confirmed at Level 5 throughout all living areas, Level 4 minimum in garages and utility spaces \u2014 no sanding ridges, tool marks, or bead shadows visible under raking light",
+        "All drywall mud fully cured and dry; no soft spots or discoloration indicating moisture (probe-test any suspect areas)",
+        "Trim, casing, base, crown, and door frames confirmed installed and nail-filled by trim crew before painter begins",
+        "All penetrations and gaps at outlet boxes, plumbing escutcheons, and HVAC registers caulked or backfilled by respective trade \u2014 not to be painted over unfilled",
+        "Interior humidity at or below 50% RH and temperature between 55\u00b0F and 90\u00b0F confirmed on-site before any paint application",
+        "Client's room-by-room paint schedule (colors, sheens, accent walls) reviewed with painter and confirmed against final selections on file"
+      ]
+    },
+    {
+      "name": "Materials On-Site",
+      "items": [
+        "All paint products on-site match approved color schedule \u2014 confirm manufacturer, color name, color code, and sheen level for each space against signed selections document",
+        "Paint is from a single production batch (same lot number) per color to prevent sheen or tint variation across a room",
+        "Primer type confirmed appropriate for substrate: PVA drywall primer on new drywall, shellac-based or stain-blocking primer over any water-stained or tannin-prone surfaces",
+        "Exterior paint products confirmed rated for coastal/high-humidity environment (mildew-resistant additives, appropriate for Baldwin County gulf-coast exposure)",
+        "Sufficient quantity of each color on-site to complete phase plus minimum one quart per color retained for touch-up and turned over to client at closeout"
+      ]
+    },
+    {
+      "name": "Primer & First Coat",
+      "items": [
+        "Full-coverage PVA primer applied to all new drywall surfaces; no bare paper or mud hot-spots visible after primer dries",
+        "Stain-blocking primer applied to all knots and sap pockets on stained or painted wood trim before finish coats",
+        "Primer on exterior wood, fiber cement, and trim coats meet manufacturer's minimum dry-film thickness recommendations",
+        "All caulking at trim-to-wall, trim-to-trim, and trim-to-ceiling joints completed after primer coat, before finish coats \u2014 caulk is paintable and fully cured per manufacturer spec",
+        "First finish coat applied; superintendent spot-checks coverage uniformity, no holidays or roller-skip areas present"
+      ]
+    },
+    {
+      "name": "Finish Coats & Quality Checks",
+      "items": [
+        "Minimum two finish coats applied in all areas; three coats applied in high-traffic areas (entry, hallways, kitchen, bathrooms) per Palmetto standard",
+        "Sheen levels match selections by zone: flat or matte on ceilings, eggshell or satin on bedroom walls, semi-gloss on all trim/doors/casings, semi-gloss minimum in bathrooms and kitchen",
+        "Cut-in lines at ceiling-to-wall and wall-to-trim joints are straight and consistent \u2014 tolerance: no deviation exceeding 1/16 inch visible from 5 feet under normal lighting",
+        "No visible roller texture variation, brush strokes, lap marks, drips, runs, or sags on any finished surface",
+        "All accent walls and color-change walls have clean tape lines; color-change transitions at inside corners, not on flat wall surfaces",
+        "Painted ceilings are uniform in sheen with no flashing (variance in sheen caused by uneven primer or thin spots) under raking light inspection",
+        "Cabinet interiors, pantry interiors, and closet interiors painted as specified in color schedule \u2014 not left unfinished"
+      ]
+    },
+    {
+      "name": "Exterior Paint & Caulk",
+      "items": [
+        "All exterior substrates (fiber cement, wood trim, fascia, soffits) primed and finish-coated per manufacturer's application instructions, including overlap and backpriming requirements for fiber cement",
+        "All exterior trim-to-trim and trim-to-substrate joints caulked with paintable, siliconized acrylic caulk rated for exterior use; no open joints visible",
+        "Exterior paint colors confirm match to approved selections and any applicable HOA-approved palette on file",
+        "Window and door perimeter trim painted to full coverage with no bare primer exposed at edges or mitered corners",
+        "Exterior paint checked for adhesion and coverage on all elevations including north-facing surfaces that may retain moisture; no peeling, bubbling, or fisheye present"
+      ]
+    },
+    {
+      "name": "Protection & Site Conditions",
+      "items": [
+        "All finished hardwood floors, tile, and carpet (if installed) confirmed protected with ram board or equivalent during paint phase \u2014 no paint splatter, overspray, or drips on any floor surface",
+        "All hardware, fixtures, and plumbing trim not yet installed during paint phase; where pre-installed, confirmed fully masked before any spray or roll work",
+        "Windows, glass, and mirrors masked or cleaned of any paint overspray before painter demobilizes",
+        "All paint cans, tarps, and materials removed from site upon phase completion; no materials stored against finished walls or on finish floors"
+      ]
+    },
+    {
+      "name": "Punch & Sign-Off",
+      "items": [
+        "Superintendent conducts final paint walk with raking light (sidelight inspection) in every room \u2014 defects list documented, corrected, and re-inspected before sign-off",
+        "Touch-up coat applied to all nail holes, caulk joints, and screw patches in trim and walls that are visible in final lighting conditions",
+        "Client color schedule confirmed 100% executed \u2014 no rooms, closets, or specialty spaces missed",
+        "One quart of each finish color labeled with room name, color code, sheen, and manufacturer and delivered to client for warranty touch-up",
+        "Superintendent sign-off on Paint phase complete; phase closure entered in project management system before punch-list and client walkthrough are scheduled"
+      ]
+    }
+  ]
+}

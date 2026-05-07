@@ -1,0 +1,72 @@
+{
+  "phase_name": "Siding & Porch",
+  "template_version": "v1.0-2026-05-07",
+  "description": "All exterior siding, soffit, fascia, and porch elements are installed, inspected, and superintendent-approved before exterior painting begins.",
+  "categories": [
+    {
+      "name": "Pre-Install Verification",
+      "items": [
+        "Housewrap (WRB) fully installed, lapped shingle-style top over bottom, all seams taped per manufacturer spec \u2014 no punctures, tears, or unbonded seams visible",
+        "Window and door rough openings confirm flashed with self-adhering flashing tape, sill pan sloped to exterior, and integrated with WRB before siding begins",
+        "Siding material confirmed on-site matches client-approved selection (species, profile, prefinished vs. field-painted, manufacturer, and SKU verified against Selections log)",
+        "Corner boards, frieze boards, and trim stock confirmed on-site in correct profiles and quantities per takeoff",
+        "All exterior blocking and nailer locations verified in framing \u2014 porch beam pockets, railing posts, ceiling fan blocking, outdoor TV blocking \u2014 before siding closes walls",
+        "Exterior electrical, gas, and hose bib penetrations stubbed and rough inspected by Baldwin County before housewrap and siding close those walls"
+      ]
+    },
+    {
+      "name": "Siding Installation",
+      "items": [
+        "First course of siding is level, starter strip set at correct height above foundation per manufacturer spec, and confirmed consistent around all four elevations",
+        "Siding nailed per manufacturer nailing schedule and IRC Table R703 wind-load requirements \u2014 nail type, penetration depth, and spacing verified (Baldwin County is HVHZ-adjacent; confirm 150 mph wind zone fastener schedule applies)",
+        "All horizontal laps consistent at each course \u2014 no variation greater than 1/8 inch across any 10-foot run, checked with story pole",
+        "All butt joints staggered minimum 24 inches between courses and landed on studs \u2014 no floating joints",
+        "Trim-to-siding and siding-to-trim joints back-primed on all cut ends before installation; caulk joints \u2264 3/8 inch and tooled smooth",
+        "All exterior penetrations (outlets, hose bibs, dryer vents, HVAC lines) properly flashed and sealed with compatible sealant before surrounding siding installed",
+        "J-channel or proper transition flashing used at all window and door perimeters; no exposed raw edges of siding material"
+      ]
+    },
+    {
+      "name": "Soffit & Fascia",
+      "items": [
+        "Fascia boards set straight, level, and in the same plane across each elevation \u2014 checked with string line; no deviation greater than 1/4 inch over 20 feet",
+        "Soffit panels installed per manufacturer spec \u2014 vented soffit panels at correct interval to meet minimum net free area required by IRC R806 for attic ventilation",
+        "Soffit-to-wall return and soffit-to-fascia joints tight and properly caulked; no gaps greater than 1/8 inch visible from ground",
+        "All soffit and fascia cut ends back-primed before installation",
+        "Can light and ceiling fan rough-in cans in porch ceilings verified plumb, secured to blocking, and trim rings fit flush before soffit panels close around them"
+      ]
+    },
+    {
+      "name": "Porch Structure & Decking",
+      "items": [
+        "Porch columns plumb to 1/8 inch per 8 feet in both directions; column bases set on proper flashing or standoff to prevent moisture wicking",
+        "Porch beams bearing fully on column capitals or ledger, bearing length meets structural engineer's specification, and any required post-to-beam hardware (Simpson or equivalent) installed and fully fastened",
+        "Porch decking (composite, tongue-and-groove, or hardwood per selection) installed with correct gap spacing for drainage and expansion \u2014 typically 1/8 inch per manufacturer; no cupped or bowed boards exceeding 3/16 inch over 6 feet",
+        "Porch ledger flashing fully integrated with WRB and housewrap behind siding \u2014 no exposed ledger-to-wall joint; verified watertight before adjacent siding installed",
+        "Porch ceiling (beadboard, T&G, or composite) installed per selection, joints running parallel to house front, consistent 1/16-inch reveal at each board, and all ends terminated at solid backing",
+        "Outdoor ceiling fan blocking and junction boxes verified load-rated (min. 35 lbs for fan, per NEC 314.27(C)) and accessible before porch ceiling closes"
+      ]
+    },
+    {
+      "name": "Railings & Stairs",
+      "items": [
+        "Porch railing system matches client-approved selection (material, profile, color) and confirmed installed before paint or stain phase",
+        "Railing post bases anchored to structural blocking or deck framing per engineer's spec \u2014 no surface-mount post bases on porch decking without structural approval",
+        "Baluster spacing confirmed \u2264 4 inches on center \u2014 no opening allowing passage of a 4-inch sphere, per IRC R312.1.3",
+        "Top rail height confirmed 36 inches minimum above deck surface for porches under 30 inches above grade; 42 inches for any elevated deck per IRC R312.1.1",
+        "Stair stringers bear fully on concrete or treated-lumber pad at base; riser and tread dimensions consistent within 3/8 inch across all treads per IRC R311.7.4",
+        "All pressure-treated lumber in ground-contact or porch stair locations confirmed rated UC4A or UC4B per AWPA; documentation on file"
+      ]
+    },
+    {
+      "name": "Inspection & Sign-Off",
+      "items": [
+        "Baldwin County exterior rough inspection (siding, WRB, and structural) passed and inspection card signed \u2014 copy scanned to project Drive folder",
+        "Superintendent visual final walk of all four elevations from ground level: no missing caulk joints, no nail pops, no misaligned courses, no unpainted back-primed cuts exposed",
+        "Client walkthrough of exterior and porch completed; client initials punch list (or confirms no items) before exterior paint phase is scheduled",
+        "Any open punch items from client walkthrough logged in Cost Tracker with responsible party and close-by date assigned",
+        "Siding sub's final invoice reviewed against contract scope; any material overages or change orders reconciled and CO signed before payment released"
+      ]
+    }
+  ]
+}

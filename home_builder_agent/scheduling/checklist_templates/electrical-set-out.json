@@ -1,0 +1,72 @@
+{
+  "phase_name": "Electrical Set Out",
+  "template_version": "v1.0-2026-05-07",
+  "description": "All rough electrical boxes, wiring, panel rough-in, and low-voltage blocking are installed, verified against plans, and ready for Baldwin County rough electrical inspection before insulation or drywall begins.",
+  "categories": [
+    {
+      "name": "Plans & Layout Verification",
+      "items": [
+        "Approved electrical plans on-site and referenced by electrician for every box location",
+        "Lighting fixture schedule cross-referenced against framed ceiling and wall locations before wire pull",
+        "Panel location confirmed per plans; clearance in front of panel verified at minimum 36 inches per NEC 110.26",
+        "All specialty circuit locations (kitchen appliances, EV charger, generator transfer switch, pool/spa sub-panel) marked on framing before rough-in begins",
+        "Low-voltage rough-in drawing (structured wiring, security, audio/video, Cat 6) confirmed with A/V and security subs before wire pull"
+      ]
+    },
+    {
+      "name": "Rough-In Work",
+      "items": [
+        "All outlet, switch, and fixture boxes nailed at correct AFF height (outlets 16\" AFF standard; switches 48\" AFF unless otherwise specified on plans) and plumb within 1/8 inch",
+        "Box fill calculations verified per NEC 314.16 \u2014 no box overfilled with conductors, devices, or clamps",
+        "All home runs pulled to panel in correct wire gauge: 15A circuits #14 AWG, 20A circuits #12 AWG, 30A+ circuits sized per load calculations on approved plans",
+        "Dedicated 20A circuits confirmed for each kitchen small-appliance circuit, refrigerator, dishwasher, disposal, and microwave per NEC 210.11",
+        "AFCI protection confirmed for all bedroom, living, dining, hallway, and kitchen branch circuits per NEC 210.12 (2020 NEC as adopted by Alabama)",
+        "GFCI protection confirmed at all required locations: bathrooms, garage, exterior, kitchen within 6 ft of sink, crawl space, unfinished basement, and pool/spa equipment per NEC 210.8",
+        "Wire secured within 12 inches of every box and every 4.5 feet along run; no loose wire draped across framing members",
+        "All wire penetrations through studs and top/bottom plates within 1.25 inches of edge protected with nail plates"
+      ]
+    },
+    {
+      "name": "Panel & Service Rough-In",
+      "items": [
+        "Main panel (or sub-panel) box mounted plumb and level, properly fastened to framing, and sized per load calculation on approved plans",
+        "Panel schedule drafted and taped inside panel door \u2014 every breaker slot labeled to circuit and location",
+        "Service entrance conduit stubbed to exterior in correct location and height coordinated with Baldwin EMC for meter base placement",
+        "Grounding electrode system installed per NEC 250: ground rods driven, ground wire landed, and inspector-ready",
+        "Generator transfer switch rough-in complete if on scope; interlock or ATS wired and labeled",
+        "EV charger circuit (typically 50A/240V) rough-in complete to garage location, conduit stubbed if charger is owner-furnished"
+      ]
+    },
+    {
+      "name": "Low-Voltage & Specialty Systems",
+      "items": [
+        "Structured media panel (home-run location) confirmed, mounted, and all Cat 6, coax, and speaker wire home-runs landed",
+        "Security system rough-in complete: door/window sensor wires, motion zones, and keypad locations wired per security sub's drawing",
+        "Audio/video rough-in complete: speaker wire, HDMI conduit, and TV backing (3/4\" plywood or blocking) installed at every specified location",
+        "Smoke detector locations set at all required positions per NFPA 72 and Alabama Residential Code: each bedroom, outside each sleeping area, each level",
+        "CO detector rough-in locations confirmed per Alabama Residential Code requirements",
+        "Doorbell, exterior camera, and landscape lighting conduits stubbed to correct locations and capped"
+      ]
+    },
+    {
+      "name": "Coordination & Pre-Inspection Checks",
+      "items": [
+        "Plumbing and HVAC rough-in complete before electrical inspection is called \u2014 all trades above ceiling and in walls finished so inspector can walk full scope",
+        "All wire ends labeled or tagged at panel end with circuit number matching panel schedule",
+        "Superintendent walked all rooms with electrical plans and verified box count, circuit assignments, and specialty locations before calling inspection",
+        "Any field deviations from approved plans documented as RFIs, reviewed with electrician, and noted on as-built markup before inspection",
+        "Attic and crawl space wiring inspected by superintendent for proper support, no insulation contact where not rated, and no splices outside of listed boxes"
+      ]
+    },
+    {
+      "name": "Inspection & Pre-Cover Sign-Off",
+      "items": [
+        "Baldwin County rough electrical inspection scheduled and passed \u2014 inspection card signed and posted on-site",
+        "Any inspection corrections fully remediated and re-inspected before insulation is approved to proceed",
+        "Electrical contractor signed off on rough-in completion in writing (email or Buildertrend field log)",
+        "Superintendent confirmed no open junction boxes, missing box covers, or exposed splices remain before insulation begins",
+        "Photos of panel rough-in, all specialty circuit runs, and any concealed conduit uploaded to project Drive folder as permanent record before walls close"
+      ]
+    }
+  ]
+}

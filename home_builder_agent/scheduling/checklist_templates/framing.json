@@ -1,0 +1,112 @@
+{
+  "phase_name": "Framing",
+  "template_version": "v1.0-2026-05-07",
+  "description": "All structural framing is complete, inspected, and certified by Baldwin County before MEP rough-in begins.",
+  "categories": [
+    {
+      "name": "Crew & Schedule",
+      "items": [
+        "Framing crew lead confirmed on-site with current certificate of insurance on file",
+        "Framing schedule posted and distributed \u2014 wall framing, roof framing, and sheathing milestones dated",
+        "Lumber package delivery confirmed received on-site, quantities verified against takeoff, shortages flagged to supplier",
+        "Windows and exterior doors confirmed staged or scheduled for delivery to align with rough opening completion",
+        "Superintendent site visit scheduled at sole plate, wall, and roof-deck milestones before crew advances"
+      ]
+    },
+    {
+      "name": "Materials On-Site",
+      "items": [
+        "All framing lumber graded, stamped, and dry (moisture content \u226419% per IRC R502.1 / R802.1); wet sticks flagged and pulled",
+        "Engineered lumber (LVL beams, TJI joists, PSL columns) on-site, dry-stacked off ground, mill certs on file",
+        "Hurricane straps, H-clips, joist hangers, and all Simpson or equivalent connectors on-site and match structural engineering schedule",
+        "Sheathing (OSB or plywood) on-site, rated per structural drawings; exposure rating confirmed for Baldwin County coastal wind zone",
+        "Sheathing fasteners confirmed \u2014 nail size, spacing, and pattern per engineer's shear-wall schedule",
+        "Sill seal and pressure-treated sole plates on-site for all slab-bearing walls; PT stamp verified"
+      ]
+    },
+    {
+      "name": "Foundation Tie-In",
+      "items": [
+        "Slab or foundation certified clean, level, and dimensionally verified before any wall framing begins",
+        "Anchor bolt layout verified against engineer's anchor schedule \u2014 bolt diameter, embedment, and spacing spot-checked by superintendent",
+        "Pressure-treated sole plates installed, anchor bolts engaged with correct plate washers and nuts, torqued per engineer's spec",
+        "Sill seal installed continuously under all sole plates bearing on concrete",
+        "Foundation perimeter dimensions confirmed against permitted plans (diagonal measurements within \u00bc\" per 25 LF)"
+      ]
+    },
+    {
+      "name": "Structural Framing",
+      "items": [
+        "All exterior walls framed to plan dimensions, plumb (\u2264\u215b\" per 8 LF), straight, and squared before sheathing applied",
+        "All interior load-bearing walls located per structural drawings, correct stud size and spacing confirmed",
+        "All headers sized per structural schedule; double top plates lapped at corners and intersections per IRC R602.3.2",
+        "All LVL beams, PSL columns, and point loads installed per engineer's drawings; bearing seats and post caps verified",
+        "Floor system: TJI or lumber joists sized, spaced, and blocked per structural drawings; rim board continuous",
+        "Second-floor and ceiling load paths traced from ridge to foundation \u2014 no unresolved load-path gaps before sheathing",
+        "All stair rough openings framed to plan dimensions; trimmer and header counts verified"
+      ]
+    },
+    {
+      "name": "Rough Openings & Window/Door Prep",
+      "items": [
+        "All window rough openings sized per window schedule (width and height verified against approved shop drawings)",
+        "All exterior door rough openings sized per door schedule; king studs, trimmers, and headers count confirmed",
+        "Garage door rough openings confirmed to plan width and height; structural header and bearing verified",
+        "All rough openings plumb, square, and level (diagonal tolerance \u2264\u215b\"); sill and jack stud condition verified",
+        "Window and door bucks or flashings blocked and ready for WRB and flashing installation"
+      ]
+    },
+    {
+      "name": "Roof Framing",
+      "items": [
+        "Roof framing method (stick, truss, or hybrid) matches structural drawings; truss engineering shop drawings on-site and approved",
+        "Ridge board or ridge beam sized and installed per structural drawings; ridge height verified against architectural plans",
+        "Rafter or truss spacing confirmed (typically 16\" o.c.) and consistent across entire roof plane",
+        "All hurricane clips and rafter ties installed at every rafter-to-top-plate connection per engineer's connector schedule",
+        "Hip, valley, and jack rafter cuts verified for correct plumb and birdsmouth; no excessive notching of structural members",
+        "Roof sheathing installed, nailing pattern per shear schedule, H-clips at unsupported edges; no delaminated panels",
+        "Roof deck verified flat within \u00bc\" per 10 LF at ridge and eave lines before roofing crew mobilizes"
+      ]
+    },
+    {
+      "name": "Sheathing & Weather Barrier",
+      "items": [
+        "All exterior wall sheathing installed with correct nail size and spacing per engineer's shear-wall schedule; nailing pattern field-verified by superintendent",
+        "House wrap or WRB (weather-resistant barrier) installed continuously over sheathing, lapped shingle-fashion (top over bottom), taped at seams per manufacturer spec",
+        "All window and door rough openings flashed with self-adhering flashing tape per manufacturer's installation sequence before windows are set",
+        "WRB penetrations (hose bibs, electrical, HVAC) sealed and flashed",
+        "No tears, gaps, or unsealed laps in WRB; superintendent walkthrough sign-off before any cladding begins"
+      ]
+    },
+    {
+      "name": "MEP Rough-In Prep",
+      "items": [
+        "All plumbing chase walls, wet-wall locations, and drain-waste-vent rough-in paths confirmed with plumbing sub before top-out",
+        "HVAC duct chase locations, air-handler platforms, and attic access framed per mechanical drawings",
+        "Electrical panel location framed and backing installed; sub-panel locations confirmed",
+        "Fire-blocking installed at all required locations per IRC R302.11 \u2014 top and bottom plates at floor levels, around penetrations, at soffits",
+        "Backing for future fixtures confirmed blocked in \u2014 shower valves, grab bars, TV walls, heavy light fixtures, range hoods"
+      ]
+    },
+    {
+      "name": "Inspections",
+      "items": [
+        "Baldwin County framing inspection scheduled and passed \u2014 inspection card signed and posted on-site",
+        "Baldwin County wind mitigation inspection (if required for coastal insurance compliance) completed and documentation secured",
+        "Structural engineer or third-party inspector walk completed if required by project specs or lender; written sign-off on file",
+        "Superintendent final framing punch walk completed; all open items resolved before MEP subs mobilize",
+        "Superintendent photo documentation of framing, anchor bolts, connector hardware, and sheathing nailing uploaded to project Drive folder"
+      ]
+    },
+    {
+      "name": "Quality & Sign-Off",
+      "items": [
+        "No cracked, split, or notched structural members left in place; all field repairs reviewed and approved by superintendent",
+        "All doubled joists, beams, and columns glued and nailed per structural requirements; no dry stacking of engineered lumber",
+        "All temporary bracing removed after structure is self-supporting and sheathed",
+        "Attic access framed and sized per IRC M1305.1.3 (minimum 22\"\u00d730\" opening); pull-down or hatch type confirmed against plans",
+        "Framing phase completion confirmed in writing by superintendent; green light issued to MEP subs to begin rough-in"
+      ]
+    }
+  ]
+}

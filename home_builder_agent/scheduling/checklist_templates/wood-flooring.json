@@ -1,0 +1,73 @@
+{
+  "phase_name": "Wood Flooring",
+  "template_version": "v1.0-2026-05-07",
+  "description": "All wood flooring installed, acclimated, finished, and inspected to close tolerances before final punch and client walkthrough.",
+  "categories": [
+    {
+      "name": "Pre-Install Verification",
+      "items": [
+        "Flooring species, grade, width, and finish confirmed against client selection sheet \u2014 no substitutions without signed CO",
+        "Subfloor moisture reading taken and logged: wood subfloor must be \u226412% MC; concrete slab must be \u226475% RH per ASTM F2170 or \u22643 lbs/1000 sf/24hr per calcium chloride test",
+        "Subfloor flatness verified: no more than 3/16\" gap under 10-foot straightedge per NWFA installation guidelines",
+        "Subfloor fastened at all low/soft spots \u2014 squeaks and bounce eliminated before flooring goes down",
+        "All HVAC, plumbing, and electrical rough-ins complete; no scheduled penetrations through finished floor areas",
+        "HVAC system running and interior temperature and humidity stabilized (65\u201375\u00b0F, 35\u201355% RH) for minimum 5 days before acclimation begins",
+        "Painter's work in flooring zones complete or confirmed not to return with heavy foot traffic, rolling ladders, or water-based products"
+      ]
+    },
+    {
+      "name": "Material Acclimation & Staging",
+      "items": [
+        "Flooring delivered and acclimation start date logged; species-appropriate acclimation period documented (minimum 3 days, manufacturer or NWFA requirement confirmed)",
+        "Flooring stored flat, off slab, on stickers or pallets; shrink wrap opened to allow air circulation",
+        "Acclimation moisture readings taken on arrival and again at install \u2014 delta between flooring MC and subfloor MC within 2% for solid hardwood",
+        "All flooring bundles inspected for milling defects, color variation, and finish inconsistencies before installation begins; culls pulled and supplier notified if quantity-significant",
+        "Sufficient overage on site to complete run (minimum 7\u201310% waste factor confirmed against order quantity)"
+      ]
+    },
+    {
+      "name": "Installation",
+      "items": [
+        "Layout direction confirmed with superintendent and client (typically parallel to longest exterior wall or primary sight line); chalk line snapped and verified square to room",
+        "Appropriate moisture barrier or underlayment installed per manufacturer spec and subfloor type (e.g., 15 lb felt on wood subfloor, 6-mil poly on concrete)",
+        "First three rows blind-nailed and face-nailed; remaining field rows blind-nailed with flooring nailer at 6\u20138\" spacing or per manufacturer spec",
+        "Expansion gap maintained at all vertical obstructions \u2014 walls, cabinets, islands \u2014 minimum 3/4\" or per manufacturer spec; not covered by base that is glued to floor",
+        "Transitions (reducers, T-moldings, thresholds) roughed in at doorways and room changes; species and finish match confirmed before ordering",
+        "Stair nosings or feature inlays (if specified) installed per design drawings; miter joints tight, no gaps visible",
+        "Nail or staple schedule consistent throughout; no surface dimples, hammer strikes, or skip-nailing in field"
+      ]
+    },
+    {
+      "name": "Sanding & Finishing (if site-finished)",
+      "items": [
+        "Rough sanding complete with drum sander (36\u201360 grit as needed); edges addressed with edge sander; no chatter marks or swirl patterns in field",
+        "Final sand sequence completed through 80\u2013100\u2013120 grit; surface uniformly smooth with no visible scratches under raking light inspection",
+        "Stain sample approved on actual installed flooring in-place by client (written or text/email approval on file) before full coat applied",
+        "Finish coats applied per manufacturer spec \u2014 product name, sheen level, and number of coats documented in project file",
+        "Re-coat scuff-sand between finish coats; no dust nibs, bubbles, lap marks, or fish-eyes visible in cured finish",
+        "Floors sealed off 24\u201348 hours between coats; no foot traffic until final coat fully cured per manufacturer specification"
+      ]
+    },
+    {
+      "name": "Quality & Punch",
+      "items": [
+        "Full floor inspected under raking light for: hollow spots, loose boards, squeaks, lippage exceeding 1/32\" between adjacent boards, open seams exceeding 1/16\" (NWFA tolerance for site-finished)",
+        "All squeaks and hollow spots remedied before base molding is installed",
+        "Finish consistency uniform across entire floor \u2014 no sheen variation, lap lines, or unfinished edges at room perimeter",
+        "Expansion gaps at walls confirmed present and will be covered by base/shoe without fastening base to flooring",
+        "Transitions and thresholds fully installed, fastened, and flush; no trip hazards at any room change",
+        "Floor protection (Ram Board or equivalent) installed and taped in all traffic lanes immediately after final cure; protection to remain until 10 days before client walkthrough"
+      ]
+    },
+    {
+      "name": "Sign-Off",
+      "items": [
+        "Superintendent final walk of all wood flooring zones completed and punch items resolved",
+        "Client walkthrough of wood flooring completed; client signs or approves in writing that flooring meets selections and workmanship expectations",
+        "Flooring installer's warranty documentation (product and labor) collected and filed in project folder",
+        "Maintenance instructions (cleaning products, humidity range, touch-up kit) provided to client in homeowner manual",
+        "Any warranty claims or open punch items documented in Cost Tracker with responsible party and resolution date assigned"
+      ]
+    }
+  ]
+}

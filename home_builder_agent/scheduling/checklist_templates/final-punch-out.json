@@ -1,0 +1,96 @@
+{
+  "phase_name": "Final Punch Out",
+  "template_version": "v1.0-2026-05-07",
+  "description": "All deficiencies corrected, final inspections passed, home cleaned to delivery standard, and certificate of occupancy in hand before keys transfer to client.",
+  "categories": [
+    {
+      "name": "Punch List Completion",
+      "items": [
+        "Superintendent-generated punch list issued with line-item owner and due date for each item",
+        "All paint touch-ups complete \u2014 no visible roller holidays, brush marks, or miscut edges at trim/wall transitions",
+        "All trim nail holes filled and touch-painted; caulk lines at base, crown, and casing are continuous and tooled smooth",
+        "Cabinet doors and drawer fronts aligned within 1/16-inch reveal tolerance; soft-close hardware confirmed on every hinge and drawer slide",
+        "All tile grout joints consistent in width and color; no cracked, hollow, or lippage-exceeding tiles (ANSI A108.02 \u22641/32-inch lippage for rectified tile)",
+        "Hardwood flooring gaps at walls covered by base/shoe; no squeaks when walked \u2014 screws or face-nails driven where needed",
+        "All interior doors operate without binding; latch bolt engages strike plate flush; door gaps at head and jamb \u22643/32 inch consistent",
+        "All exterior doors and windows locked, sealed, and confirmed weather-tight; no daylight visible at jamb or sill"
+      ]
+    },
+    {
+      "name": "MEP Final Functional Tests",
+      "items": [
+        "All plumbing fixtures run simultaneously for 5 minutes; no drips at supply stops, P-trap connections, or drain gaskets",
+        "Hot water delivery confirmed at every fixture; tankless or water heater set point verified at 120\u00b0F per manufacturer and code",
+        "All HVAC zones call for heat and cool; temperature swing at thermostat confirmed within 2\u00b0F of set point",
+        "HVAC filter(s) replaced new at turnover; all grilles and diffusers seated flush with ceiling/wall surface",
+        "Every electrical outlet tested with a three-light receptacle tester \u2014 open ground, reversed polarity, or open neutral flagged and corrected",
+        "GFCI protection confirmed at all kitchen, bath, garage, exterior, and wet-area circuits per NEC 210.8",
+        "AFCI breakers confirmed on all bedroom and applicable living-space circuits per NEC 210.12",
+        "All ceiling fans operational on all speeds; remote or wall control paired and confirmed",
+        "Smoke and CO detectors powered, interconnected, and tested per NFPA 72; locations verified against Baldwin County Building Department approved plans"
+      ]
+    },
+    {
+      "name": "Final Inspections & Permits",
+      "items": [
+        "Baldwin County Building Department final building inspection passed and card signed",
+        "Baldwin County electrical final inspection passed",
+        "Baldwin County plumbing final inspection passed",
+        "Baldwin County mechanical (HVAC) final inspection passed",
+        "Certificate of Occupancy (CO) received from Baldwin County and scanned to project file",
+        "Septic system final inspection (Baldwin County Health Department) passed and documentation on file",
+        "Any open stop-work orders or correction notices confirmed resolved and closed in county records"
+      ]
+    },
+    {
+      "name": "Site & Exterior Closeout",
+      "items": [
+        "All construction debris removed from lot; dumpster pulled",
+        "Final grade confirmed \u2014 positive drainage away from foundation minimum 6 inches per 10 feet per IRC R401.3",
+        "Sod, seed, or landscaping installed per contract scope; no bare soil disturbing erosion control at storm drains",
+        "Driveway and walkways free of concrete splatter, paint, and caulk smears; expansion joints sealed",
+        "All exterior light fixtures installed, lamped, and operational; photocell or timer confirmed where specified",
+        "Gutters and downspouts clear of debris and discharging away from foundation",
+        "Mailbox, house numbers, and any site signage installed per HOA or county requirements",
+        "Temporary power pole removed and service entrance finalized with Alabama Power"
+      ]
+    },
+    {
+      "name": "Deep Clean & Presentation",
+      "items": [
+        "Professional construction clean completed: all windows cleaned inside and out, frames wiped",
+        "All hard-surface floors swept, mopped, and free of grout haze, adhesive residue, and scuff marks",
+        "Carpet vacuumed; any construction stains treated or carpet replaced per contract obligation",
+        "All cabinet interiors wiped; no sawdust, packaging material, or adhesive labels remaining",
+        "All appliances wiped interior and exterior; protective film removed from stainless and glass surfaces",
+        "All light fixtures cleaned; no fingerprints on glass shades or chrome trims",
+        "Bathrooms sanitized \u2014 toilets, tubs, showers, and vanities cleaned to move-in standard",
+        "Garage floor swept; no concrete mud, drywall dust, or fasteners on slab"
+      ]
+    },
+    {
+      "name": "Client Walkthrough & Sign-Off",
+      "items": [
+        "Pre-walkthrough superintendent review completed \u2014 superintendent signs off that all known items are resolved before client arrives",
+        "Client walkthrough conducted room by room with superintendent and PM present; new punch items documented on Palmetto Walkthrough Form",
+        "All systems demonstrated to client: HVAC thermostats, tankless water heater controls, electrical panel with breaker map, irrigation controller",
+        "All appliances demonstrated and appliance manuals, warranty cards, and serial numbers packaged for client",
+        "Warranty documentation packet assembled: Palmetto 1-year workmanship warranty, structural warranty (if applicable), and all sub/manufacturer warranties",
+        "Client signs Palmetto Certificate of Substantial Completion and Punch List Acceptance form",
+        "Keys, garage remotes, mailbox key, and gate fobs (if applicable) counted and transferred to client on signature"
+      ]
+    },
+    {
+      "name": "Project Closeout",
+      "items": [
+        "Final draw request submitted to construction lender with CO attached",
+        "All subcontractor final invoices received, reviewed against contract, and approved for payment",
+        "Conditional lien waivers collected from all subs and suppliers upon final payment; unconditional waivers to follow within 30 days",
+        "As-built redlines (if any field changes occurred) scanned and uploaded to project Drive folder",
+        "Superintendent's photo documentation of final condition uploaded and archived by room",
+        "Project file closed in Palmetto's project management system; client contact info transferred to warranty tracking roster",
+        "30-day and 11-month warranty check-in dates calendared and assigned to PM"
+      ]
+    }
+  ]
+}

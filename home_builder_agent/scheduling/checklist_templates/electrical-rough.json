@@ -1,0 +1,76 @@
+{
+  "phase_name": "Electrical Rough",
+  "template_version": "v1.0-2026-05-07",
+  "description": "All rough electrical wiring, boxes, panels, and service equipment are installed per approved plans and NEC/Baldwin County requirements, rough-in inspection is passed, and no walls are authorized to close until superintendent sign-off is complete.",
+  "categories": [
+    {
+      "name": "Plans & Pre-Start Verification",
+      "items": [
+        "Approved electrical permit card posted on-site and visible to inspector",
+        "Stamped electrical plan set on-site and matches current approved revision",
+        "Electrician has reviewed final lighting fixture selections and confirmed box locations, weights, and fan-rated boxes for all ceiling fan locations",
+        "Home-run circuit schedule reviewed against client's finalized appliance and equipment list (EV charger, pool equipment, generator, wine cooler, etc.)",
+        "Superintendent has confirmed all low-voltage rough-in trades (structured wiring, security, A/V) are coordinated with electrical so conduit and boxes don't conflict"
+      ]
+    },
+    {
+      "name": "Service & Panel Rough-In",
+      "items": [
+        "Temporary power relocated or permanent service entrance location confirmed with Alabama Power and clearance distances verified",
+        "Main panel location confirmed per plan; panel is plumb, secured to backing, and accessible per NEC 110.26 working-space requirements (min. 36\" depth, 30\" width, 6'6\" headroom)",
+        "Panel schedule posted inside panel door and matches circuit layout on approved plans",
+        "Sub-panel locations (garage, pool house, detached structure) roughed in with correct wire gauge and conduit per load calculations on approved plans",
+        "Grounding electrode system installed: ground rods driven, Ufer/concrete-encased electrode confirmed with electrician before slab pour if applicable, all bonding conductors sized and connected",
+        "Service entrance conduit and meter can set; Alabama Power meter base requirements confirmed (200A or 400A service as designed)"
+      ]
+    },
+    {
+      "name": "Rough-In Wiring",
+      "items": [
+        "All branch circuit wiring is correct gauge for circuit amperage: 15A = 14 AWG, 20A = 12 AWG, 30A/40A/50A dedicated circuits sized per load schedule",
+        "All boxes are installed at consistent heights per Palmetto standard (switches 48\" AFF, receptacles 16\" AFF, or as noted on plans) and secured without play or wobble",
+        "All outlet spacing meets NEC 210.52: no point along a wall is more than 6 feet from a receptacle; kitchen countertop receptacles within 2 feet of countertop edge and no more than 4 feet apart",
+        "All bathroom circuits are 20A dedicated per NEC 210.11(C)(3); GFCI protection locations confirmed for baths, kitchen, garage, exterior, and within 6 feet of any sink",
+        "Dedicated 20A kitchen small-appliance circuits (minimum two) roughed in above countertops per NEC 210.52(B)",
+        "All high-draw appliances on dedicated circuits: refrigerator (20A), dishwasher (20A), microwave (20A), range/oven (per spec), washer (20A), dryer (30A or 240V per spec), HVAC disconnects at units",
+        "All wire runs secured with staples or straps within 12\" of boxes and every 4.5 feet along runs; no loose wire draped through framing",
+        "All wire passing through studs and plates is protected by nail plates where within 1.25\" of face of stud per NEC 300.4"
+      ]
+    },
+    {
+      "name": "Specialty & Custom Systems",
+      "items": [
+        "Generator transfer switch or interlock kit roughed in at main panel location per client's generator spec; conduit to generator pad stubbed out",
+        "EV charging circuit (minimum 50A/240V, or as specified) roughed in to garage with correct conduit and wire gauge",
+        "Outdoor kitchen, pool, and spa circuits roughed in to correct locations; all outdoor and pool circuits confirmed for GFCI/AFCI requirements per NEC Article 680",
+        "Whole-home surge protection provision made at main panel (device or mounting space reserved per spec)",
+        "All ceiling fan locations confirmed with fan-rated boxes and blocking; boxes rated for the fan weight specified in lighting selections",
+        "Under-cabinet lighting rough-in (junction boxes or low-voltage transformer locations) confirmed against cabinet shop drawings",
+        "Smart-home / lighting-control rough-in (Lutron, Crestron, or specified system) coordinated: multi-gang boxes, neutral wires pulled to all switch locations as required by system spec"
+      ]
+    },
+    {
+      "name": "Quality & Code Checks",
+      "items": [
+        "AFCI protection confirmed for all required locations per NEC 210.12: bedrooms, living rooms, dining rooms, hallways, and all 15A/20A 120V circuits in dwelling areas",
+        "All junction boxes are accessible (not buried in insulation or behind permanent surfaces) and covered with blank plates",
+        "No wire splices outside of listed junction boxes; all splices in boxes with correct wire connectors",
+        "Smoke detector rough-in locations verified per NFPA 72 and Alabama Residential Code: every level, inside and outside each sleeping area, interconnected circuit pulled",
+        "Carbon monoxide detector rough-in locations confirmed per Alabama code: outside each sleeping area if home has attached garage or fuel-burning appliances",
+        "Superintendent has walked entire rough-in with lead electrician and confirmed no box locations conflict with cabinet layout, crown molding runs, or tile shower walls per finalized selections",
+        "All wire labels or circuit identifiers are written at the panel end before cover-up"
+      ]
+    },
+    {
+      "name": "Inspection & Pre-Cover Sign-Off",
+      "items": [
+        "Baldwin County electrical rough-in inspection scheduled and confirmation number on file",
+        "Baldwin County rough-in inspection passed; inspection card signed and posted",
+        "Any corrections noted on inspection report completed and re-inspection passed before framing cover-up begins",
+        "Superintendent has conducted independent walk with Palmetto's quality checklist before calling for inspection \u2014 no open items remaining",
+        "Electrician has confirmed all home-run labels at panel are complete and panel schedule is up to date with any field changes documented as a change order if scope changed",
+        "Signed pre-cover authorization issued by superintendent to framing/insulation crew; no walls to be closed until this sign-off is in the project file"
+      ]
+    }
+  ]
+}

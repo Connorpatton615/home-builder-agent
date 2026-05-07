@@ -1,0 +1,70 @@
+{
+  "phase_name": "Insulation Rough",
+  "template_version": "v1.0-2026-05-07",
+  "description": "All rough insulation installed, air-sealed, and inspected by Baldwin County before drywall hang begins.",
+  "categories": [
+    {
+      "name": "Pre-Install Verification",
+      "items": [
+        "Baldwin County rough framing inspection passed and inspection card signed before insulation crew mobilizes",
+        "All MEP rough-in inspections passed (electrical, plumbing, HVAC) \u2014 no open walls pending re-inspection",
+        "All penetrations through top and bottom plates (pipes, conduit, wire bundles) fire-blocked and air-sealed with approved caulk or foam prior to insulation",
+        "Recessed can lights confirmed IC-rated and AT-rated (airtight) where insulation will be in contact; non-IC cans have 3-inch clearance maintained",
+        "Exterior sheathing, housewrap, and window/door flashing fully complete and superintendent-verified before cavity insulation begins",
+        "HVAC duct leakage test (Duct Blaster or equivalent) completed and results on file \u2014 total leakage to outside \u2264 4 CFM25 per 100 sq ft of conditioned floor area per IECC 2021 R403.3.4"
+      ]
+    },
+    {
+      "name": "Materials On-Site",
+      "items": [
+        "Insulation type, R-value, and manufacturer confirmed against approved energy compliance report (Manual J / REScheck) for each assembly: exterior walls, ceiling, floor, rim joists",
+        "Spray foam (closed-cell or open-cell) product data sheets on-site; installer's state license number recorded in job file",
+        "Batt insulation (if used) confirmed unfaced or kraft-faced as required per assembly location \u2014 no kraft-faced batts against conditioned space side in hot-humid climate zones without vapor retarder review",
+        "Rigid foam board (if used) verified for correct thickness, R-value, and fire-rated exposure limitation per ICC and manufacturer specs",
+        "Sufficient material quantities staged on-site to complete full scope without mid-job delays; delivery receipt logged in Cost Tracker"
+      ]
+    },
+    {
+      "name": "Air Sealing",
+      "items": [
+        "All top-plate-to-ceiling drywall plane transitions sealed with code-compliant sealant or spray foam before attic insulation installed",
+        "Rim joist bays fully air-sealed and insulated (minimum R-15 closed-cell spray foam or rigid foam plus sealant at all edges) per IECC 2021 R402.4",
+        "Attic hatch (pull-down stair or access panel) has minimum R-38 insulated cover installed and weatherstripped",
+        "Electrical boxes on exterior walls fitted with foam gaskets or sealed with putty pads; superintendent spot-checked minimum 10% of all exterior-wall boxes",
+        "Cantilever floors and tray ceiling transitions air-sealed at all framing interfaces before insulation cover",
+        "Blower door pre-drywall test completed; result documented \u2014 target \u2264 3.0 ACH50 for Palmetto quality standard (IECC 2021 code max is 5.0 ACH50 for Climate Zone 2)"
+      ]
+    },
+    {
+      "name": "Installation Quality",
+      "items": [
+        "Exterior wall cavity insulation fills full depth of stud bay with no voids, compressions, or gaps; superintendent inspected all exterior walls and photographed representative bays on each elevation",
+        "Batt insulation (where applicable) split and fitted around wiring and blocking without compression \u2014 no 'picture framing' or folded edges reducing effective R-value",
+        "Cathedral ceiling or conditioned attic assembly maintains required ventilation channel (minimum 1-inch airspace) between insulation and roof deck where vented assembly is specified",
+        "Spray foam lift thicknesses comply with manufacturer's maximum-per-pass specification; no scorching, delamination, or shrinkage visible; off-ratio foam flagged and removed before sign-off",
+        "Crawl space or under-floor insulation (if applicable) installed with insulation facing correct direction; wire hangers or supports at maximum 24-inch spacing \u2014 no sagging batts",
+        "Garage-to-living-space common walls and ceiling insulated to full exterior-wall R-value and air-sealed per IRC R302.6 fire separation requirements"
+      ]
+    },
+    {
+      "name": "Code & Energy Compliance",
+      "items": [
+        "Insulation certificate (RESNET / manufacturer's product label) attached to electrical panel or posted in prominent location per IECC 2021 R401.3",
+        "Installed R-values confirmed against Alabama IECC Climate Zone 2 minimums: walls R-13+5ci or R-20, ceilings R-38 minimum, floors R-13 minimum",
+        "Vapor retarder class verified for each assembly per IECC 2021 R702.7 \u2014 Class III (latex paint) acceptable for Climate Zone 2 wall assemblies; no poly sheeting on interior of exterior walls",
+        "Insulation contractor's certificate of installation (signed, with stated R-values by location) collected and uploaded to project Drive folder",
+        "Baldwin County insulation inspection scheduled and inspection card updated upon pass"
+      ]
+    },
+    {
+      "name": "Pre-Drywall Sign-Off",
+      "items": [
+        "Superintendent final walk completed with insulation foreman \u2014 all deficiencies noted on punch list and corrected before sign-off",
+        "Photo documentation of all exterior wall cavities, rim joists, attic plane, and mechanical chases uploaded to project folder and time-stamped",
+        "Baldwin County insulation inspection card stamped and passed \u2014 physical card on-site and photo copy in Drive",
+        "Project manager confirms no open change orders affecting wall assemblies, window sizes, or structural members that would require re-work behind drywall",
+        "Drywall sub notified of hang start date; site confirmed clear of insulation debris, excess materials staged or removed"
+      ]
+    }
+  ]
+}

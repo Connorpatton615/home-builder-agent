@@ -1,0 +1,86 @@
+{
+  "phase_name": "HVAC Trim Out",
+  "template_version": "v1.0-2026-05-07",
+  "description": "All HVAC terminal equipment is set, final connections are made, systems are balanced and tested, and Baldwin County mechanical final inspection is passed before certificate of occupancy is pursued.",
+  "categories": [
+    {
+      "name": "Pre-Trim Verification",
+      "items": [
+        "Drywall and paint are complete in all areas where HVAC registers, grilles, and thermostats will be set \u2014 no trim-out before finish surfaces are done",
+        "All rough-in penetrations confirmed still open and unobstructed (not accidentally drywalled over or patched shut)",
+        "Equipment pads, curbs, and attic platforms for air handlers and equipment verified plumb, level, and structurally adequate",
+        "Condensate drain lines from rough-in confirmed pitched correctly (min 1/8 in per foot per IRC M2202) and daylight termination accessible",
+        "HVAC sub has approved equipment schedule on-site matching approved design \u2014 no field substitutions without superintendent sign-off",
+        "All duct boots confirm correct size and orientation match supply/return schedule before grilles are ordered"
+      ]
+    },
+    {
+      "name": "Equipment Set & Final Connections",
+      "items": [
+        "Air handler(s) set on platform or in closet, level within 1/4 inch, vibration isolation pads installed, service clearances per manufacturer (min 30 in front of filter access)",
+        "Condenser(s) set on pad, level within 1/4 inch, minimum 12 in clearance on all sides (24 in on service side), secured against wind uplift per Baldwin County coastal wind zone requirements",
+        "Refrigerant line sets connected, insulated full length with closed-cell foam minimum 1/2-in wall, no kinks or unsupported spans greater than 4 ft in unconditioned space",
+        "System charged to manufacturer specification; refrigerant type and charge weight recorded on equipment data sheet in job file",
+        "Electrical disconnect at condenser confirmed correct amperage, weatherproof cover, within sight of unit per NEC 440.14",
+        "Condensate primary and secondary drain pans inspected \u2014 both connected, secondary pan overflow switch wired to shut down unit on high water",
+        "Gas furnace connections (where applicable) pressure-tested at rough-in confirmed; flex connector at unit within 6 in of appliance connection, shutoff valve accessible"
+      ]
+    },
+    {
+      "name": "Terminal Devices & Controls",
+      "items": [
+        "All supply registers and return grilles installed with correct CFM-rated size per schedule, flush to finish surface, no visible gaps between grille frame and drywall or ceiling",
+        "Register and grille finish (brushed nickel, oil-rubbed bronze, painted, etc.) matches hardware selections approved by client \u2014 verified by superintendent before install",
+        "All thermostats and smart controls (Ecobee, Nest, or specified brand) mounted level, wired per manufacturer, programmed with correct zone assignments, and labeled",
+        "Zoning dampers (where specified) confirmed operational \u2014 each zone opens and closes fully on call from corresponding thermostat",
+        "ERV or HRV unit (where specified) core installed, intake and exhaust connected to exterior with weatherproof caps, controls wired and functional",
+        "Attic access panels and equipment access doors confirmed installed, insulated, and airtight per ACCA Manual D requirements"
+      ]
+    },
+    {
+      "name": "System Commissioning & Balance",
+      "items": [
+        "Static pressure measured at each system and compared against design target \u2014 external static pressure within 10% of ACCA Manual D design value",
+        "All supply diffusers balanced with flow hood or anemometer readings documented by zone; no single room deviating more than 15% from design CFM",
+        "Return air path confirmed adequate for each zone \u2014 no room dependent solely on door undercut for return unless undercut is minimum 1-in clearance and verified adequate",
+        "System cycling test run minimum 30 minutes per zone in both heating and cooling mode; no abnormal noise, vibration, or fault codes logged",
+        "Delta-T across evaporator coil measured and within manufacturer specification (typically 18\u201322\u00b0F) confirming correct charge and airflow",
+        "Drain pan pour test performed \u2014 water placed in primary pan, confirmed draining; float switch trips unit within 60 seconds of secondary pan filling",
+        "All access panels, filter doors, and electrical covers reinstalled and secured after commissioning"
+      ]
+    },
+    {
+      "name": "Inspection & Code Compliance",
+      "items": [
+        "Baldwin County mechanical final inspection scheduled and passed \u2014 inspection card signed by inspector and scanned to job Drive folder",
+        "Equipment data plates photographed and uploaded to job file (model, serial, refrigerant type, charge, electrical data for each unit)",
+        "ENERGY STAR or AHRI certificate for each system on file confirming SEER2/HSPF2 ratings meet or exceed permit specification",
+        "Manual J load calculation on file matches installed equipment capacity \u2014 no system more than 15% oversized per ACCA guidelines",
+        "All refrigerant-containing equipment documented per EPA Section 608 requirements; technician certification number recorded in job file",
+        "Attic insulation at air handler platform and all flex duct confirmed undisturbed and intact after trim-out work \u2014 no compressed or displaced batt sections"
+      ]
+    },
+    {
+      "name": "Quality & Punch",
+      "items": [
+        "All register and grille screws tight, no rattling when system is running at high speed",
+        "No visible flex duct sags greater than 1/2 in per foot of run confirmed from attic walk-through after trim-out",
+        "Condensate line termination point clean, no staining on soffit or exterior \u2014 splash block or piped extension in place where termination is at foundation",
+        "All penetrations through fire-rated assemblies (garage-to-living, floor-to-floor) re-sealed with listed fire caulk after trim-out activity",
+        "Exterior refrigerant line set cover (Linehide or painted conduit, per elevation spec) installed flush, painted to match trim color, no exposed insulation visible",
+        "Client-facing equipment areas (laundry closets, utility rooms) left broom-clean, no copper scraps, wire ties, or packaging left in attic or mechanical spaces",
+        "Superintendent final walk confirms zero punch items before scheduling client walkthrough"
+      ]
+    },
+    {
+      "name": "Client Walkthrough & Handoff",
+      "items": [
+        "Client walkthrough conducted with HVAC sub or superintendent \u2014 thermostat operation, filter locations, and zone map explained in person",
+        "Filter size and replacement schedule documented on laminated card installed inside air handler door or utility closet",
+        "Warranty documentation for each piece of equipment (unit, thermostat, controls) collected, organized, and handed to client in homeowner binder",
+        "Manufacturer startup warranty registration completed by HVAC sub on client's behalf \u2014 confirmation numbers recorded in job file",
+        "Client signs HVAC trim-out completion acknowledgment in Palmetto's project management system before phase is closed"
+      ]
+    }
+  ]
+}

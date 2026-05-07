@@ -1,0 +1,74 @@
+{
+  "phase_name": "Foundation",
+  "template_version": "v1.0-2026-05-07",
+  "description": "All foundation work \u2014 excavation through slab cure and anchor bolt verification \u2014 is complete, inspected, and approved before framing begins.",
+  "categories": [
+    {
+      "name": "Pre-Pour Verification",
+      "items": [
+        "Building permit posted on-site and foundation inspection scheduled with Baldwin County Building Department",
+        "Foundation layout staked and verified against approved engineering drawings; setbacks confirmed with survey pins",
+        "Excavation depth matches engineered footing schedule; verified by superintendent with tape measure on all corners and load-bearing points",
+        "Soil bearing capacity confirmed by geo-tech or visual inspection per soils report on file; no soft spots, organic material, or standing water in bearing zones",
+        "Vapor barrier (minimum 6-mil poly, 10-mil preferred for $1M+ builds) installed, lapped minimum 12 inches at seams, and sealed at penetrations",
+        "All underground plumbing sleeves and conduit stubs set per MEP plan; locations confirmed with plumber before pour",
+        "Termite pre-treatment (soil treatment) completed by licensed pest control company; certificate issued and on file per Alabama Code"
+      ]
+    },
+    {
+      "name": "Formwork & Reinforcement",
+      "items": [
+        "Form dimensions match approved foundation plan; corners square to within 1/8 inch per 10 feet diagonal check",
+        "Rebar size, spacing, and lap lengths match structural engineering stamped drawings (e.g., #5 bars at 16\" O.C. each way where specified)",
+        "Rebar clearance from earth maintained at minimum 3 inches on all sides; plastic chairs or equivalent used throughout \u2014 no wire-tied dirt contact",
+        "Monolithic thickened edges formed to engineered depth (typically 12\u201318 inches for Baldwin County coastal zone loads)",
+        "Post-tension cables or additional reinforcement installed per engineer's layout if post-tension slab specified; stressing pockets formed at correct locations",
+        "All penetrations (plumbing, electrical, HVAC) sleeved and blocked out per plan; no field-cut rebar around penetrations without engineer sign-off",
+        "Baldwin County foundation/footing inspection completed and inspection card signed before concrete is ordered"
+      ]
+    },
+    {
+      "name": "Concrete Pour & Placement",
+      "items": [
+        "Concrete mix design matches engineer's specification (minimum 3,000 PSI at 28 days; 4,000 PSI for coastal/high-humidity exposure preferred on $1M+ builds)",
+        "Concrete delivery tickets reviewed on arrival; mix, slump (max 4 inches without admixture approval), and load time verified",
+        "Concrete placed and consolidated without cold joints; vibrated at maximum 18-inch intervals around rebar and form edges",
+        "Slab finished to specified flatness tolerance: FF 25 / FL 20 minimum (F-number spec or straightedge max 3/16-inch gap under 10-foot straightedge)",
+        "Anchor bolt schedule installed per structural drawings \u2014 size, embedment depth, projection height, and spacing verified against framing bolt pattern before concrete sets",
+        "Slab elevation checked at minimum four corners and center with builder's level; maximum deviation from design elevation \u00b13/8 inch",
+        "Concrete test cylinders taken per ACI 301 (minimum one set of 3 cylinders per 50 CY or per day's pour); ticket numbers logged in project file"
+      ]
+    },
+    {
+      "name": "Cure & Protection",
+      "items": [
+        "Curing compound applied immediately after final finish, or wet-cure method (burlap + poly) maintained for minimum 7 days per ACI 308",
+        "Slab protected from rain damage, UV, and foot traffic for minimum 24 hours; form removal not before 24 hours or per engineer's direction",
+        "28-day break strength confirmed from cylinder tests at \u2265 specified PSI; test results on file before framing loads are applied",
+        "Post-tension cables stressed (if applicable) at 75% design strength per engineer's schedule; stressing log signed by contractor and on file",
+        "Slab inspected for cracks after cure: hairline shrinkage cracks noted and photographed; any crack wider than 1/16 inch or with vertical offset escalated to structural engineer before framing"
+      ]
+    },
+    {
+      "name": "Anchor Bolts & Sill Plate Prep",
+      "items": [
+        "All anchor bolt locations verified against approved framing plan; bolts plumb (within 1/8 inch), correct projection above slab for specified sill plate thickness plus nut and washer",
+        "Anchor bolt thread condition inspected; no damaged threads, cement fouling, or misalignment that would prevent full nut engagement",
+        "Sill plate pressure-treated species and grade confirmed per plans (minimum PT 0.40 ACQ for ground contact/slab interface in Baldwin County coastal environment)",
+        "Termite shield (metal or approved barrier) specified on drawings installed under sill plate where required by plan or code",
+        "Slab surface at sill plate bearing zone ground or shimmed flat to within 1/8 inch over any 3-foot run; no rocking or gap that would cause point loading on framing"
+      ]
+    },
+    {
+      "name": "Inspections & Sign-Off",
+      "items": [
+        "Baldwin County final foundation inspection passed; inspection card signed and photographed",
+        "Superintendent final walk of slab: all penetration sleeves capped, no debris embedded in surface, no rebar tips exposed",
+        "Slab elevation survey completed and elevations recorded in project file; superintendent and PM have both reviewed and approved",
+        "Foundation phase photos uploaded to project Drive folder (pre-pour reinforcement, anchor bolts, finish surface, inspection card)",
+        "Any field deviations from engineered drawings documented, RFI issued, and engineer written response on file before framing begins",
+        "Foundation phase marked complete in project schedule; framing crew start date confirmed with foreman"
+      ]
+    }
+  ]
+}

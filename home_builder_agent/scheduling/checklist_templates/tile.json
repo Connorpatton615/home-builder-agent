@@ -1,0 +1,64 @@
+{
+  "phase_name": "Tile",
+  "template_version": "v1.0-2026-05-07",
+  "description": "All tile surfaces \u2014 floors, showers, tub surrounds, backsplashes, and accent features \u2014 are fully installed, grouted, sealed, and superintendent-approved before trim-out and fixture set begins.",
+  "categories": [
+    {
+      "name": "Pre-Install Verification",
+      "items": [
+        "All tile selections confirmed against approved selection sheet \u2014 material, size, color, finish, and grout color verified per room/zone before any tile is unboxed",
+        "Substrate inspected in every tile zone: Schluter Kerdi, Wedi, or equivalent waterproof membrane confirmed installed and flood-tested in all wet areas (showers, tub surrounds) before tile begins",
+        "Cement board or tile backer confirmed throughout floor and wall tile areas \u2014 no standard drywall in wet zones; fastener pattern meets TCNA H245/HB118 standards",
+        "Floor flatness verified with 10-foot straightedge: deviation no greater than 3/16 inch under straightedge per TCNA F145 before any large-format tile (18x18 or larger) is set",
+        "Radiant floor heating mat (where specified) confirmed installed, circuit tested with ohmmeter and resistance logged, sensor wire positioned \u2014 membrane protected before tile set",
+        "Tile delivery inspected on-site: all material from same dye lot, quantity verified against takeoff, no cracked or chipped pieces accepted into stack",
+        "Tile sub walked through plans and selection sheet with superintendent; layout lines snapped and approved before first tile is set in each zone"
+      ]
+    },
+    {
+      "name": "Installation",
+      "items": [
+        "Layout centerlines established and dry-laid in all rooms prior to setting; focal walls, thresholds, and cuts reviewed by superintendent for symmetry and alignment",
+        "Large-format tile (greater than 15 inches on any side) back-buttered 100% in addition to trowel application per ANSI A108.5; minimum 95% mortar coverage confirmed by pulling test tiles in each zone",
+        "Lippage controlled throughout: grout joint variation and tile lippage not to exceed 1/32 inch per ANSI A137.1 for rectified tile; superintendent spot-checks with straightedge during install",
+        "Shower pan floor tile pitched minimum 1/4 inch per foot toward drain, confirmed with level before grout; no reverse pitch or flat spots",
+        "All control and expansion joints installed at perimeter of every tiled floor and at changes in plane per TCNA EJ171 \u2014 no tile bonded directly into corners or against walls without movement accommodation",
+        "Niche, bench, and shelf tile set level and plumb; niches back-pitched minimum 1/8 inch toward opening to drain; all inside corners caulked, not grouted",
+        "Threshold transitions (tile to hardwood, tile to carpet, etc.) set flush or ramped per ADA and plan specifications; Schluter or equivalent trim profile installed at all exposed tile edges"
+      ]
+    },
+    {
+      "name": "Grouting & Sealing",
+      "items": [
+        "Thinset cure time observed before grouting \u2014 minimum 24 hours for standard, 72 hours for large-format or moisture-sensitive substrates, or per manufacturer spec, whichever is greater",
+        "Correct grout type verified per zone: sanded grout for joints greater than 1/8 inch, unsanded for joints 1/16\u20131/8 inch, epoxy grout where specified (wet commercial-style areas, steam showers)",
+        "Grout joints fully packed with no voids, pinholes, or low spots; grout color consistent with no blotching or haze remaining after cleanup",
+        "All grout joints in wet areas (showers, tub surrounds, steam rooms) sealed with penetrating grout sealer after 72-hour cure; product and application date logged",
+        "All natural stone tile (marble, travertine, limestone, etc.) sealed with appropriate stone sealer before and after grouting; sealer product and application documented in project file",
+        "Caulk installed (color-matched to grout) at all inside corners, perimeter joints, and changes of plane in lieu of grout; sanded caulk used where joint width requires",
+        "Steam shower (where applicable): entire assembly \u2014 walls, ceiling, pan, bench, niche \u2014 inspected for sealed grout and caulk continuity with zero gaps before steam unit is connected"
+      ]
+    },
+    {
+      "name": "Quality & Punch",
+      "items": [
+        "Superintendent walks 100% of tile surfaces under raking light for lippage, hollow spots (tap test), cracks, chips, and grout voids \u2014 all defects marked and logged before client walkthrough",
+        "Hollow tile identified by tap test in every wet area and high-traffic floor zone; any hollow tile larger than a single unit in a wet area or shower pan replaced, not accepted",
+        "All tile cuts at perimeter, fixtures, and outlets are clean (no chipped edges), symmetrical where visible, and within 1/4 inch of plan dimensions",
+        "Drain cover, schluter strips, and all tile-adjacent trim pieces confirmed installed, seated flush, and free of grout smears or adhesive residue",
+        "Tile surfaces cleaned of all haze, efflorescence, grout film, and installation debris; final acid wash applied where required and neutralized per product instructions",
+        "Backsplash tile in kitchen and all bath fields inspected for consistent grout joint alignment with cabinet, countertop, and outlet box reveals"
+      ]
+    },
+    {
+      "name": "Protection & Sign-Off",
+      "items": [
+        "All completed tile floors covered with Ram Board or equivalent hard-surface protection immediately after superintendent punch walk \u2014 protection secured and taped at seams",
+        "Shower and tub surrounds covered or masked to prevent damage from subsequent trades (trim carpenters, painters, plumbers); protection method logged",
+        "Tile sub's warranty documentation and product data sheets (thinset, grout, sealer, membrane) collected and saved to project Drive folder",
+        "Client walkthrough completed in all tile zones \u2014 client initials sign-off on each zone on the Tile Completion Form or notes deficiencies in writing",
+        "All client-noted deficiencies corrected and re-inspected by superintendent before phase is closed; no open tile punch items carried into trim-out phase"
+      ]
+    }
+  ]
+}

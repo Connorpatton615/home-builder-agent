@@ -1,0 +1,68 @@
+{
+  "phase_name": "HVAC Rough",
+  "template_version": "v1.0-2026-05-07",
+  "description": "All HVAC ductwork, refrigerant lines, equipment curbs, and penetrations are roughed-in, inspected, and approved by Baldwin County before insulation or drywall begins.",
+  "categories": [
+    {
+      "name": "Plans & Field Conditions",
+      "items": [
+        "Approved HVAC design drawings on-site and in Drive; equipment schedules match permit set",
+        "Manual J load calculations on file; tonnage per zone verified against approved design",
+        "Manual D duct design on file; supply and return sizes field-verified against layout before install",
+        "All framing openings for air handlers, chases, and equipment platforms confirmed as built \u2014 no conflicts with structural members",
+        "Attic access hatches sized and located per HVAC sub's equipment access requirements (minimum 20\u00d730 per IRC M1305.1.3)"
+      ]
+    },
+    {
+      "name": "Equipment Rough-In",
+      "items": [
+        "Air handler units set on properly sized platforms or suspended hangers; minimum 24-inch service clearance confirmed per manufacturer and IRC M1305.1.2",
+        "Condensate primary drain lines sloped minimum 1/8 inch per foot to approved termination point; secondary drain or overflow pan installed for all ceiling-level air handlers",
+        "Equipment disconnects (future electrical) stubbed within 30 inches of each air handler per NEC 440.14 (coordinate with electrical rough)",
+        "All refrigerant line sets routed, insulated, and secured per manufacturer specs; no kinks, sags, or unsupported spans exceeding 4 feet",
+        "Refrigerant line penetrations through top plates and fire-rated assemblies sleeved and fire-blocked per IRC R302.11",
+        "Gas furnace or dual-fuel unit combustion air and flue vent routing confirmed; clearances to combustibles verified per manufacturer and NFPA 54"
+      ]
+    },
+    {
+      "name": "Ductwork Rough-In",
+      "items": [
+        "All supply and return trunk lines run per Manual D design; no field upsizing or downsizing without HVAC sub sign-off",
+        "All duct connections mechanically fastened (minimum three #8 sheet-metal screws or equivalent) and sealed with UL 181-rated mastic or foil tape \u2014 no duct tape",
+        "Return air plenums built from framed chases fully lined with duct board or sheet metal; no open-cavity returns using bare stud bays in living spaces",
+        "All ductwork in unconditioned attic space insulated to minimum R-8 per ACCA and Alabama Energy Code (2021 IECC as adopted)",
+        "Flex duct runs limited to maximum 5 feet where used; no flex duct used as trunk lines; all flex fully extended with no sags exceeding 1/2 inch per foot of run",
+        "Supply register rough-in locations confirmed against floor plan furniture layout; no supply within 6 inches of corner or return air intake",
+        "All bathroom and kitchen exhaust duct terminations confirmed to exterior (not attic); dampers installed at exterior termination points"
+      ]
+    },
+    {
+      "name": "Penetrations & Fire Blocking",
+      "items": [
+        "All duct and line-set penetrations through top plates, bottom plates, and fire-rated floor/ceiling assemblies fire-blocked with approved material per IRC R302.11",
+        "All duct penetrations through exterior walls or conditioned envelope sealed with mastic or foam to maintain building envelope continuity",
+        "No duct penetrations through shear walls or engineered headers without structural engineer approval documented in file",
+        "Attic knee-wall bypasses and dropped soffit chases blocked and sealed at both ends before drywall"
+      ]
+    },
+    {
+      "name": "Inspection & Sign-Off",
+      "items": [
+        "Baldwin County HVAC rough-in inspection scheduled and inspection card posted on-site",
+        "Baldwin County HVAC rough-in inspection passed; inspection record photographed and uploaded to Drive",
+        "All inspection correction items (if any) resolved, re-inspected, and documented before proceeding",
+        "Superintendent walk-through completed: all duct runs, line sets, and penetrations visually confirmed as installed per approved plans",
+        "HVAC sub sign-off obtained confirming rough-in is complete and system is ready for insulation and drywall cover"
+      ]
+    },
+    {
+      "name": "Pre-Cover Coordination",
+      "items": [
+        "Framing, plumbing, and electrical rough-in inspections all passed before insulation cover begins \u2014 no single trade buried ahead of others",
+        "Insulation sub notified of all HVAC duct locations requiring clearance (minimum 1-inch clearance around ducts for blown insulation to fully encapsulate)",
+        "Thermostat rough-in wire locations confirmed per room-by-room zoning plan and marked on framing for drywall reference",
+        "Drywall sub walk-through completed with HVAC sub present; all soffit, chase, and platform framing signed off before board begins"
+      ]
+    }
+  ]
+}
