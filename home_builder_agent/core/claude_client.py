@@ -10,6 +10,7 @@ to stdout. Pricing constants live in config.py — DON'T duplicate them here.
 """
 
 import os
+from pathlib import Path
 
 from anthropic import Anthropic
 from dotenv import load_dotenv
@@ -23,6 +24,12 @@ from home_builder_agent.config import (
     SONNET_OUTPUT_COST,
 )
 
+# Project-root .env (..../home-builder-agent/.env). Resolved at import time
+# so the lookup is independent of CWD — agents work the same whether they
+# run from the main repo, a Claude Code worktree, an IDE, or launchd.
+_PACKAGE_ROOT = Path(__file__).resolve().parents[2]
+_PROJECT_ENV_PATH = _PACKAGE_ROOT / ".env"
+
 
 def make_client():
     """Load .env (if present) and build an Anthropic client.
@@ -30,7 +37,12 @@ def make_client():
     Raises a clear error if ANTHROPIC_API_KEY isn't set, instead of the
     confusing 'unauthorized' error from Anthropic at first request time.
     """
-    load_dotenv()
+    # Prefer the project-root .env so agents work from any CWD (worktree,
+    # IDE, launchd). Fall back to the standard CWD search if it's missing.
+    if _PROJECT_ENV_PATH.exists():
+        load_dotenv(_PROJECT_ENV_PATH)
+    else:
+        load_dotenv()
     key = os.environ.get("ANTHROPIC_API_KEY")
     if not key:
         raise RuntimeError(
