@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd job for the inbox watcher.
+
+  Install:
+    cp com.chadhomes.inbox-watcher.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.chadhomes.inbox-watcher.plist
+
+  Stop:
+    launchctl unload ~/Library/LaunchAgents/com.chadhomes.inbox-watcher.plist
+
+  Reload after edits:
+    launchctl unload ~/Library/LaunchAgents/com.chadhomes.inbox-watcher.plist
+    launchctl load   ~/Library/LaunchAgents/com.chadhomes.inbox-watcher.plist
+
+  Inspect:
+    launchctl list | grep chadhomes
+    tail -f ~/Projects/home-builder-agent/inbox_watcher.log
+    tail -f /tmp/inbox-watcher.stderr.log
+
+  StartInterval: 300 = every 5 minutes. Email is not sheet-edit latency,
+  and 5 min aligns with Sonnet's prompt-cache TTL for any future richer
+  summarization step.
+
+  Invocation: the `hb-inbox-watcher` console script (registered by pip
+  install -e .) rather than `python3 -m ...`. The console script avoids
+  the CWD-shadowing problem where WorkingDirectory's local
+  home_builder_agent/ package directory eclipses the editable install.
+
+  WorkingDirectory: ~/Projects/home-builder-agent so credentials.json,
+  token.json, .env, and .inbox_watcher_state.json all resolve from
+  relative paths.
+
+  RunAtLoad: fire once immediately on load — first run just baselines
+  the historyId, so doing it eagerly is fine.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.chadhomes.inbox-watcher</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>set -a; source /Users/connorpatton/Projects/home-builder-agent/.env; set +a; exec /Library/Frameworks/Python.framework/Versions/3.14/bin/hb-inbox-watcher</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/connorpatton/Projects/home-builder-agent</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONPATH</key>
+    <string>/Users/connorpatton/Projects/home-builder-agent</string>
+  </dict>
+
+  <key>StartInterval</key>
+  <integer>300</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/inbox-watcher.stdout.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/inbox-watcher.stderr.log</string>
+</dict>
+</plist>

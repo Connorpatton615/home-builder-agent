@@ -46,6 +46,12 @@
   <key>WorkingDirectory</key>
   <string>/Users/connorpatton/Projects/home-builder-agent</string>
 
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONPATH</key>
+    <string>/Users/connorpatton/Projects/home-builder-agent</string>
+  </dict>
+
   <!-- 6:00 AM every day -->
   <key>StartCalendarInterval</key>
   <dict>

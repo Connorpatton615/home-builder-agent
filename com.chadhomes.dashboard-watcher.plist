@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  launchd job for the dashboard watcher.
+  launchd job for the dashboard watcher (post-restructure).
 
   Install:
     cp com.chadhomes.dashboard-watcher.plist ~/Library/LaunchAgents/
@@ -18,14 +18,14 @@
     tail -f ~/Projects/home-builder-agent/watcher.log
     tail -f /tmp/dashboard-watcher.stderr.log
 
-  StartInterval: how often (in seconds) launchd fires the script. 60 = every
-  minute. macOS may delay slightly under heavy load but never skips ticks.
-
-  WorkingDirectory: launchd starts processes with cwd=/, so we set it
-  explicitly so credentials.json + token.json + .watcher_state.json all
-  resolve from ~/Projects/home-builder-agent/ relative paths.
-
-  RunAtLoad: fire once immediately on load — don't wait the first 60 seconds.
+  Post-restructure changes:
+    - ProgramArguments now invokes the package as a module (`python3 -m
+      home_builder_agent.watchers.dashboard`) rather than a flat-file path.
+    - WorkingDirectory still ~/Projects/home-builder-agent/ — that's where
+      .env, credentials.json, token.json, and .watcher_state.json live.
+    - PYTHONPATH set to project root so the package import resolves without
+      requiring `pip install -e .` first (belt-and-suspenders; the editable
+      install also makes this work).
 -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -36,11 +36,18 @@
   <key>ProgramArguments</key>
   <array>
     <string>/Library/Frameworks/Python.framework/Versions/3.14/bin/python3</string>
-    <string>/Users/connorpatton/Projects/home-builder-agent/watcher.py</string>
+    <string>-m</string>
+    <string>home_builder_agent.watchers.dashboard</string>
   </array>
 
   <key>WorkingDirectory</key>
   <string>/Users/connorpatton/Projects/home-builder-agent</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONPATH</key>
+    <string>/Users/connorpatton/Projects/home-builder-agent</string>
+  </dict>
 
   <key>StartInterval</key>
   <integer>60</integer>
