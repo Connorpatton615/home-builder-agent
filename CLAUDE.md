@@ -4,6 +4,25 @@ This file is what Claude Code reads at session start to understand the project.
 Update it as the architecture changes; future sessions are only as smart as
 this file plus the code itself.
 
+## CTO governance — read before making architectural choices
+
+Authoritative architectural decisions for Patton AI live at
+**`~/Projects/patton-os/data/decisions.md`**. Any Claude Code session in
+this repo treats that file as binding for stack, infrastructure, auth,
+state-persistence, and deploy choices. Before making a decision that
+contradicts an entry there, surface it to the user explicitly and propose
+a new ADR — do not silently override.
+
+CTO interaction (run from any terminal):
+
+- `patton-cto scope "<question>"` — get scoping advice on a feature
+- `patton-cto adr "<decision>"` — formalize a decision (writes to decisions.md)
+- `patton-cto tech-brief` — current stack + debt summary
+
+The CTO's `health` job runs daily at 8:15 AM and emails Connor on
+critical infra/code issues. Treat the latest tech-brief + ADRs as the
+ground truth for "what's already been decided."
+
 ## What this is
 
 Multi-agent AI system for **Palmetto Custom Homes** — Baldwin County, AL luxury
