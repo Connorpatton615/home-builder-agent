@@ -194,6 +194,25 @@ def find_all_trackers(service, folder_path):
     )
 
 
+def find_tracker_by_project(service, folder_path, project_name: str):
+    """Find the Tracker sheet for a specific project by name.
+
+    Walks all trackers in the GENERATED TIMELINES folder and matches on
+    extract_project_name(). Returns the most recent match, or None if no
+    Tracker for that project exists.
+
+    Use this when you need a per-project Tracker lookup — find_latest_tracker
+    returns the globally newest one, which breaks once Chad has multiple
+    active projects.
+    """
+    candidates = find_all_trackers(service, folder_path)
+    project_lower = project_name.strip().lower()
+    for t in candidates:
+        if extract_project_name(t["name"]).strip().lower() == project_lower:
+            return t
+    return None
+
+
 def extract_project_name(tracker_name):
     """Pull project name from a Tracker sheet's name.
 

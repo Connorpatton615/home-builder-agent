@@ -178,6 +178,32 @@ TOOLS = [
         },
     },
     {
+        "name": "get_inspections_summary",
+        "description": (
+            "Get a project's inspection + permit health: which permits "
+            "are healthy vs aging vs about to expire, the next required "
+            "inspection in the Baldwin County sequence, recent passed/"
+            "failed/scheduled inspections. Use for ANY question about "
+            "inspections, permits, what's next to schedule, permit "
+            "expiry risk, or 'where are we in the inspection sequence'. "
+            "Permits expire 180 days after issue or last passed "
+            "inspection — this tool surfaces expiry exposure."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_name": {
+                    "type": "string",
+                    "description": (
+                        "Project name — e.g. 'Whitfield Residence'. Get "
+                        "from list_projects if ambiguous."
+                    ),
+                },
+            },
+            "required": ["project_name"],
+        },
+    },
+    {
         "name": "get_lien_waivers_summary",
         "description": (
             "Check lien waiver status for a project: which payments above "
@@ -445,6 +471,114 @@ def _tool_read_drive_file(ctx: AskContext, *, file_id: str) -> str:
     if result["truncated"]:
         return header + f"\n  (content truncated to 30k chars)\n\n{result['content']}"
     return header + "\n" + result["content"]
+
+
+def _tool_get_inspections_summary(ctx: AskContext, *, project_name: str) -> str:
+    """Return inspection + permit health for a project as compact text."""
+    from datetime import date as _date
+    from home_builder_agent.config import DRIVE_FOLDER_PATH
+    from home_builder_agent.integrations.drive import find_tracker_by_project
+    from home_builder_agent.integrations.sheets import read_inspections
+    from home_builder_agent.agents.inspection_tracker import compute_permit_health
+
+    try:
+        tracker = find_tracker_by_project(
+            ctx.drive_svc, DRIVE_FOLDER_PATH, project_name,
+        )
+    except Exception as e:
+        return f"ERROR locating Tracker for '{project_name}': {type(e).__name__}: {e}"
+
+    if not tracker:
+        return f"No Tracker sheet found for project '{project_name}'. Run hb-timeline to generate one, or check the project name."
+
+    try:
+        records = read_inspections(ctx.sheets_svc, tracker["id"])
+    except Exception as e:
+        return f"ERROR reading Inspections tab: {type(e).__name__}: {e}"
+
+    today = _date.today()
+    permits = compute_permit_health(records, today=today)
+
+    # Track citation
+    if tracker.get("webViewLink"):
+        ctx.cited_files[f"tracker-{project_name}"] = {
+            "file_id": f"tracker-{project_name}",
+            "name": f"{project_name} — Tracker (Inspections)",
+            "webViewLink": tracker["webViewLink"],
+        }
+
+    lines = []
+    lines.append(f"INSPECTION STATUS — {project_name}")
+    lines.append(f"  today: {today.isoformat()}  |  inspection rows: {len(records)}")
+    lines.append(f"  tracker: {tracker.get('webViewLink', '')}")
+
+    if not permits:
+        lines.append("\n(no permits logged yet — Inspections tab is empty or has no permit issuance rows)")
+        return "\n".join(lines)
+
+    # Health summary
+    by_health = {"OK": 0, "WARNING": 0, "CRITICAL": 0, "EXPIRED": 0, "UNKNOWN": 0}
+    for p in permits:
+        h = p.get("health", "UNKNOWN")
+        by_health[h] = by_health.get(h, 0) + 1
+
+    lines.append(
+        f"  health: OK={by_health['OK']} | WARNING={by_health['WARNING']} | "
+        f"CRITICAL={by_health['CRITICAL']} | EXPIRED={by_health['EXPIRED']} | "
+        f"UNKNOWN={by_health['UNKNOWN']}"
+    )
+
+    # Sort: most urgent first (EXPIRED → CRITICAL → WARNING → OK → UNKNOWN)
+    health_priority = {"EXPIRED": 0, "CRITICAL": 1, "WARNING": 2, "OK": 3, "UNKNOWN": 4}
+    sorted_permits = sorted(
+        permits,
+        key=lambda p: (health_priority.get(p.get("health", "UNKNOWN"), 9),
+                       p.get("days_until_expiry") if p.get("days_until_expiry") is not None else 9999),
+    )
+
+    lines.append(f"\nPERMITS ({len(sorted_permits)}):")
+    for p in sorted_permits:
+        pnum = p.get("permit_number", "?")
+        ptype = p.get("permit_type", "?")
+        health = p.get("health", "?")
+        days_until = p.get("days_until_expiry")
+        expiry = p.get("expiry_date")
+        next_insp = p.get("next_inspection") or "(sequence complete or not started)"
+
+        if days_until is None:
+            timing = "no anchor date"
+        elif days_until < 0:
+            timing = f"EXPIRED {-days_until}d ago"
+        else:
+            timing = f"{days_until}d until expiry"
+        expiry_str = expiry.isoformat() if expiry else "?"
+
+        lines.append(
+            f"\n  [{health:<8}] {ptype} #{pnum}"
+        )
+        lines.append(
+            f"      {timing} (expires {expiry_str})"
+        )
+        lines.append(
+            f"      next inspection: {next_insp}"
+        )
+        passed = p.get("passed_inspections", [])
+        failed = p.get("failed_inspections", [])
+        scheduled = p.get("scheduled_inspections", [])
+        if passed:
+            passed_str = ", ".join(passed[-5:])
+            extra = f" (+{len(passed) - 5} more)" if len(passed) > 5 else ""
+            lines.append(f"      passed ({len(passed)}): {passed_str}{extra}")
+        if failed:
+            lines.append(f"      ⚠️  failed ({len(failed)}): {', '.join(failed)}")
+        if scheduled:
+            sched_str = ", ".join(
+                f"{s.get('type', '?')} on {s['date'].isoformat() if s.get('date') else '?'}"
+                for s in scheduled
+            )
+            lines.append(f"      scheduled: {sched_str}")
+
+    return "\n".join(lines)
 
 
 def _tool_get_lien_waivers_summary(ctx: AskContext, *, project_name: str) -> str:
@@ -791,6 +925,7 @@ TOOL_DISPATCH = {
     "get_procurement_alerts":     _tool_get_procurement_alerts,
     "get_recent_activity":        _tool_get_recent_activity,
     "get_lien_waivers_summary":   _tool_get_lien_waivers_summary,
+    "get_inspections_summary":    _tool_get_inspections_summary,
 }
 
 
@@ -824,6 +959,10 @@ You have tools to retrieve context from his project data:
     waiver (= lien risk). Use for ANY question about waivers, lien risk,
     "who do I still need to chase for a waiver", legal coverage on
     payments paid out.
+  - get_inspections_summary: permit health + next required inspection +
+    permit expiry exposure (180-day rule). Use for ANY inspection /
+    permit / "what's next to schedule" / "any permits about to expire"
+    question.
   - search_drive: keyword-search his Google Drive
   - read_drive_file: open a specific file (THIS counts as a citation)
   - read_knowledge_base: Baldwin County codes, supplier list, Chad's voice rules
