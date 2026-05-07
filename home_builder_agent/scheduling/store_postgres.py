@@ -76,6 +76,41 @@ def load_project_by_id(project_id: str, conn: psycopg.Connection | None = None) 
     )
 
 
+def load_active_projects(
+    *,
+    tenant_id: str | None = None,
+    conn: psycopg.Connection | None = None,
+) -> list[dict]:
+    """List all non-archived projects, newest first.
+
+    Used by the Chad Agent context loader (core.chad_context.get_chad_context)
+    and any future "show me everything live" surface. Compact projection —
+    skips heavy fields (drive_folder_path, contract_signed_at, timestamps)
+    that the master agent doesn't need in its system prompt.
+    """
+    where: list[str] = ["status != 'archived'"]
+    params: list = []
+    if tenant_id is not None:
+        where.append("tenant_id = %s::uuid")
+        params.append(tenant_id)
+    where_sql = "WHERE " + " AND ".join(where)
+
+    sql = f"""
+        SELECT
+            id::text                  AS id,
+            name,
+            customer_name,
+            status,
+            target_completion_date,
+            target_framing_start_date,
+            tenant_id::text           AS tenant_id
+        FROM home_builder.project
+        {where_sql}
+        ORDER BY created_at DESC
+    """
+    return _query_many(sql, tuple(params), conn=conn)
+
+
 def load_project_by_name(name: str, conn: psycopg.Connection | None = None) -> dict | None:
     """Load a project row by name (uses idx_hb_project_name).
 
