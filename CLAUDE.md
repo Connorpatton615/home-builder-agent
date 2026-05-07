@@ -4,24 +4,58 @@ This file is what Claude Code reads at session start to understand the project.
 Update it as the architecture changes; future sessions are only as smart as
 this file plus the code itself.
 
-## CTO governance — read before making architectural choices
+## CTO governance — actively consult before architectural choices
 
-Authoritative architectural decisions for Patton AI live at
-**`~/Projects/patton-os/data/decisions.md`**. Any Claude Code session in
-this repo treats that file as binding for stack, infrastructure, auth,
-state-persistence, and deploy choices. Before making a decision that
-contradicts an entry there, surface it to the user explicitly and propose
-a new ADR — do not silently override.
+This repo operates under CTO governance. The Claude Code session reading
+this file is *required* to use the CTO loop — not just aware of it.
 
-CTO interaction (run from any terminal):
+**At session start (or before any non-trivial code change), read
+`~/Projects/patton-os/data/decisions.md`.** That file is the binding ADR
+log; its entries are load-bearing on stack, infrastructure, auth,
+state-persistence, and deploy choices. If a planned change contradicts
+an existing ADR, stop and surface that to the user before proceeding.
 
-- `patton-cto scope "<question>"` — get scoping advice on a feature
-- `patton-cto adr "<decision>"` — formalize a decision (writes to decisions.md)
-- `patton-cto tech-brief` — current stack + debt summary
+**When you hit an architectural fork not already covered by an ADR** —
+e.g. "should this be SQLite or Postgres?", "JWT in a header or in a
+cookie?", "is this a sub-agent or a tool call?" — consult the CTO via
+Bash *before* proposing an answer:
 
-The CTO's `health` job runs daily at 8:15 AM and emails Connor on
-critical infra/code issues. Treat the latest tech-brief + ADRs as the
-ground truth for "what's already been decided."
+```bash
+PYTHONPATH=/Users/connorpatton/Projects/patton-os \
+  /Users/connorpatton/Projects/patton-os/.venv/bin/patton-cto scope "<concrete question>"
+```
+
+Read the CTO's response, summarize its key points to the user in chat,
+then make your recommendation informed by it. Do not silently pick the
+answer yourself.
+
+**When the user confirms a binding architectural decision** (e.g. "yes,
+use SQLite", "let's go with hand-rolled JWT"), formalize it before
+continuing:
+
+```bash
+PYTHONPATH=/Users/connorpatton/Projects/patton-os \
+  /Users/connorpatton/Projects/patton-os/.venv/bin/patton-cto adr "<decision in one sentence>"
+```
+
+That writes a full ADR to `~/Projects/patton-os/data/decisions.md`, so
+other Claude sessions in other repos automatically see the same ground
+truth on next startup.
+
+**Reserve consultation for genuine architectural forks.** Renames,
+small refactors, bug fixes, copy edits — those don't need the CTO. Each
+`scope`/`adr` call is an Anthropic API spend; use it for decisions that
+set precedent.
+
+For a periodic snapshot of stack + technical debt:
+
+```bash
+PYTHONPATH=/Users/connorpatton/Projects/patton-os \
+  /Users/connorpatton/Projects/patton-os/.venv/bin/patton-cto tech-brief
+```
+
+The CTO's `health` job also runs daily at 8:15 AM and emails Connor on
+critical issues, independent of your session.
 
 ## What this is
 
