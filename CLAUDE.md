@@ -57,6 +57,28 @@ PYTHONPATH=/Users/connorpatton/Projects/patton-os \
 The CTO's `health` job also runs daily at 8:15 AM and emails Connor on
 critical issues, independent of your session.
 
+## Master router — `patton` (human entry point)
+
+For interactive terminal use, the master router is the preferred entry point
+to the entire C-suite. Connor types a natural-language intent, Haiku classifies
+it, and the right C-suite CLI handles the work:
+
+```bash
+patton "what is our legal compliance status"
+patton "draft a follow-up to chad about photos"
+patton --dry-run "should we use sqlite or postgres"   # show routing only
+patton --show-log                                      # last 20 invocations
+```
+
+Per-CLI direct invocations (`patton-ceo`, `patton-cto`, etc.) remain on PATH
+and are appropriate for scripting or when the right agent is already obvious.
+The router self-bootstraps `PYTHONPATH` so it works from any shell with no
+setup. Usage logs to `~/.patton-router-log.yaml` for later pattern analysis.
+
+**Audience note:** the router is the *human* entry point. Claude Code sessions
+reading this file should still consult the CTO directly via the pattern above
+(`patton-cto scope/adr` invoked through Bash), not via the router.
+
 ## What this is
 
 Multi-agent AI system for **Palmetto Custom Homes** — Baldwin County, AL luxury
