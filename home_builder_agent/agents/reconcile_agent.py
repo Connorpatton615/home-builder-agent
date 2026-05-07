@@ -29,16 +29,21 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
+import uuid
 from datetime import datetime, timezone
 
 from home_builder_agent.core.heartbeat import beat_on_success
+from home_builder_agent.observability.json_log import configure_json_logging
 from home_builder_agent.scheduling.reconcile import (
     DispatchOutcome,
     WATERMARK_PATH,
     reconcile_pass,
 )
+
+log = logging.getLogger(__name__)
 
 
 def _parse_since(raw: str) -> datetime:
@@ -85,6 +90,9 @@ def _print_pretty(report) -> None:
 
 @beat_on_success("reconcile", stale_after_seconds=300, success_codes=(0, 3))
 def main():
+    # Stderr → JSON when launchd captures; default text when human-run in TTY.
+    configure_json_logging("hb-reconcile")
+
     parser = argparse.ArgumentParser(
         description="Run one engine reconcile pass over home_builder.user_action."
     )
@@ -121,7 +129,23 @@ def main():
             since_override = _parse_since(args.since)
         except ValueError as e:
             print(f"❌ Invalid --since value: {e}")
+            log.error(
+                "since_parse_failed",
+                extra={"event": "since_parse_failed", "raw_since": args.since,
+                       "error": str(e)},
+            )
             sys.exit(1)
+
+    correlation_id = uuid.uuid4().hex
+    log.info(
+        "pass_starting",
+        extra={
+            "event": "pass_starting",
+            "correlation_id": correlation_id,
+            "dry_run": bool(args.dry_run),
+            "since_override": since_override.isoformat() if since_override else None,
+        },
+    )
 
     try:
         report = reconcile_pass(
@@ -129,6 +153,14 @@ def main():
             dry_run=args.dry_run,
         )
     except Exception as e:
+        log.exception(
+            "pass_failed",
+            extra={
+                "event": "pass_failed",
+                "correlation_id": correlation_id,
+                "exception_type": type(e).__name__,
+            },
+        )
         if args.json:
             print(json.dumps({
                 "error": True,
@@ -150,6 +182,19 @@ def main():
     #   3 — pass completed but had handler errors that will be retried
     error_count = sum(
         1 for r in report.results if r.outcome == DispatchOutcome.ERROR
+    )
+    log.info(
+        "pass_complete",
+        extra={
+            "event": "pass_complete",
+            "correlation_id": correlation_id,
+            "rows_total": len(report.results),
+            "applied": sum(1 for r in report.results if r.outcome == DispatchOutcome.APPLIED),
+            "skipped": sum(1 for r in report.results if r.outcome == DispatchOutcome.SKIPPED),
+            "unknown": sum(1 for r in report.results if r.outcome == DispatchOutcome.UNKNOWN),
+            "errors": error_count,
+            "dry_run": bool(args.dry_run),
+        },
     )
     sys.exit(3 if error_count > 0 else 0)
 
