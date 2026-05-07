@@ -40,6 +40,7 @@ import json
 import sys
 import time
 from datetime import date
+from typing import Iterator
 
 from anthropic import Anthropic
 
@@ -355,6 +356,242 @@ def chad_turn(user_input: str, *, dry_run: bool = False, verbose: bool = False) 
 
 
 # ---------------------------------------------------------------------------
+# Streaming agent loop
+# ---------------------------------------------------------------------------
+# SSE event contract — same shape as ask_question_stream so iOS can swap
+# between hb-ask and hb-chad without changing its event handler. The route
+# handler in patton-ai-ios serializes (event_id, event_type, payload) tuples
+# to wire format; the engine emits them.
+#
+# Event types:
+#   text_delta       — incremental Opus tokens for the final answer
+#   tool_use         — Opus invokes ask_chad or dispatch_action
+#   tool_result      — tool returned (one-line summary + duration)
+#   citation_added   — a Drive file referenced by the underlying ask_chad
+#                      pass (forwarded from the nested ask_question result)
+#   message_complete — terminal: full answer + citations + cost + tools_called
+#   error            — terminal: error envelope
+
+
+def chad_turn_stream(
+    user_input: str,
+    *,
+    verbose: bool = False,
+) -> Iterator[tuple[int, str, dict]]:
+    """Streaming version of chad_turn for the iOS Ask tab and other SSE surfaces.
+
+    Yields (event_id, event_type, payload) tuples. Event IDs are monotonic
+    per stream, starting at 1. Stream is terminated by either a
+    `message_complete` or an `error` event — caller breaks out of iteration
+    after either.
+
+    Wire-compatible with ask_question_stream: the iOS backend can call
+    either and the same SSE event handler works.
+
+    Note: the underlying ask_chad tool currently calls ask_question (the
+    non-streaming variant). Citations land in a single batch when ask_chad
+    returns rather than incrementally during its sub-call. That's a
+    deliberate v1.0 simplification — the iOS user still sees citation
+    events as discrete SSE messages.
+    """
+    started_at = time.time()
+    event_id_counter = 0
+
+    def emit(event_type: str, payload: dict) -> tuple[int, str, dict]:
+        nonlocal event_id_counter
+        event_id_counter += 1
+        return (event_id_counter, event_type, payload)
+
+    # Setup — kept inline so setup failures surface as error events rather
+    # than raising before the stream opens.
+    try:
+        client = make_client()
+        voice = chad_voice_system("narrator")
+        ctx_block = get_chad_context().to_prompt_block()
+        system = (
+            f"{voice}\n\n{ctx_block}\n{PERSONA_SUFFIX}\n"
+            f"TODAY: {date.today().strftime('%A, %B %-d, %Y')}"
+        )
+    except Exception as e:
+        yield emit("error", {
+            "type": type(e).__name__,
+            "message": f"setup failed: {e}",
+        })
+        return
+
+    messages: list[dict] = [{"role": "user", "content": user_input}]
+    tool_log: list[dict] = []
+    citations: list[dict] = []
+    seen_citation_ids: set[str] = set()
+    actions_taken: list[str] = []
+    total_input_tokens = 0
+    total_output_tokens = 0
+    downstream_cost = 0.0
+
+    try:
+        for iteration in range(MAX_TOOL_LOOP_ITERATIONS):
+            if verbose:
+                print(f"[stream iter {iteration + 1}] calling Opus...", file=sys.stderr)
+
+            with client.messages.stream(
+                model=CHAD_MODEL,
+                max_tokens=CHAD_MAX_TOKENS,
+                system=system,
+                tools=TOOLS,
+                messages=messages,
+            ) as stream:
+                for event in stream:
+                    if event.type == "content_block_delta" and event.delta.type == "text_delta":
+                        yield emit("text_delta", {"delta": event.delta.text})
+
+                final_message = stream.get_final_message()
+
+            total_input_tokens += final_message.usage.input_tokens
+            total_output_tokens += final_message.usage.output_tokens
+
+            if final_message.stop_reason == "end_turn":
+                final_text = ""
+                for block in final_message.content:
+                    if block.type == "text":
+                        final_text += block.text
+
+                opus_cost = (
+                    total_input_tokens * OPUS_INPUT_PER_M / 1_000_000
+                    + total_output_tokens * OPUS_OUTPUT_PER_M / 1_000_000
+                )
+
+                yield emit("message_complete", {
+                    "answer": final_text.strip() or "(no answer produced)",
+                    "citations": citations,
+                    "tools_called": tool_log,
+                    "actions_taken": actions_taken,
+                    "model": CHAD_MODEL,
+                    "cost_usd": round(opus_cost + downstream_cost, 4),
+                    "opus_cost_usd": round(opus_cost, 4),
+                    "downstream_cost_usd": round(downstream_cost, 4),
+                    "duration_ms": int((time.time() - started_at) * 1000),
+                    "input_tokens": total_input_tokens,
+                    "output_tokens": total_output_tokens,
+                    "iterations": iteration + 1,
+                })
+                return
+
+            if final_message.stop_reason == "tool_use":
+                messages.append({"role": "assistant", "content": final_message.content})
+                tool_results_for_next_turn = []
+
+                for block in final_message.content:
+                    if block.type != "tool_use":
+                        continue
+
+                    inputs = block.input or {}
+
+                    yield emit("tool_use", {
+                        "id": block.id,
+                        "name": block.name,
+                        "input": inputs,
+                    })
+
+                    tool_started = time.time()
+
+                    if block.name == "ask_chad":
+                        # Inlined ask_chad call so we can extract structured
+                        # citations and emit them as discrete events. _tool_ask_chad
+                        # flattens citations into the text block, which is what
+                        # Opus needs for its next turn but not what the iOS
+                        # client wants for citation chip rendering.
+                        from home_builder_agent.agents.ask_agent import ask_question
+
+                        try:
+                            result = ask_question(
+                                inputs.get("question", ""), verbose=False
+                            )
+                            answer = result.get("answer", "(no answer)")
+                            tool_citations = result.get("citations") or []
+                            cost = float(result.get("cost_usd") or 0.0)
+                        except Exception as e:
+                            output = f"ask_chad failed: {type(e).__name__}: {e}"
+                            tool_citations = []
+                            cost = 0.0
+                        else:
+                            if tool_citations:
+                                cite_str = "\n".join(
+                                    f"  - {c.get('name', '?')} ({c.get('webViewLink', '')})"
+                                    for c in tool_citations[:5]
+                                )
+                                output = f"{answer}\n\nCitations:\n{cite_str}"
+                            else:
+                                output = answer
+
+                        for c in tool_citations:
+                            cid = c.get("id") or c.get("file_id") or c.get("name")
+                            if cid and cid not in seen_citation_ids:
+                                seen_citation_ids.add(cid)
+                                citations.append(c)
+                                yield emit("citation_added", c)
+
+                    elif block.name == "dispatch_action":
+                        # Streaming surface is real iOS user — never dry-run.
+                        output, cost = _tool_dispatch_action(
+                            inputs.get("nl_command", ""),
+                            inputs.get("project_id"),
+                            dry_run=False,
+                        )
+                        actions_taken.append(inputs.get("nl_command", ""))
+                    else:
+                        output = f"Unknown tool: {block.name}"
+                        cost = 0.0
+
+                    duration_ms = int((time.time() - tool_started) * 1000)
+                    downstream_cost += cost
+                    tool_log.append({
+                        "name": block.name,
+                        "input": inputs,
+                        "duration_ms": duration_ms,
+                        "cost_usd": cost,
+                    })
+
+                    summary = output.split("\n")[0][:160]
+                    yield emit("tool_result", {
+                        "id": block.id,
+                        "name": block.name,
+                        "duration_ms": duration_ms,
+                        "summary": summary,
+                    })
+
+                    tool_results_for_next_turn.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": output,
+                    })
+
+                messages.append({"role": "user", "content": tool_results_for_next_turn})
+                continue
+
+            # Unexpected stop reason — surface as error and terminate
+            yield emit("error", {
+                "type": "UnexpectedStopReason",
+                "message": f"Stream ended with stop_reason={final_message.stop_reason!r}",
+            })
+            return
+
+        # Exited loop without end_turn — hit MAX_TOOL_LOOP_ITERATIONS
+        yield emit("error", {
+            "type": "MaxIterationsReached",
+            "message": (
+                f"Tool loop exceeded {MAX_TOOL_LOOP_ITERATIONS} iterations "
+                "without Opus composing a final answer"
+            ),
+        })
+
+    except Exception as e:
+        yield emit("error", {
+            "type": type(e).__name__,
+            "message": str(e),
+        })
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -377,6 +614,49 @@ def _print_pretty(result: dict) -> None:
     )
 
 
+def _print_stream(user_input: str, *, verbose: bool) -> None:
+    """Consume chad_turn_stream and render to the terminal.
+
+    Renders text_delta inline, tool/citation/error events as labeled lines,
+    and a final cost summary on message_complete. Used for smoke-testing
+    parity with the iOS SSE surface.
+    """
+    print()
+    final_payload: dict | None = None
+    for event_id, event_type, payload in chad_turn_stream(user_input, verbose=verbose):
+        if event_type == "text_delta":
+            sys.stdout.write(payload.get("delta", ""))
+            sys.stdout.flush()
+        elif event_type == "tool_use":
+            print(f"\n[tool_use:{event_id}] {payload.get('name')} {json.dumps(payload.get('input') or {})[:200]}", file=sys.stderr)
+        elif event_type == "tool_result":
+            print(f"[tool_result:{event_id}] {payload.get('name')} ({payload.get('duration_ms')}ms): {payload.get('summary')}", file=sys.stderr)
+        elif event_type == "citation_added":
+            print(f"[citation:{event_id}] {payload.get('name')} ({payload.get('webViewLink', '')})", file=sys.stderr)
+        elif event_type == "error":
+            print(f"\n[error:{event_id}] {payload.get('type')}: {payload.get('message')}", file=sys.stderr)
+            return
+        elif event_type == "message_complete":
+            final_payload = payload
+
+    print()
+    if final_payload:
+        print()
+        if final_payload.get("actions_taken"):
+            print("Actions:")
+            for a in final_payload["actions_taken"]:
+                print(f"  • {a}")
+            print()
+        print(
+            f"--- {final_payload.get('model')} | "
+            f"{final_payload.get('iterations')} iter | "
+            f"{final_payload.get('duration_ms')}ms | "
+            f"opus ${final_payload.get('opus_cost_usd', 0):.4f} + "
+            f"downstream ${final_payload.get('downstream_cost_usd', 0):.4f} = "
+            f"${final_payload.get('cost_usd', 0):.4f}"
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=f"hb-chad — {CUSTOMER_NAME}'s AI extension. "
@@ -392,10 +672,20 @@ def main() -> None:
         help="Emit a single JSON object instead of pretty terminal output.",
     )
     parser.add_argument(
+        "--stream", action="store_true",
+        help="Use the streaming code path (chad_turn_stream). Smoke-tests "
+             "the surface that powers the iOS Ask tab. Ignores --dry-run "
+             "and --json.",
+    )
+    parser.add_argument(
         "--verbose", action="store_true",
         help="Print tool-loop progress to stderr.",
     )
     args = parser.parse_args()
+
+    if args.stream:
+        _print_stream(args.input, verbose=args.verbose)
+        return
 
     result = chad_turn(args.input, dry_run=args.dry_run, verbose=args.verbose)
 
