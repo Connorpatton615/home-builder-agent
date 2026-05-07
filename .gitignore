@@ -38,6 +38,7 @@ timeline_*.md
 .brief_announcements.json
 .weather_cache.json
 .meeting_proposals.json
+.reconcile_watermark.json
 .cost_log.jsonl
 watcher.log
 *.log
