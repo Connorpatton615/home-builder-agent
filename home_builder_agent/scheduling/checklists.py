@@ -129,8 +129,12 @@ def can_advance_phase(checklist: Checklist | None) -> bool:
 # Template loading + instantiation
 # ---------------------------------------------------------------------------
 
-def _slugify(text: str) -> str:
-    """Lowercase, dash-separated, alphanumeric-only — for stable file/id segments."""
+def slugify(text: str) -> str:
+    """Lowercase, dash-separated, alphanumeric-only — for stable file/id segments.
+
+    Public so callers (the template-generation script in scripts/) can reuse
+    the same canonical form when naming output files.
+    """
     out = []
     prev_dash = False
     for c in text.lower():
@@ -141,6 +145,10 @@ def _slugify(text: str) -> str:
             out.append("-")
             prev_dash = True
     return "".join(out).strip("-")
+
+
+# Backwards-compat alias — internal callers used `_slugify`.
+_slugify = slugify
 
 
 def template_path(phase_name: str) -> Path:
