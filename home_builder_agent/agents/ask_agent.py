@@ -178,6 +178,32 @@ TOOLS = [
         },
     },
     {
+        "name": "get_lien_waivers_summary",
+        "description": (
+            "Check lien waiver status for a project: which payments above "
+            "the threshold have a matching signed waiver and which don't. "
+            "Unwaived payments are LIEN RISK — even after Chad pays, that "
+            "sub can file a mechanic's lien on the homeowner's property "
+            "until the waiver is signed. Use for ANY question about lien "
+            "waivers, payment risk, missing waivers, who Chad still needs "
+            "to chase for a signed waiver, or 'are we covered legally on "
+            "what we paid out?'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_name": {
+                    "type": "string",
+                    "description": (
+                        "Project name — e.g. 'Whitfield Residence'. Get from "
+                        "list_projects if ambiguous."
+                    ),
+                },
+            },
+            "required": ["project_name"],
+        },
+    },
+    {
         "name": "get_recent_activity",
         "description": (
             "Get recent autonomous actions Chad's AI took on his behalf "
@@ -419,6 +445,106 @@ def _tool_read_drive_file(ctx: AskContext, *, file_id: str) -> str:
     if result["truncated"]:
         return header + f"\n  (content truncated to 30k chars)\n\n{result['content']}"
     return header + "\n" + result["content"]
+
+
+def _tool_get_lien_waivers_summary(ctx: AskContext, *, project_name: str) -> str:
+    """Return waiver-coverage status for a project's payments as compact text."""
+    from datetime import date as _date
+    from home_builder_agent.config import (
+        FINANCE_FOLDER_PATH, LIEN_WAIVER_THRESHOLD,
+    )
+    from home_builder_agent.integrations.drive import find_folder_by_path
+    from home_builder_agent.integrations.finance import (
+        find_cost_tracker, read_actuals_log, read_lien_waivers,
+    )
+    from home_builder_agent.agents.lien_waiver_agent import find_unwaived_payments
+
+    try:
+        folder_id = find_folder_by_path(ctx.drive_svc, FINANCE_FOLDER_PATH)
+    except Exception as e:
+        return f"ERROR locating Finance Office folder: {type(e).__name__}: {e}"
+
+    tracker = find_cost_tracker(ctx.drive_svc, folder_id, project_name)
+    if not tracker:
+        return f"No Cost Tracker found for project '{project_name}'. Run hb-finance to create one, or check the project name."
+
+    try:
+        actuals = read_actuals_log(ctx.sheets_svc, tracker["id"])
+        waivers = read_lien_waivers(ctx.sheets_svc, tracker["id"])
+    except Exception as e:
+        return f"ERROR reading actuals/waivers: {type(e).__name__}: {e}"
+
+    today = _date.today()
+    report = find_unwaived_payments(actuals, waivers, today=today)
+
+    # Track citation
+    if tracker.get("webViewLink"):
+        ctx.cited_files[f"cost-tracker-{project_name}"] = {
+            "file_id": f"cost-tracker-{project_name}",
+            "name": f"{project_name} — Cost Tracker (Lien Waivers)",
+            "webViewLink": tracker["webViewLink"],
+        }
+
+    unwaived = report["unwaived"]
+    waived = report["waived"]
+    below = report["below_threshold"]
+
+    lines = []
+    lines.append(f"LIEN WAIVER STATUS — {project_name}")
+    lines.append(f"  threshold: ${LIEN_WAIVER_THRESHOLD:,.0f}  |  today: {today.isoformat()}")
+    lines.append(
+        f"  totals: {report['total_payments']} payments | "
+        f"{len(waived)} waived | {len(unwaived)} UNWAIVED (lien risk) | "
+        f"{len(below)} below threshold"
+    )
+    lines.append(f"  cost tracker: {tracker.get('webViewLink', '')}")
+
+    # Unwaived = the actionable list. Lead with this — most urgent first.
+    if unwaived:
+        # Sort: oldest payment first (longest exposure)
+        def _date_key(p):
+            from home_builder_agent.agents.lien_waiver_agent import _parse_date
+            d = _parse_date(p.get("Date"))
+            return d or _date.min
+        sorted_unwaived = sorted(unwaived, key=_date_key)
+
+        lines.append(f"\n🚨 UNWAIVED PAYMENTS ({len(unwaived)}):")
+        from home_builder_agent.agents.lien_waiver_agent import _parse_date, _parse_amount
+        total_unwaived_amt = 0.0
+        for p in sorted_unwaived:
+            vendor = (p.get("Vendor") or "?").strip()
+            amt = _parse_amount(p.get("Amount ($)"))
+            pay_date = _parse_date(p.get("Date"))
+            amt_str = f"${amt:,.0f}" if amt else "?"
+            if amt:
+                total_unwaived_amt += amt
+            if pay_date:
+                age_days = (today - pay_date).days
+                date_str = f"{pay_date.isoformat()} ({age_days}d ago)"
+            else:
+                date_str = "(no date)"
+            category = (p.get("Category") or p.get("Section") or "").strip()
+            cat_part = f" | {category}" if category else ""
+            lines.append(f"  - {vendor:<28} {amt_str:>10}  paid {date_str}{cat_part}")
+        lines.append(f"  total unwaived exposure: ${total_unwaived_amt:,.0f}")
+    else:
+        lines.append("\n✓ No unwaived payments — every payment above threshold has a matching waiver.")
+
+    if waived:
+        lines.append(f"\nWAIVED ({len(waived)}):")
+        for entry in waived[:10]:
+            p = entry["payment"]
+            w = entry["waiver"]
+            vendor = (p.get("Vendor") or "?").strip()
+            from home_builder_agent.agents.lien_waiver_agent import _parse_amount
+            amt = _parse_amount(p.get("Amount ($)"))
+            amt_str = f"${amt:,.0f}" if amt else "?"
+            wtype = (w.get("Waiver Type") or "?").strip()
+            lines.append(f"  - {vendor:<28} {amt_str:>10}  waiver: {wtype}")
+        if len(waived) > 10:
+            lines.append(f"  (+{len(waived) - 10} more)")
+
+    return "\n".join(lines)
 
 
 def _tool_get_recent_activity(
@@ -664,6 +790,7 @@ TOOL_DISPATCH = {
     "get_cost_tracker_summary":   _tool_get_cost_tracker_summary,
     "get_procurement_alerts":     _tool_get_procurement_alerts,
     "get_recent_activity":        _tool_get_recent_activity,
+    "get_lien_waivers_summary":   _tool_get_lien_waivers_summary,
 }
 
 
@@ -693,6 +820,10 @@ You have tools to retrieve context from his project data:
     behalf via hb-router (receipts logged, phases updated, change orders
     drafted, etc.) — use for ANY "what did the AI do" / accountability /
     audit-trail question. Optional project_id + since_hours filters.
+  - get_lien_waivers_summary: which payments still need a signed lien
+    waiver (= lien risk). Use for ANY question about waivers, lien risk,
+    "who do I still need to chase for a waiver", legal coverage on
+    payments paid out.
   - search_drive: keyword-search his Google Drive
   - read_drive_file: open a specific file (THIS counts as a citation)
   - read_knowledge_base: Baldwin County codes, supplier list, Chad's voice rules
