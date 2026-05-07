@@ -573,6 +573,159 @@ class HBAskStreamEventEnvelope(_Base):
 # JSON Schema export (called by docs/specs build pipeline)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Migration 004 — user_signal + user_profile (always-learning Chad)
+# ---------------------------------------------------------------------------
+#
+# See docs/specs/migration_004_review.md for the table-level rationale and
+# the open-enum signal vocabulary. These Pydantic models pin the wire
+# format for /v1/signals (POST batch) and /v1/me/profile (GET) once the
+# routes ship. iOS Codable mirrors the same shapes.
+
+class UserSignalType(str, Enum):
+    """v1 vocabulary of in-app behavior signals.
+
+    Open-enum at the DB layer per migration 004 decision 3, but pinned
+    here so engine + iOS + profile-builder agree on the names. Adding
+    a new type = update this enum + iOS Codable + the profile-builder's
+    aggregator. No DB migration required.
+    """
+    SESSION_START = "session_start"
+    SESSION_END = "session_end"
+    SCREEN_VIEW = "screen_view"
+    PROJECT_SWITCHED = "project_switched"
+    ASK_QUERY = "ask_query"
+    ASK_FOLLOWUP = "ask_followup"
+    TOOL_INVOKED = "tool_invoked"
+    NOTIFICATION_ACTED = "notification_acted"
+    NOTIFICATION_DISMISSED = "notification_dismissed"
+    VOICE_INPUT_USED = "voice_input_used"
+    VOICE_INPUT_CANCELED = "voice_input_canceled"
+    SHARE_RECEIVED = "share_received"
+
+
+class HBUserSignalPayload(_Base):
+    """One in-app behavior signal as it surfaces on the wire.
+
+    POST /v1/signals accepts an array of these from iOS (batched per
+    decision Q-A in migration 004 review). Schema mirrors the SQL columns
+    in home_builder.user_signal.
+
+    The `payload` dict is polymorphic — see signal vocabulary table in
+    migration_004_review.md for the per-type shape contract. Pydantic
+    keeps this loose at the wire layer; profile-builder dispatches on
+    `signal_type` to a typed payload model when reading.
+    """
+    id: str = Field(description="UUID of this signal row")
+    actor_user_id: str = Field(description="auth.users id of who emitted this signal")
+    signal_type: UserSignalType = Field(description="v1 signal vocabulary discriminator")
+    surface: ActivitySurface = Field(
+        default=ActivitySurface.CHAT,
+        description="Surface that emitted the signal — mirrors engine_activity.surface",
+    )
+    payload: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Signal-specific structured data; shape varies by signal_type",
+    )
+    project_id: str | None = Field(
+        default=None,
+        description="Optional project context — null for app-wide signals like screen_view of project picker",
+    )
+    session_id: str | None = Field(
+        default=None,
+        description="Optional foreground-session UUID; iOS generates per session_start, omitted for background-emitted",
+    )
+    client_timestamp: _datetime | None = Field(
+        default=None,
+        description="When the iOS device recorded the event (different from server-received `created_at`)",
+    )
+    created_at: _datetime = Field(description="When the signal row was inserted server-side")
+
+
+# ---------------------------------------------------------------------------
+# HBUserProfileV1 — current preference state per user
+# ---------------------------------------------------------------------------
+#
+# v1 shape per migration_004_review.md § Profile JSONB v1. Stored as
+# JSONB inside home_builder.user_profile.profile + a `version` int on
+# the row. Engine reads with `version` first, dispatches to the matching
+# Pydantic model — lets us evolve the profile shape without DB migrations.
+
+class ProfileVocabulary(_Base):
+    preferred_terms: list[str] = Field(
+        default_factory=list,
+        description="Phrases Chad uses naturally that Claude should mirror",
+    )
+    avoid: list[str] = Field(
+        default_factory=list,
+        description="Phrases / formality levels Chad doesn't respond to",
+    )
+
+
+class ProfileWorkingHours(_Base):
+    weekday_start_hour: int | None = Field(default=None, ge=0, le=23)
+    weekday_end_hour: int | None = Field(default=None, ge=0, le=23)
+    weekend_active: bool | None = Field(default=None)
+    timezone: str | None = Field(
+        default=None,
+        description="IANA timezone (e.g. 'America/Chicago'). Notification dispatcher consults this.",
+    )
+
+
+class ProfileDecisionPatterns(_Base):
+    common_vendors: dict[str, str] = Field(
+        default_factory=dict,
+        description="Material category → vendor name (e.g. 'windows' → 'Anderson')",
+    )
+    common_amounts: dict[str, float] = Field(
+        default_factory=dict,
+        description="Named typical dollar amounts (e.g. 'permit_fee_typical' → 850.00)",
+    )
+
+
+class ProfileAnswerStyle(_Base):
+    length_preference: str | None = Field(
+        default=None,
+        description="'short' | 'medium' | 'long' — derived from session re-ask patterns",
+    )
+    format: str | None = Field(
+        default=None,
+        description="'bullets-then-implication' | 'paragraph' | 'numbered-steps' etc.",
+    )
+    include_dollar_amounts: bool | None = Field(default=None)
+    include_dates: bool | None = Field(default=None)
+
+
+class HBUserProfileV1(_Base):
+    """Current preference state JSONB stored at user_profile.profile (version=1).
+
+    Read by every Claude-touching surface (hb-ask, hb-router, push
+    notification dispatcher) via system-prompt injection. Built nightly
+    by hb-profile from user_signal + engine_activity + Drive/Gmail
+    activity.
+    """
+    version: Literal[1] = 1
+    vocabulary: ProfileVocabulary = Field(default_factory=ProfileVocabulary)
+    working_hours: ProfileWorkingHours = Field(default_factory=ProfileWorkingHours)
+    attention_weights: dict[str, float] = Field(
+        default_factory=dict,
+        description="project_id → 0..1 weight indicating relative attention. "
+                    "Used by hb-router to disambiguate 'the project' references.",
+    )
+    decision_patterns: ProfileDecisionPatterns = Field(default_factory=ProfileDecisionPatterns)
+    ignored_alert_types: list[str] = Field(
+        default_factory=list,
+        description="Notification template types Chad consistently dismisses; dispatcher suppresses these.",
+    )
+    answer_style: ProfileAnswerStyle = Field(default_factory=ProfileAnswerStyle)
+    voice_input_pct: float | None = Field(
+        default=None, ge=0.0, le=1.0,
+        description="Fraction of recent inputs that used voice — telemetry, not behavioral.",
+    )
+    session_count_30d: int | None = Field(default=None, ge=0)
+    ask_query_count_30d: int | None = Field(default=None, ge=0)
+
+
 def export_combined_json_schema() -> dict:
     """Build a single JSON Schema document covering all canonical wire formats.
 
@@ -604,6 +757,9 @@ def export_combined_json_schema() -> dict:
         "HBAskCitationAdded": HBAskCitationAddedEvent.model_json_schema(),
         "HBAskMessageComplete": HBAskMessageCompleteEvent.model_json_schema(),
         "HBAskError": HBAskErrorEvent.model_json_schema(),
+        # Migration 004 — personalization layer
+        "HBUserSignal": HBUserSignalPayload.model_json_schema(),
+        "HBUserProfileV1": HBUserProfileV1.model_json_schema(),
     }
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -619,6 +775,6 @@ def export_combined_json_schema() -> dict:
             "docs/specs/canonical-data-model.md, docs/specs/migration_003_review.md, "
             "and patton-ai-ios docs/03_build/turtle_contract_v1.md."
         ),
-        "version": "1.1.0",
+        "version": "1.2.0",
         "definitions": schemas,
     }

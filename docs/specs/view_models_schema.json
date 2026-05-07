@@ -3,7 +3,7 @@
   "$id": "https://patton.ai/schemas/home-builder/view-models-v1.json",
   "title": "Home Builder Service Turtle \u2014 Wire Format Schemas v1",
   "description": "Canonical wire formats emitted by the Home Builder Agent for the Patton AI iOS Shell to deserialize without transformation. Covers: the six view-model payloads (master/daily/weekly/monthly/checklist-gates/notification-feed), the engine_activity audit log row, and the six SSE event types streamed by /v1/turtles/home-builder/ask/stream (discriminated by the `type` field). See docs/specs/canonical-data-model.md, docs/specs/migration_003_review.md, and patton-ai-ios docs/03_build/turtle_contract_v1.md.",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "definitions": {
     "MasterView": {
       "$defs": {
@@ -1963,6 +1963,371 @@
         "message"
       ],
       "title": "HBAskErrorEvent",
+      "type": "object"
+    },
+    "HBUserSignal": {
+      "$defs": {
+        "ActivitySurface": {
+          "description": "Where a Claude-autonomous action originated. Mirrors the SQL CHECK.",
+          "enum": [
+            "chat",
+            "voice",
+            "cli",
+            "background"
+          ],
+          "title": "ActivitySurface",
+          "type": "string"
+        },
+        "UserSignalType": {
+          "description": "v1 vocabulary of in-app behavior signals.\n\nOpen-enum at the DB layer per migration 004 decision 3, but pinned\nhere so engine + iOS + profile-builder agree on the names. Adding\na new type = update this enum + iOS Codable + the profile-builder's\naggregator. No DB migration required.",
+          "enum": [
+            "session_start",
+            "session_end",
+            "screen_view",
+            "project_switched",
+            "ask_query",
+            "ask_followup",
+            "tool_invoked",
+            "notification_acted",
+            "notification_dismissed",
+            "voice_input_used",
+            "voice_input_canceled",
+            "share_received"
+          ],
+          "title": "UserSignalType",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "description": "One in-app behavior signal as it surfaces on the wire.\n\nPOST /v1/signals accepts an array of these from iOS (batched per\ndecision Q-A in migration 004 review). Schema mirrors the SQL columns\nin home_builder.user_signal.\n\nThe `payload` dict is polymorphic \u2014 see signal vocabulary table in\nmigration_004_review.md for the per-type shape contract. Pydantic\nkeeps this loose at the wire layer; profile-builder dispatches on\n`signal_type` to a typed payload model when reading.",
+      "properties": {
+        "id": {
+          "description": "UUID of this signal row",
+          "title": "Id",
+          "type": "string"
+        },
+        "actor_user_id": {
+          "description": "auth.users id of who emitted this signal",
+          "title": "Actor User Id",
+          "type": "string"
+        },
+        "signal_type": {
+          "$ref": "#/$defs/UserSignalType",
+          "description": "v1 signal vocabulary discriminator"
+        },
+        "surface": {
+          "$ref": "#/$defs/ActivitySurface",
+          "default": "chat",
+          "description": "Surface that emitted the signal \u2014 mirrors engine_activity.surface"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "description": "Signal-specific structured data; shape varies by signal_type",
+          "title": "Payload",
+          "type": "object"
+        },
+        "project_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional project context \u2014 null for app-wide signals like screen_view of project picker",
+          "title": "Project Id"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional foreground-session UUID; iOS generates per session_start, omitted for background-emitted",
+          "title": "Session Id"
+        },
+        "client_timestamp": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When the iOS device recorded the event (different from server-received `created_at`)",
+          "title": "Client Timestamp"
+        },
+        "created_at": {
+          "description": "When the signal row was inserted server-side",
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "actor_user_id",
+        "signal_type",
+        "created_at"
+      ],
+      "title": "HBUserSignalPayload",
+      "type": "object"
+    },
+    "HBUserProfileV1": {
+      "$defs": {
+        "ProfileAnswerStyle": {
+          "additionalProperties": false,
+          "properties": {
+            "length_preference": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "'short' | 'medium' | 'long' \u2014 derived from session re-ask patterns",
+              "title": "Length Preference"
+            },
+            "format": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "'bullets-then-implication' | 'paragraph' | 'numbered-steps' etc.",
+              "title": "Format"
+            },
+            "include_dollar_amounts": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Include Dollar Amounts"
+            },
+            "include_dates": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Include Dates"
+            }
+          },
+          "title": "ProfileAnswerStyle",
+          "type": "object"
+        },
+        "ProfileDecisionPatterns": {
+          "additionalProperties": false,
+          "properties": {
+            "common_vendors": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "Material category \u2192 vendor name (e.g. 'windows' \u2192 'Anderson')",
+              "title": "Common Vendors",
+              "type": "object"
+            },
+            "common_amounts": {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "description": "Named typical dollar amounts (e.g. 'permit_fee_typical' \u2192 850.00)",
+              "title": "Common Amounts",
+              "type": "object"
+            }
+          },
+          "title": "ProfileDecisionPatterns",
+          "type": "object"
+        },
+        "ProfileVocabulary": {
+          "additionalProperties": false,
+          "properties": {
+            "preferred_terms": {
+              "description": "Phrases Chad uses naturally that Claude should mirror",
+              "items": {
+                "type": "string"
+              },
+              "title": "Preferred Terms",
+              "type": "array"
+            },
+            "avoid": {
+              "description": "Phrases / formality levels Chad doesn't respond to",
+              "items": {
+                "type": "string"
+              },
+              "title": "Avoid",
+              "type": "array"
+            }
+          },
+          "title": "ProfileVocabulary",
+          "type": "object"
+        },
+        "ProfileWorkingHours": {
+          "additionalProperties": false,
+          "properties": {
+            "weekday_start_hour": {
+              "anyOf": [
+                {
+                  "maximum": 23,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Weekday Start Hour"
+            },
+            "weekday_end_hour": {
+              "anyOf": [
+                {
+                  "maximum": 23,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Weekday End Hour"
+            },
+            "weekend_active": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Weekend Active"
+            },
+            "timezone": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "IANA timezone (e.g. 'America/Chicago'). Notification dispatcher consults this.",
+              "title": "Timezone"
+            }
+          },
+          "title": "ProfileWorkingHours",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Current preference state JSONB stored at user_profile.profile (version=1).\n\nRead by every Claude-touching surface (hb-ask, hb-router, push\nnotification dispatcher) via system-prompt injection. Built nightly\nby hb-profile from user_signal + engine_activity + Drive/Gmail\nactivity.",
+      "properties": {
+        "version": {
+          "const": 1,
+          "default": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "vocabulary": {
+          "$ref": "#/$defs/ProfileVocabulary"
+        },
+        "working_hours": {
+          "$ref": "#/$defs/ProfileWorkingHours"
+        },
+        "attention_weights": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "description": "project_id \u2192 0..1 weight indicating relative attention. Used by hb-router to disambiguate 'the project' references.",
+          "title": "Attention Weights",
+          "type": "object"
+        },
+        "decision_patterns": {
+          "$ref": "#/$defs/ProfileDecisionPatterns"
+        },
+        "ignored_alert_types": {
+          "description": "Notification template types Chad consistently dismisses; dispatcher suppresses these.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Ignored Alert Types",
+          "type": "array"
+        },
+        "answer_style": {
+          "$ref": "#/$defs/ProfileAnswerStyle"
+        },
+        "voice_input_pct": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Fraction of recent inputs that used voice \u2014 telemetry, not behavioral.",
+          "title": "Voice Input Pct"
+        },
+        "session_count_30d": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Session Count 30D"
+        },
+        "ask_query_count_30d": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ask Query Count 30D"
+        }
+      },
+      "title": "HBUserProfileV1",
       "type": "object"
     }
   }
