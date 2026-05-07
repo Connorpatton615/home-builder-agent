@@ -178,6 +178,38 @@ TOOLS = [
         },
     },
     {
+        "name": "get_site_log_recent",
+        "description": (
+            "Read the project's daily Site Log: timestamped append-only "
+            "field notes Chad writes about what happened on site that "
+            "day. Returns the last N entries (default 10) as a "
+            "chronological narrative. Use for ANY question about what "
+            "happened on site, recent activity in the field, what got "
+            "done this week, weather/delay narrative, sub progress, or "
+            "incident-style questions ('did we have any issues with X')."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_name": {
+                    "type": "string",
+                    "description": (
+                        "Project name — e.g. 'Whitfield Residence'. Get "
+                        "from list_projects if ambiguous."
+                    ),
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": (
+                        "Max entries to return, newest-last. Default 10. "
+                        "Cap 50."
+                    ),
+                },
+            },
+            "required": ["project_name"],
+        },
+    },
+    {
         "name": "get_inspections_summary",
         "description": (
             "Get a project's inspection + permit health: which permits "
@@ -471,6 +503,86 @@ def _tool_read_drive_file(ctx: AskContext, *, file_id: str) -> str:
     if result["truncated"]:
         return header + f"\n  (content truncated to 30k chars)\n\n{result['content']}"
     return header + "\n" + result["content"]
+
+
+def _tool_get_site_log_recent(
+    ctx: AskContext, *, project_name: str, limit: int = 10,
+) -> str:
+    """Return the last N site log entries for a project as compact text."""
+    from home_builder_agent.agents.site_log_agent import (
+        find_site_log_doc, parse_site_log_entries, _read_doc_text,
+    )
+    from home_builder_agent.integrations.docs import docs_service
+
+    # Cap so we can't blow context if Claude asks for huge limits.
+    limit = max(1, min(int(limit or 10), 50))
+
+    try:
+        doc = find_site_log_doc(ctx.drive_svc, project_name)
+    except Exception as e:
+        return f"ERROR locating Site Log for '{project_name}': {type(e).__name__}: {e}"
+
+    if doc is None:
+        return f"No Site Log found for project '{project_name}'. Run hb-sitelog to create one and add the first entry."
+
+    # Need a Docs service — AskContext only has drive + sheets.
+    try:
+        docs_svc = docs_service(_creds_from_ctx(ctx))
+        text = _read_doc_text(docs_svc, doc["id"])
+    except Exception as e:
+        return f"ERROR reading Site Log doc: {type(e).__name__}: {e}"
+
+    entries = parse_site_log_entries(text)
+
+    # Track citation
+    if doc.get("webViewLink"):
+        ctx.cited_files[f"site-log-{project_name}"] = {
+            "file_id": f"site-log-{project_name}",
+            "name": f"{project_name} — Site Log",
+            "webViewLink": doc["webViewLink"],
+        }
+
+    lines = []
+    lines.append(f"SITE LOG — {project_name}")
+    lines.append(f"  total entries: {len(entries)}  |  showing last: {min(limit, len(entries))}")
+    lines.append(f"  doc: {doc.get('webViewLink', '')}")
+
+    if not entries:
+        lines.append("\n(no entries logged yet — Site Log doc exists but has only the header preamble)")
+        return "\n".join(lines)
+
+    # Date span context
+    first = entries[0].get("parsed_date")
+    last = entries[-1].get("parsed_date")
+    if first and last:
+        lines.append(f"  span: {first.isoformat()} → {last.isoformat()}")
+
+    last_n = entries[-limit:]
+    lines.append(f"\nENTRIES (oldest → newest):")
+    for e in last_n:
+        lines.append("")
+        lines.append(f"  {e['date_line']}")
+        # Indent body, truncate per-entry to keep context bounded
+        body = e.get("body", "")
+        if len(body) > 500:
+            body = body[:497] + "..."
+        for line in body.split("\n"):
+            lines.append(f"    {line}")
+
+    return "\n".join(lines)
+
+
+def _creds_from_ctx(ctx: AskContext):
+    """Pull the underlying credentials object from a Drive service.
+
+    The Drive client stashes its creds via google-api-python-client; we
+    can re-use those for the Docs client without going back through the
+    full get_credentials() path.
+    """
+    # Easiest reliable path: just call get_credentials() — it's cached
+    # on disk so this is cheap.
+    from home_builder_agent.core.auth import get_credentials
+    return get_credentials()
 
 
 def _tool_get_inspections_summary(ctx: AskContext, *, project_name: str) -> str:
@@ -926,6 +1038,7 @@ TOOL_DISPATCH = {
     "get_recent_activity":        _tool_get_recent_activity,
     "get_lien_waivers_summary":   _tool_get_lien_waivers_summary,
     "get_inspections_summary":    _tool_get_inspections_summary,
+    "get_site_log_recent":        _tool_get_site_log_recent,
 }
 
 
@@ -963,6 +1076,10 @@ You have tools to retrieve context from his project data:
     permit expiry exposure (180-day rule). Use for ANY inspection /
     permit / "what's next to schedule" / "any permits about to expire"
     question.
+  - get_site_log_recent: Chad's daily field-note log entries
+    (chronological narrative of what happened on site). Use for ANY
+    "what happened on site this week", weather/delay narrative, sub
+    progress, or 'did we have any issues with X' question.
   - search_drive: keyword-search his Google Drive
   - read_drive_file: open a specific file (THIS counts as a citation)
   - read_knowledge_base: Baldwin County codes, supplier list, Chad's voice rules

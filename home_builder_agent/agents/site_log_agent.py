@@ -31,6 +31,7 @@ Cost: $0/run — no Claude calls.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 import webbrowser
 from datetime import datetime
@@ -163,28 +164,120 @@ def _read_doc_text(docs_svc, doc_id: str) -> str:
     return "".join(out)
 
 
-def _print_tail(text: str, n: int) -> None:
-    """Print last N log entries (entries are separated by long ─ runs)."""
+_ENTRY_DATE_PAT = re.compile(
+    r"^\s*(January|February|March|April|May|June|July|"
+    r"August|September|October|November|December)\s+\d+,\s+\d{4}",
+    re.MULTILINE,
+)
+
+
+def parse_site_log_entries(text: str) -> list[dict]:
+    """Split a Site Log doc's plain text into structured entries.
+
+    Site logs are append-only Google Docs where each entry is bracketed
+    by a ─×60 separator and headed by a date line like:
+        "May 6, 2026 (Wednesday) — 3:42 PM"
+
+    Returns a list of dicts (oldest first):
+        {
+            "date_line": "May 6, 2026 (Wednesday) — 3:42 PM",
+            "body":      "<everything after the date line>",
+            "parsed_date": date(2026, 5, 6) | None,
+        }
+
+    The header preamble (no date line) is excluded. This is the parsing
+    contract used by both _print_tail (CLI tail output) and the hb-ask
+    get_site_log_recent tool — keep them in sync by using this helper.
+    """
     sep = "─" * 60
     parts = [p.strip() for p in text.split(sep) if p.strip()]
 
-    # First part is always the header preamble (no timestamp). Skip any
-    # part that doesn't start with a recognizable date-line.
-    import re as _re
-    date_pat = _re.compile(
-        r"^\s*(January|February|March|April|May|June|July|"
-        r"August|September|October|November|December)\s+\d+,\s+\d{4}",
-        _re.MULTILINE,
+    entries: list[dict] = []
+    for part in parts:
+        m = _ENTRY_DATE_PAT.search(part)
+        if not m:
+            continue  # header preamble or junk — skip
+        # The date line is the first line that matches the pattern.
+        lines = part.split("\n", 1)
+        date_line = lines[0].strip()
+        body = lines[1].strip() if len(lines) > 1 else ""
+        parsed = _parse_date_from_line(date_line)
+        entries.append({
+            "date_line": date_line,
+            "body": body,
+            "parsed_date": parsed,
+        })
+    return entries
+
+
+def _parse_date_from_line(date_line: str):
+    """Extract a date from a Site Log date line. Returns date or None."""
+    from datetime import datetime as _dt
+    # Format examples:
+    #   "May 6, 2026 (Wednesday) — 3:42 PM"
+    # We only need the prefix up to the comma+year.
+    m = re.match(
+        r"^\s*([A-Za-z]+)\s+(\d+),\s+(\d{4})", date_line,
     )
-    entries = [p for p in parts if date_pat.search(p)]
+    if not m:
+        return None
+    try:
+        return _dt.strptime(f"{m.group(1)} {m.group(2)}, {m.group(3)}", "%B %d, %Y").date()
+    except ValueError:
+        return None
+
+
+def find_site_log_doc(drive_svc, project_name: str) -> dict | None:
+    """Read-only lookup of a project's Site Log Google Doc.
+
+    Like _find_or_create_site_log_doc but never creates. Returns None
+    if no Site Logs folder exists yet, or if the project hasn't been
+    given a Site Log doc yet. Used by hb-ask to surface site-log
+    content without side-effecting Drive.
+    """
+    path = _site_logs_folder_path()
+    parent_path = path[:-1]
+    folder_name = path[-1]
+
+    try:
+        parent_id = drive.find_folder_by_path(drive_svc, parent_path)
+    except Exception:
+        return None
+
+    folders = drive.find_files_by_name_pattern(
+        drive_svc, folder_name, parent_id,
+        mime_type="application/vnd.google-apps.folder",
+    )
+    folder_id = next((f["id"] for f in folders if f["name"] == folder_name), None)
+    if folder_id is None:
+        return None
+
+    doc_name = f"{project_name} — Site Log"
+    candidates = drive.find_files_by_name_pattern(
+        drive_svc, doc_name, folder_id,
+        mime_type="application/vnd.google-apps.document",
+    )
+    for f in candidates:
+        if f["name"] == doc_name:
+            return drive_svc.files().get(
+                fileId=f["id"], fields="id,name,webViewLink"
+            ).execute()
+    return None
+
+
+def _print_tail(text: str, n: int) -> None:
+    """Print last N log entries (entries are separated by long ─ runs)."""
+    sep = "─" * 60
+    entries = parse_site_log_entries(text)
 
     if not entries:
         print("(no entries logged yet)")
         return
 
-    last_n = entries[-n:]
-    for entry in last_n:
-        print(entry.strip())
+    for entry in entries[-n:]:
+        print(entry["date_line"])
+        if entry["body"]:
+            print(entry["body"])
         print(sep)
 
 
