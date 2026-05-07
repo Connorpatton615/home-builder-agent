@@ -40,6 +40,7 @@ from home_builder_agent.config import (
     WRITER_MODEL,
 )
 from home_builder_agent.core.auth import get_credentials
+from home_builder_agent.core.chad_voice import chad_voice_system
 from home_builder_agent.core.claude_client import make_client, sonnet_cost
 from home_builder_agent.core.heartbeat import beat_on_success
 from home_builder_agent.integrations import drive, sheets
@@ -469,16 +470,15 @@ def compose_brief(
     # --- Build overnight alerts block ---
     alerts_text = "\n".join(f"  {a}" for a in overnight_alerts) if overnight_alerts else "  None."
 
-    system_prompt = """You are Chad's AI project assistant at Palmetto Custom Homes (Baldwin County, AL luxury custom home builder).
+    # Voice from core.chad_voice (narrator mode — speaking TO Chad).
+    # Brief-specific rules + output format are appended below.
+    system_prompt = chad_voice_system("narrator") + """
 
-Write a morning brief email. Rules:
-- Tight, operator-style prose. No hype, no filler.
-- Status-led: most important thing first.
-- Use bullet points and short sections. No walls of text.
-- If weather puts a phase at risk, that goes at the top.
-- Action items should be concrete and immediately actionable.
-- Chad reads this on his phone before leaving for the job site.
-- Output: JSON with two keys: "subject" (email subject line) and "html" (complete HTML email body).
+Brief-specific:
+- This is the morning brief email. If weather puts a phase at risk, that goes at the top.
+
+Output requirements:
+- JSON with two keys: "subject" (email subject line) and "html" (complete HTML email body).
 - The HTML should be clean, mobile-friendly, inline-styled. Use a white background, dark text.
   Use a thin colored left border on each section header (color: #2c5f8a).
   Keep the markup simple — no external CSS, no classes, inline styles only.

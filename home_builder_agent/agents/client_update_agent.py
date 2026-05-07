@@ -25,6 +25,11 @@ from home_builder_agent.config import (
     UPDATE_SUMMARY_MAX_TOKENS,
 )
 from home_builder_agent.core.auth import get_credentials
+from home_builder_agent.core.chad_voice import (
+    CHAD_SIGNATURE_BLOCK,
+    CUSTOMER_NAME,
+    chad_voice_system,
+)
 from home_builder_agent.core.claude_client import make_client, sonnet_cost
 from home_builder_agent.core.heartbeat import beat_on_success
 from home_builder_agent.integrations import drive, gmail, sheets
@@ -188,15 +193,11 @@ def generate_client_email(
     weeks_out = _weeks_out(snapshot["completion_date"], today)
     completion_note = f"{completion_str} ({weeks_out} out)" if weeks_out else completion_str
 
-    system_prompt = """You are the communication agent for Palmetto Custom Homes, a luxury custom home builder in Baldwin County, Alabama.
+    # Voice from core.chad_voice (author mode — speaking AS Chad to homeowners).
+    # Audience-specific context + HTML structure are appended below.
+    system_prompt = chad_voice_system("author") + """
 
-You write weekly homeowner update emails in Chad Whitfield's voice. Chad is the owner — professional, warm, straight-talking. These clients are spending $600k–$1.5M on their homes. The tone is:
-- Warm and personal, not corporate
-- Confident and reassuring, not over-promising
-- Brief and scannable — busy clients, mobile readers
-- No jargon, no builder-speak
-- No hollow enthusiasm ("exciting progress!" etc.)
-- One short paragraph per section max
+Audience: homeowners spending $600k–$1.5M on their custom build.
 
 You output clean HTML suitable for Gmail. Use inline styles sparingly. Structure:
 - Warm greeting by first name if possible, otherwise "Hi [Name]"
@@ -236,10 +237,7 @@ OUTPUT REQUIREMENTS:
 The HTML body should use a clean, minimal layout. Max width 600px, centered, white background, dark text (#1a1a1a). Section headers bold, 16px. Body text 15px, line-height 1.6. Keep it mobile-friendly — no complex tables.
 
 Chad's signature block:
-Chad Whitfield
-Palmetto Custom Homes
-Baldwin County, Alabama
-(251) 555-0100  |  chad@palmettocustomhomes.com
+""" + CHAD_SIGNATURE_BLOCK + """
 """
 
     response = client.messages.create(
@@ -395,7 +393,7 @@ def main():
         print(f"Cost: ${usd:.4f}")
         return
 
-    sender_name = "Chad Whitfield | Palmetto Custom Homes"
+    sender_name = f"{CUSTOMER_NAME} | Palmetto Custom Homes"
 
     if args.send:
         print("Sending email...")
