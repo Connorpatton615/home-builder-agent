@@ -1,0 +1,99 @@
+{
+  "phase_name": "Precon",
+  "template_version": "v1.0-2026-05-07",
+  "description": "Pre-construction checklist — Chad's master template, 44 items across 10 categories. Items here MUST close before Sitework can begin. Every other phase's checklist is structurally derived from this one's pattern (categories may differ per phase).",
+  "categories": [
+    {
+      "name": "Client & Contract",
+      "items": [
+        "Construction contract signed by client and Palmetto",
+        "Initial deposit received and deposited",
+        "Scope of work attached and initialed by both parties",
+        "Change-order policy reviewed with client (CO process, $ thresholds, sign-off authority)",
+        "Insurance certificates exchanged (Palmetto's GL + WC; client's builder's risk)"
+      ]
+    },
+    {
+      "name": "Plans & Engineering",
+      "items": [
+        "Architectural plans final, stamped, dated",
+        "Structural engineering complete and stamped",
+        "Foundation engineering complete (footings, slab, anchor schedule)",
+        "MEP design complete (plumbing, HVAC, electrical layouts)",
+        "Plans uploaded to Drive and shared with subs"
+      ]
+    },
+    {
+      "name": "Selections",
+      "items": [
+        "Kitchen cabinet selections finalized (cabinet line, door style, finish)",
+        "Countertop selections finalized (material, edge, color)",
+        "Flooring selections finalized (tile, hardwood by zone)",
+        "Plumbing fixture selections finalized (faucets, toilets, tubs, showers)",
+        "Lighting fixture selections finalized (interior, exterior, fans)",
+        "Exterior selections finalized (siding, roofing, trim, paint)",
+        "Interior paint colors selected per room",
+        "Hardware selections finalized (door, cabinet, bath)"
+      ]
+    },
+    {
+      "name": "Permitting",
+      "items": [
+        "Building permit submitted to Baldwin County",
+        "Septic / sewer permit submitted",
+        "Electrical permit submitted",
+        "Plumbing permit submitted"
+      ]
+    },
+    {
+      "name": "Site Prep",
+      "items": [
+        "Site survey complete and on file",
+        "Soil compaction / percolation test complete",
+        "House layout staked on lot, verified by client",
+        "Utility locates called in and marked"
+      ]
+    },
+    {
+      "name": "Subcontractors",
+      "items": [
+        "Framing crew confirmed and scheduled",
+        "MEP subs confirmed (plumber, HVAC, electrician)",
+        "Drywall sub confirmed",
+        "Painting sub confirmed",
+        "Trim carpenter confirmed"
+      ]
+    },
+    {
+      "name": "Materials",
+      "items": [
+        "Lumber package quoted and ordered",
+        "Windows ordered (drop-dead per lead time, typically 10–12 wk)",
+        "Exterior doors ordered",
+        "Roofing materials ordered"
+      ]
+    },
+    {
+      "name": "Budget",
+      "items": [
+        "Contingency line item set in Cost Tracker (typically 5–10%)",
+        "Allowance schedule reviewed with client and signed",
+        "Payment schedule (draws) agreed with client and lender"
+      ]
+    },
+    {
+      "name": "Schedule",
+      "items": [
+        "Target completion date set and shared with client",
+        "Framing start date locked (anchors backwards-schedule)"
+      ]
+    },
+    {
+      "name": "Meetings",
+      "items": [
+        "Pre-construction kickoff with client (review scope, schedule, communication cadence)",
+        "Pre-construction kickoff with subs (site walk, schedule sync, expectations)"
+      ]
+    }
+  ]
+}

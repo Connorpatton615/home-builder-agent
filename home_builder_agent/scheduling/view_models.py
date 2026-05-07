@@ -25,10 +25,14 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+from home_builder_agent.scheduling.checklists import Checklist, ChecklistItem
 from home_builder_agent.scheduling.engine import Phase, Schedule
 from home_builder_agent.scheduling.lead_times import DropDeadDate
 from home_builder_agent.scheduling.schemas import (
+    ChecklistGatesProjectPayload,
     ChecklistGatesViewPayload,
+    ChecklistItemPayload,
+    ChecklistPayload,
     DailyItemKind,
     DailyItemPayload,
     DailyProjectPayload,
@@ -335,9 +339,62 @@ def monthly_view(
 # V2 placeholders — schemas exist, projections return empty payloads
 # ---------------------------------------------------------------------------
 
-def checklist_gates_view(*_args, **_kwargs) -> ChecklistGatesViewPayload:
-    """V2 — returns empty payload until Checklist entity is wired up."""
-    return ChecklistGatesViewPayload(projects=[])
+def _checklist_item_to_payload(item: ChecklistItem) -> ChecklistItemPayload:
+    return ChecklistItemPayload(
+        id=item.id,
+        category=item.category,
+        label=item.label,
+        is_complete=item.is_complete,
+        completed_by=item.completed_by,
+        completed_at=item.completed_at,
+        notes=item.notes,
+        tap_action=f"checklist-item:{item.id}",
+    )
+
+
+def _checklist_to_payload(cl: Checklist) -> ChecklistPayload:
+    items_by_cat = {
+        cat: [_checklist_item_to_payload(i) for i in items]
+        for cat, items in cl.items_by_category.items()
+    }
+    return ChecklistPayload(
+        id=cl.id,
+        phase_id=cl.phase_id,
+        template_version=cl.template_version,
+        status=cl.status,
+        completed_count=cl.completed_count,
+        total_count=cl.total_count,
+        items_by_category=items_by_cat,
+    )
+
+
+def checklist_gates_view(
+    schedules: list[Schedule],
+    checklists_by_project: dict[str, list[Checklist]] | None = None,
+) -> ChecklistGatesViewPayload:
+    """Project a per-project list of Checklists into the wire payload.
+
+    `checklists_by_project` is a dict keyed by `Schedule.project_id`. Projects
+    without a corresponding entry (or with an empty list) are omitted from
+    the payload — empty payloads are degraded-mode behavior, the renderer
+    treats "project absent" as "no checklist data yet."
+    """
+    checklists_by_project = checklists_by_project or {}
+
+    projects: list[ChecklistGatesProjectPayload] = []
+    for sched in schedules:
+        cl_list = checklists_by_project.get(sched.project_id, [])
+        if not cl_list:
+            continue
+        projects.append(
+            ChecklistGatesProjectPayload(
+                project_id=sched.project_id,
+                project_name=sched.project_name,
+                checklists=[_checklist_to_payload(cl) for cl in cl_list],
+            )
+        )
+
+    return ChecklistGatesViewPayload(projects=projects)
 
 
 def notification_feed_view(*_args, **_kwargs) -> NotificationFeedViewPayload:
