@@ -178,6 +178,33 @@ TOOLS = [
         },
     },
     {
+        "name": "get_procurement_alerts",
+        "description": (
+            "Get a project's currently actionable procurement alerts: "
+            "what materials need to be ordered NOW or soon to avoid "
+            "delaying their install phase. Returns alerts grouped by "
+            "urgency (OVERDUE / ORDER NOW / THIS WEEK / UPCOMING) with "
+            "drop-dead order dates, install phases, and lead times. "
+            "Use this for ANY question about ordering, lead times, "
+            "what's overdue, what to order this week, or supply-chain "
+            "risk on a project. Skips materials whose install phase "
+            "is months out (not yet actionable)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_id": {
+                    "type": "string",
+                    "description": (
+                        "Project UUID — get this from list_projects if "
+                        "the user names the project ambiguously."
+                    ),
+                },
+            },
+            "required": ["project_id"],
+        },
+    },
+    {
         "name": "get_cost_tracker_summary",
         "description": (
             "Get the project's Cost Tracker summary as structured data: "
@@ -354,6 +381,53 @@ def _tool_read_drive_file(ctx: AskContext, *, file_id: str) -> str:
     return header + "\n" + result["content"]
 
 
+def _tool_get_procurement_alerts(ctx: AskContext, *, project_id: str) -> str:
+    """Return live procurement alerts for a project as compact text."""
+    from home_builder_agent.scheduling.lead_times import compute_live_procurement_alerts
+
+    try:
+        result = compute_live_procurement_alerts(project_id)
+    except Exception as e:
+        return f"ERROR computing procurement alerts: {type(e).__name__}: {e}"
+
+    if result is None:
+        return f"No schedule found in Postgres for project_id={project_id}. Run hb-bridge to sync, or check the project_id."
+
+    lines = []
+    lines.append(f"PROCUREMENT ALERTS — {result['project_name']}")
+    lines.append(f"  today: {result['today']}  |  upcoming window: {result['upcoming_window_days']}d")
+
+    totals = result["totals"]
+    lines.append(
+        f"  totals: OVERDUE={totals['OVERDUE']} | "
+        f"ORDER NOW={totals['ORDER NOW']} | "
+        f"THIS WEEK={totals['THIS WEEK']} | "
+        f"UPCOMING={totals['UPCOMING']}"
+    )
+
+    alerts = result["alerts"]
+    if not alerts:
+        lines.append("\n(no actionable alerts — every material's drop-dead is months out, or none defined)")
+        return "\n".join(lines)
+
+    lines.append(f"\nALERTS ({len(alerts)}):")
+    for a in alerts:
+        days = a["days_until_drop_dead"]
+        if days < 0:
+            timing = f"{-days}d OVERDUE"
+        elif days == 0:
+            timing = "ORDER TODAY"
+        else:
+            timing = f"order in {days}d"
+        lines.append(
+            f"  [{a['band']:<10}] {a['material_category']:<10} | {timing:<14} | "
+            f"drop-dead {a['drop_dead_date']} | install {a['install_date']} ({a['install_phase_name']}) | "
+            f"lead {a['lead_time_days']}d"
+        )
+
+    return "\n".join(lines)
+
+
 def _tool_get_cost_tracker_summary(ctx: AskContext, *, project_name: str) -> str:
     """Read the project's Cost Tracker and return a structured summary."""
     from home_builder_agent.config import FINANCE_FOLDER_PATH
@@ -456,6 +530,7 @@ TOOL_DISPATCH = {
     "read_drive_file":            _tool_read_drive_file,
     "read_knowledge_base":        _tool_read_knowledge_base,
     "get_cost_tracker_summary":   _tool_get_cost_tracker_summary,
+    "get_procurement_alerts":     _tool_get_procurement_alerts,
 }
 
 
@@ -478,6 +553,9 @@ You have tools to retrieve context from his project data:
   - get_cost_tracker_summary: budget vs actual vs billed by section + grand totals
     (use for ANY money/budget/cost/vendor/spending question — much cheaper
     than search+read for cost questions because totals are pre-aggregated)
+  - get_procurement_alerts: actionable order alerts grouped by urgency
+    (use for ANY question about ordering, lead times, what's overdue,
+    what to order this week, supply-chain risk)
   - search_drive: keyword-search his Google Drive
   - read_drive_file: open a specific file (THIS counts as a citation)
   - read_knowledge_base: Baldwin County codes, supplier list, Chad's voice rules
