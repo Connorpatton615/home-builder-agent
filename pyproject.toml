@@ -55,6 +55,7 @@ hb-ask = "home_builder_agent.agents.ask_agent:main"
 hb-router = "home_builder_agent.agents.router_agent:main"
 hb-profile = "home_builder_agent.agents.profile_agent:main"
 hb-watchdog = "home_builder_agent.watchers.watchdog:main"
+hb-chad = "home_builder_agent.agents.chad_agent:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
