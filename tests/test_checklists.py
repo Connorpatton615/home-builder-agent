@@ -39,10 +39,24 @@ def test_precon_template_exists_and_loads():
     assert total >= 40, f"Precon should have ~44 items, got {total}"
 
 
-def test_unauthored_phase_has_no_template():
-    """Phases other than Precon are stub-only in V0."""
-    assert load_template("Cabinet") is None
-    assert load_template("Drywall Rough") is None
+def test_all_24_phases_have_authored_templates():
+    """Post template-generation sweep: every phase has a template on disk.
+    The "stub auto-closes" path in checklists.py is no longer the active
+    path for any phase — every Phase carries a real gate from day one."""
+    for name in CHECKLIST_PHASE_NAMES:
+        tpl = load_template(name)
+        assert tpl is not None, f"Missing template for phase: {name}"
+        cats = tpl.get("categories") or []
+        assert len(cats) >= 3, f"{name} should have ≥3 categories, got {len(cats)}"
+        items = sum(len(c.get("items", [])) for c in cats)
+        assert items >= 20, f"{name} should have ≥20 items, got {items}"
+
+
+def test_unknown_phase_name_produces_stub():
+    """A phase name that isn't in the canonical 24 produces a stub."""
+    cl = instantiate_checklist(phase_id="phase-x", phase_name="Not A Real Phase")
+    assert cl.total_count == 0
+    assert cl.template_version == "v0-stub"
 
 
 def test_template_phase_name_list_matches_canonical():
@@ -76,11 +90,12 @@ def test_instantiate_precon_produces_real_items():
     assert len(cats["Client & Contract"]) >= 4
 
 
-def test_instantiate_unauthored_phase_produces_stub():
-    """Phases without templates produce empty checklists with stub version."""
+def test_instantiate_authored_phase_produces_real_items():
+    """Drywall Rough now has a Sonnet-authored template (post-generation sweep).
+    Used to be a stub; now ships ≥20 items."""
     cl = instantiate_checklist(phase_id="phase-08", phase_name="Drywall Rough")
-    assert cl.total_count == 0
-    assert cl.template_version == "v0-stub"
+    assert cl.total_count >= 20
+    assert cl.template_version != "v0-stub"
 
 
 def test_id_prefix_scopes_item_ids():
@@ -235,3 +250,59 @@ def test_checklist_gates_view_status_propagates():
     )
     assert payload.projects[0].checklists[0].status == "closed"
     assert payload.projects[0].checklists[0].completed_count == cl.total_count
+
+
+# ---------------------------------------------------------------------------
+# Reconcile dispatcher wiring (structural — no DB roundtrip)
+# ---------------------------------------------------------------------------
+
+def test_checklist_tick_dispatcher_registered():
+    """The checklist-tick action_type maps to _dispatch_checklist_tick,
+    not the unknown stub. Migration 005 + reconcile wiring should be live."""
+    from home_builder_agent.scheduling.reconcile import (
+        DISPATCHERS,
+        _dispatch_checklist_tick,
+    )
+    assert "checklist-tick" in DISPATCHERS
+    assert DISPATCHERS["checklist-tick"] is _dispatch_checklist_tick
+
+
+def test_checklist_tick_rejects_wrong_target_type():
+    """Dispatcher rejects target_entity_type != 'checklist-item' without
+    hitting the DB."""
+    from home_builder_agent.scheduling.reconcile import (
+        DispatchOutcome,
+        _dispatch_checklist_tick,
+    )
+
+    action = {
+        "id": "act-1",
+        "target_entity_type": "phase",            # WRONG for checklist-tick
+        "target_entity_id": "phase-1",
+        "actor_user_id": None,
+        "synced_at": None,
+        "payload": {"is_complete": True},
+    }
+    result = _dispatch_checklist_tick(action, conn=None)  # conn unused on this path
+    assert result.outcome == DispatchOutcome.SKIPPED
+    assert "checklist-item" in (result.notes or "")
+
+
+def test_checklist_tick_rejects_empty_payload():
+    """Dispatcher rejects payloads with neither is_complete nor notes."""
+    from home_builder_agent.scheduling.reconcile import (
+        DispatchOutcome,
+        _dispatch_checklist_tick,
+    )
+
+    action = {
+        "id": "act-2",
+        "target_entity_type": "checklist-item",
+        "target_entity_id": "item-1",
+        "actor_user_id": None,
+        "synced_at": None,
+        "payload": {},
+    }
+    result = _dispatch_checklist_tick(action, conn=None)
+    assert result.outcome == DispatchOutcome.SKIPPED
+    assert "actionable" in (result.notes or "")

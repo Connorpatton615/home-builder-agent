@@ -34,6 +34,12 @@ from typing import Any
 import psycopg
 
 from home_builder_agent.integrations.postgres import connection
+from home_builder_agent.scheduling.checklists import (
+    Checklist,
+    ChecklistItem,
+    STUB_TEMPLATE_VERSION,
+    load_template,
+)
 from home_builder_agent.scheduling.engine import (
     Milestone,
     Phase,
@@ -464,6 +470,228 @@ def save_phase_status_change(
     with connection(application_name="hb-engine-phase-write") as c:
         with c.cursor() as cur:
             cur.execute(sql, params)
+            return cur.rowcount > 0
+
+
+# ---------------------------------------------------------------------------
+# Checklist read/write paths (migration 005)
+# ---------------------------------------------------------------------------
+#
+# Checklist + ChecklistItem are the gate per canonical-data-model.md §§ 6/7.
+# Read path feeds view_models.checklist_gates_view; write path is the
+# reconcile pass dispatching UserAction:checklist-tick to update item state.
+# Engine-side dataclasses live in scheduling/checklists.py; templates
+# (24 phase JSON files) live in scheduling/checklist_templates/.
+#
+# All three functions take an optional `conn` so the reconcile pass can
+# wrap multi-step state changes in a single transaction.
+
+def load_checklists_for_project(
+    project_id: str,
+    *,
+    conn: psycopg.Connection | None = None,
+) -> dict[str, Checklist]:
+    """Load every Checklist for a Project, keyed by phase_id (UUID string).
+
+    Empty dict means the project's phases haven't been seeded with
+    checklists yet (fresh project, or seed_checklist_for_phase hasn't run
+    against this project's phases). The view-model layer treats absent
+    checklists as "no checklist data yet" — degraded-mode rendering.
+    """
+    cl_sql = """
+        SELECT
+            c.id::text             AS id,
+            c.phase_id::text       AS phase_id,
+            c.template_name,
+            c.template_version
+        FROM home_builder.checklist c
+        JOIN home_builder.phase p ON p.id = c.phase_id
+        WHERE p.project_id = %s::uuid
+        ORDER BY p.sequence_index
+    """
+    cl_rows = _query_many(cl_sql, (project_id,), conn=conn)
+    if not cl_rows:
+        return {}
+
+    cl_ids = [r["id"] for r in cl_rows]
+    item_sql = """
+        SELECT
+            id::text               AS id,
+            checklist_id::text     AS checklist_id,
+            category,
+            label,
+            sort_index,
+            is_complete,
+            completed_by::text     AS completed_by,
+            completed_at,
+            notes
+        FROM home_builder.checklist_item
+        WHERE checklist_id = ANY(%s::uuid[])
+        ORDER BY checklist_id, category, sort_index
+    """
+    item_rows = _query_many(item_sql, (cl_ids,), conn=conn)
+
+    items_by_cl: dict[str, list[dict]] = {}
+    for r in item_rows:
+        items_by_cl.setdefault(r["checklist_id"], []).append(r)
+
+    out: dict[str, Checklist] = {}
+    for r in cl_rows:
+        cl = Checklist(
+            id=r["id"],
+            phase_id=r["phase_id"],
+            template_version=r["template_version"],
+            items=[
+                ChecklistItem(
+                    id=it["id"],
+                    category=it["category"],
+                    label=it["label"],
+                    is_complete=it["is_complete"],
+                    completed_by=it.get("completed_by"),
+                    completed_at=(
+                        it["completed_at"].date()
+                        if it.get("completed_at") is not None
+                        and hasattr(it["completed_at"], "date")
+                        else it.get("completed_at")
+                    ),
+                    notes=it.get("notes"),
+                )
+                for it in items_by_cl.get(r["id"], [])
+            ],
+        )
+        out[r["phase_id"]] = cl
+    return out
+
+
+def seed_checklist_for_phase(
+    phase_id: str,
+    template_name: str,
+    *,
+    conn: psycopg.Connection | None = None,
+) -> str:
+    """Idempotently create a Checklist + items for a Phase from its template.
+
+    Returns the checklist UUID (existing or newly inserted). If a checklist
+    row already exists for `phase_id`, this is a no-op — the existing
+    UUID is returned without touching items. Re-seeding to a newer
+    template version is intentionally not handled here; that's a separate
+    flow (regenerate_checklist_to_template_version).
+
+    Stub case (template not on disk): inserts a Checklist row with no items.
+    The empty-items-closes semantic in the engine treats this as a passthrough
+    gate — same as canonical-data-model.md § 6 fallback.
+    """
+    existing = _query_one(
+        "SELECT id::text FROM home_builder.checklist WHERE phase_id = %s::uuid",
+        (phase_id,),
+        conn=conn,
+    )
+    if existing:
+        return existing["id"]
+
+    template = load_template(template_name)
+    template_version = (
+        template.get("template_version", STUB_TEMPLATE_VERSION)
+        if template is not None
+        else STUB_TEMPLATE_VERSION
+    )
+
+    cl_row = _query_one(
+        """
+        INSERT INTO home_builder.checklist
+            (phase_id, template_name, template_version)
+        VALUES (%s::uuid, %s, %s)
+        RETURNING id::text AS id
+        """,
+        (phase_id, template_name, template_version),
+        conn=conn,
+    )
+    cl_id = cl_row["id"]
+
+    if template is None:
+        return cl_id  # stub — no items
+
+    # Bulk-insert items.
+    item_params: list[tuple] = []
+    for cat in template.get("categories", []):
+        cat_name = cat.get("name", "Uncategorized")
+        for idx, label in enumerate(cat.get("items", [])):
+            item_params.append((cl_id, cat_name, label, idx))
+
+    if not item_params:
+        return cl_id
+
+    insert_sql = """
+        INSERT INTO home_builder.checklist_item
+            (checklist_id, category, label, sort_index)
+        VALUES (%s::uuid, %s, %s, %s)
+    """
+    if conn is not None:
+        with conn.cursor() as cur:
+            cur.executemany(insert_sql, item_params)
+    else:
+        with connection(application_name="hb-engine-checklist-seed") as c:
+            with c.cursor() as cur:
+                cur.executemany(insert_sql, item_params)
+
+    return cl_id
+
+
+def update_checklist_item(
+    item_id: str,
+    *,
+    is_complete: bool | None = None,
+    completed_by: str | None = None,
+    notes: str | None = None,
+    conn: psycopg.Connection | None = None,
+) -> bool:
+    """Mutate a single ChecklistItem.
+
+    Used by the reconcile pass on UserAction:checklist-tick. At least one
+    of is_complete / notes must be supplied. If is_complete=True,
+    completed_at is set to NOW() (or preserved if already set);
+    if False, both completed_at and completed_by are cleared.
+
+    Returns True if a row was updated, False if item_id wasn't found.
+    """
+    sets: list[str] = []
+    params: list = []
+
+    if is_complete is not None:
+        sets.append("is_complete = %s")
+        params.append(is_complete)
+        if is_complete:
+            sets.append("completed_at = COALESCE(completed_at, NOW())")
+            if completed_by is not None:
+                sets.append("completed_by = %s::uuid")
+                params.append(completed_by)
+        else:
+            sets.append("completed_at = NULL")
+            sets.append("completed_by = NULL")
+
+    if notes is not None:
+        sets.append("notes = %s")
+        params.append(notes)
+
+    if not sets:
+        return False
+
+    params.append(item_id)
+    sql = f"""
+        UPDATE home_builder.checklist_item
+        SET {", ".join(sets)},
+            updated_at = NOW()
+        WHERE id = %s::uuid
+    """
+
+    if conn is not None:
+        with conn.cursor() as cur:
+            cur.execute(sql, tuple(params))
+            return cur.rowcount > 0
+
+    with connection(application_name="hb-engine-checklist-write") as c:
+        with c.cursor() as cur:
+            cur.execute(sql, tuple(params))
             return cur.rowcount > 0
 
 

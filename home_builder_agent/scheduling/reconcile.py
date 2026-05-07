@@ -45,7 +45,10 @@ from typing import Any, Callable
 import psycopg
 
 from home_builder_agent.integrations.postgres import connection
-from home_builder_agent.scheduling.store_postgres import save_phase_status_change
+from home_builder_agent.scheduling.store_postgres import (
+    save_phase_status_change,
+    update_checklist_item,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -359,6 +362,80 @@ def _dispatch_schedule_override(
     return base
 
 
+def _dispatch_checklist_tick(
+    action: dict,
+    conn: psycopg.Connection,
+) -> DispatchResult:
+    """Apply a checklist-tick UserAction to a ChecklistItem.
+
+    target_entity_type is "checklist-item" (not "phase"); target_entity_id
+    is the UUID of the home_builder.checklist_item row.
+
+    Expected payload (canonical-data-model.md § 7 + iOS shell convention):
+        {
+            "is_complete": true | false,        (required)
+            "notes": "..."                       (optional)
+        }
+
+    The actor (`completed_by`) is taken from action.actor_user_id.
+    Idempotent — re-ticking an already-checked item is a no-op at the
+    business-logic level (UPDATE still runs but values match).
+
+    The phase's status is NOT auto-flipped here. That happens via a
+    separate inspection-result or schedule-override action when the gate
+    is closed AND the phase is otherwise ready to advance — engine.can_advance_phase
+    enforces the gate semantic at the read side; the write side just
+    persists the tick.
+    """
+    payload = action.get("payload") or {}
+    target_type = action["target_entity_type"]
+    target_id = action["target_entity_id"]
+
+    base = DispatchResult(
+        action_id=action["id"],
+        action_type="checklist-tick",
+        target_entity_type=target_type,
+        target_entity_id=target_id,
+        outcome=DispatchOutcome.SKIPPED,
+        synced_at=action["synced_at"],
+    )
+
+    if target_type != "checklist-item":
+        base.notes = (
+            f"target_entity_type={target_type!r}; "
+            f"checklist-tick must target 'checklist-item'"
+        )
+        return base
+
+    is_complete = payload.get("is_complete")
+    notes = payload.get("notes")
+
+    if is_complete is None and notes is None:
+        base.notes = "no actionable fields in payload (need is_complete or notes)"
+        return base
+
+    ok = update_checklist_item(
+        item_id=target_id,
+        is_complete=is_complete,
+        completed_by=action.get("actor_user_id"),
+        notes=notes,
+        conn=conn,
+    )
+
+    if ok:
+        base.outcome = DispatchOutcome.APPLIED
+        bits = [f"item {target_id[:8]}…"]
+        if is_complete is not None:
+            bits.append(f"is_complete={is_complete}")
+        if notes:
+            bits.append(f"notes={notes[:60]!r}")
+        base.notes = " ".join(bits)
+    else:
+        base.outcome = DispatchOutcome.ERROR
+        base.notes = "update_checklist_item returned False — item id not found?"
+    return base
+
+
 def _dispatch_unknown(action_type: str) -> Callable[[dict, psycopg.Connection], DispatchResult]:
     """Factory for action types we know about but haven't implemented yet."""
     def _handler(action: dict, conn: psycopg.Connection) -> DispatchResult:
@@ -378,7 +455,7 @@ def _dispatch_unknown(action_type: str) -> Callable[[dict, psycopg.Connection], 
 DISPATCHERS: dict[str, Callable[[dict, psycopg.Connection], DispatchResult]] = {
     "inspection-result":         _dispatch_inspection_result,
     "schedule-override":         _dispatch_schedule_override,
-    "checklist-tick":            _dispatch_unknown("checklist-tick"),
+    "checklist-tick":            _dispatch_checklist_tick,
     "material-delivery-confirm": _dispatch_unknown("material-delivery-confirm"),
     "sub-checkin":               _dispatch_unknown("sub-checkin"),
     "vendor-pin":                _dispatch_unknown("vendor-pin"),
