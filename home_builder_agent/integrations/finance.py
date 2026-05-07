@@ -1697,6 +1697,211 @@ def find_cost_tracker(drive_svc, folder_id, project_name):
 
 
 # ---------------------------------------------------------------------
+# Cost Tracker summary — structured readout for hb-ask
+# ---------------------------------------------------------------------
+#
+# When Chad asks "how much have I spent on Whitfield framing?" hb-ask
+# could call read_drive_file on the Cost Tracker sheet and let Claude
+# parse the raw CSV — but that costs ~$0.20-0.40 per question (large
+# context) and Claude has to re-derive section totals every time.
+#
+# This function pre-aggregates the Cost Tracker into a clean structured
+# summary: sections with their totals, line items with budget/actual/
+# billed, and grand totals across the project. hb-ask's get_cost_tracker
+# tool returns this — Claude reads structured data instead of CSV soup.
+#
+# Schema (from create_cost_tracker_sheet, ~line 232):
+#   Row 1: TITLE
+#   Row 2: column headers (Line Item / Budget / Change Orders / Revised /
+#                          Actual / Difference / Billed / Sub-Vendor /
+#                          Lien Waiver / Draw # / Notes)
+#   Rows 3+: section headers (col A uppercase, B-K empty),
+#            line items, subtotals (col A = "SUBTOTAL" or starts with TOTAL)
+
+import re as _cost_re
+
+
+def _is_section_header(row: list) -> bool:
+    """Section headers are uppercase, with cols B-H (financial data) empty.
+
+    Note: col I is the Lien Waiver checkbox which always renders as
+    "TRUE" / "FALSE" — that's not real header content, so skip it.
+    """
+    if not row or not row[0]:
+        return False
+    first = str(row[0]).strip()
+    if first != first.upper():
+        return False
+    if first.startswith(("TOTAL", "SUBTOTAL", "GRAND")):
+        return False
+    # Only inspect cols B-H (financial data) for "is this a header?"
+    rest = " ".join(str(c) for c in row[1:8] if c)
+    return rest.strip() == ""
+
+
+def _is_subtotal_row(row: list) -> bool:
+    if not row or not row[0]:
+        return False
+    first = str(row[0]).strip().upper()
+    return first.startswith(("SUBTOTAL", "TOTAL"))
+
+
+def _parse_currency(val) -> float | None:
+    """Parse a Sheets cell value as a USD amount. Returns None if not a number."""
+    if val is None or val == "":
+        return None
+    if isinstance(val, (int, float)):
+        return float(val)
+    s = str(val).strip()
+    if not s:
+        return None
+    # Strip $, commas, parentheses
+    s = s.replace("$", "").replace(",", "").strip()
+    if s.startswith("(") and s.endswith(")"):
+        s = "-" + s[1:-1]
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def read_cost_tracker_summary(
+    drive_svc, sheets_svc, folder_id: str, project_name: str
+) -> dict | None:
+    """Read a project's Cost Tracker and return a structured summary.
+
+    Returns a dict shaped for direct use by Chad's chat UI / hb-ask:
+        {
+            "project_name": "Whitfield Residence",
+            "cost_tracker_url": "https://...",
+            "sections": [
+                {
+                    "name": "Permits & Fees",
+                    "budget": 25000.0,
+                    "actual": 18432.50,
+                    "billed": 25000.0,
+                    "diff_vs_budget": 6567.50,
+                    "items": [
+                        {"name": "Building permits:", "budget": 5000, "actual": 4250, "billed": 5000, "vendor": "..."},
+                        ...
+                    ],
+                },
+                ...
+            ],
+            "grand_totals": {
+                "budget": 1234567.0,
+                "actual": 543210.0,
+                "billed": 800000.0,
+                "diff_vs_budget": 691357.0,
+                "pct_spent": 44.0,  # actual/budget * 100
+            },
+        }
+
+    Returns None if the Cost Tracker doesn't exist for project_name.
+    """
+    tracker = find_cost_tracker(drive_svc, folder_id, project_name)
+    if not tracker:
+        return None
+
+    res = sheets_svc.spreadsheets().values().get(
+        spreadsheetId=tracker["id"],
+        range="A1:K500",
+    ).execute()
+    rows = res.get("values", [])
+    if not rows or len(rows) < 3:
+        return {
+            "project_name": project_name,
+            "cost_tracker_url": tracker.get("webViewLink", ""),
+            "sections": [],
+            "grand_totals": {},
+            "note": "Cost Tracker found but has no content yet",
+        }
+
+    sections: list[dict] = []
+    current_section: dict | None = None
+    grand_budget = 0.0
+    grand_actual = 0.0
+    grand_billed = 0.0
+
+    # Skip rows 1-2 (title + headers)
+    for row in rows[2:]:
+        # Pad for safety
+        padded = list(row) + [""] * (11 - len(row)) if len(row) < 11 else list(row)
+
+        if _is_section_header(padded):
+            # Open new section
+            current_section = {
+                "name": str(padded[0]).strip().title(),
+                "items": [],
+                "budget": 0.0,
+                "actual": 0.0,
+                "billed": 0.0,
+                "diff_vs_budget": 0.0,
+            }
+            sections.append(current_section)
+            continue
+
+        if _is_subtotal_row(padded):
+            # Subtotal closes the section. Use the row's totals directly
+            # (they're computed by Sheets formulas).
+            if current_section is not None:
+                budget_sum = _parse_currency(padded[1])  # B Budget
+                actual_sum = _parse_currency(padded[4])  # E Actual
+                billed_sum = _parse_currency(padded[6])  # G Billed
+                if budget_sum is not None:
+                    current_section["budget"] = budget_sum
+                    grand_budget += budget_sum
+                if actual_sum is not None:
+                    current_section["actual"] = actual_sum
+                    grand_actual += actual_sum
+                if billed_sum is not None:
+                    current_section["billed"] = billed_sum
+                    grand_billed += billed_sum
+                current_section["diff_vs_budget"] = (
+                    current_section["budget"] - current_section["actual"]
+                )
+            current_section = None  # close
+            continue
+
+        # Regular line item — must be inside an open section + must have a name
+        name = str(padded[0]).strip() if padded[0] else ""
+        if not name or current_section is None:
+            continue
+
+        # Skip the GRAND TOTAL or any totals-of-totals at the bottom
+        if name.upper().startswith(("GRAND", "TOTAL")):
+            continue
+
+        item = {
+            "name": name,
+            "budget": _parse_currency(padded[1]),
+            "change_orders": _parse_currency(padded[2]),
+            "revised_budget": _parse_currency(padded[3]),
+            "actual": _parse_currency(padded[4]),
+            "billed": _parse_currency(padded[6]),
+            "vendor": str(padded[7]).strip() if padded[7] else None,
+            "notes": str(padded[10]).strip() if len(padded) > 10 and padded[10] else None,
+        }
+        current_section["items"].append(item)
+
+    grand_diff = grand_budget - grand_actual
+    pct_spent = round((grand_actual / grand_budget) * 100, 1) if grand_budget > 0 else 0.0
+
+    return {
+        "project_name": project_name,
+        "cost_tracker_url": tracker.get("webViewLink", ""),
+        "sections": sections,
+        "grand_totals": {
+            "budget": round(grand_budget, 2),
+            "actual": round(grand_actual, 2),
+            "billed": round(grand_billed, 2),
+            "diff_vs_budget": round(grand_diff, 2),
+            "pct_spent": pct_spent,
+        },
+    }
+
+
+# ---------------------------------------------------------------------
 # Lien Waivers tab
 # ---------------------------------------------------------------------
 

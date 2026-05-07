@@ -177,6 +177,32 @@ TOOLS = [
             "required": ["topic"],
         },
     },
+    {
+        "name": "get_cost_tracker_summary",
+        "description": (
+            "Get the project's Cost Tracker summary as structured data: "
+            "section-by-section budget vs actual vs billed, line items "
+            "with vendor names, grand totals, % spent. Use this for ANY "
+            "question about money, budgets, costs, spending, vendors, "
+            "or how a project is performing financially. Much cheaper "
+            "than search_drive + read_drive_file for cost questions "
+            "because it pre-aggregates the totals."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_name": {
+                    "type": "string",
+                    "description": (
+                        "Project name — e.g., 'Whitfield Residence'. Get "
+                        "this from list_projects if the user references "
+                        "a project ambiguously."
+                    ),
+                },
+            },
+            "required": ["project_name"],
+        },
+    },
 ]
 
 
@@ -328,6 +354,81 @@ def _tool_read_drive_file(ctx: AskContext, *, file_id: str) -> str:
     return header + "\n" + result["content"]
 
 
+def _tool_get_cost_tracker_summary(ctx: AskContext, *, project_name: str) -> str:
+    """Read the project's Cost Tracker and return a structured summary."""
+    from home_builder_agent.config import FINANCE_FOLDER_PATH
+    from home_builder_agent.integrations.drive import find_folder_by_path
+    from home_builder_agent.integrations.finance import read_cost_tracker_summary
+
+    try:
+        folder_id = find_folder_by_path(ctx.drive_svc, FINANCE_FOLDER_PATH)
+    except Exception as e:
+        return f"ERROR locating Finance Office folder: {type(e).__name__}: {e}"
+
+    try:
+        summary = read_cost_tracker_summary(
+            ctx.drive_svc, ctx.sheets_svc, folder_id, project_name,
+        )
+    except Exception as e:
+        return f"ERROR reading Cost Tracker for '{project_name}': {type(e).__name__}: {e}"
+
+    if summary is None:
+        return f"No Cost Tracker found for project '{project_name}'. Run hb-finance to create one, or check the project name."
+
+    # Track as a citation since this opens the Cost Tracker
+    if summary.get("cost_tracker_url"):
+        ctx.cited_files[f"cost-tracker-{project_name}"] = {
+            "file_id": f"cost-tracker-{project_name}",
+            "name": f"{project_name} — Cost Tracker",
+            "webViewLink": summary["cost_tracker_url"],
+        }
+
+    # Compact text rendering — easier on Claude's context vs raw JSON
+    lines = []
+    lines.append(f"COST TRACKER: {summary['project_name']}")
+    lines.append(f"  url: {summary['cost_tracker_url']}")
+
+    gt = summary.get("grand_totals") or {}
+    if gt:
+        lines.append("")
+        lines.append("GRAND TOTALS:")
+        lines.append(f"  Budget:   ${gt.get('budget', 0):>14,.2f}")
+        lines.append(f"  Actual:   ${gt.get('actual', 0):>14,.2f}")
+        lines.append(f"  Billed:   ${gt.get('billed', 0):>14,.2f}")
+        lines.append(f"  Diff:     ${gt.get('diff_vs_budget', 0):>14,.2f}  (Budget - Actual)")
+        lines.append(f"  % Spent:  {gt.get('pct_spent', 0):>5}%")
+
+    sections = summary.get("sections", [])
+    if not sections:
+        lines.append("\n(no sections yet — Cost Tracker may be empty)")
+        return "\n".join(lines)
+
+    lines.append(f"\nSECTIONS ({len(sections)}):")
+    for s in sections:
+        diff = s.get("diff_vs_budget", 0)
+        sign = "✓" if diff >= 0 else "⚠"
+        lines.append(
+            f"\n  {s['name']:<40} budget=${s.get('budget', 0):>10,.0f} | "
+            f"actual=${s.get('actual', 0):>10,.0f} | "
+            f"billed=${s.get('billed', 0):>10,.0f} | "
+            f"diff=${diff:>+10,.0f} {sign}"
+        )
+        # Show top 3 line items per section to keep context manageable
+        items = s.get("items", [])
+        for item in items:
+            actual = item.get("actual")
+            budget = item.get("budget")
+            vendor = item.get("vendor") or ""
+            actual_str = f"${actual:,.0f}" if actual is not None else "—"
+            budget_str = f"${budget:,.0f}" if budget is not None else "—"
+            line = f"      - {item['name']:<40} budget={budget_str:>9} actual={actual_str:>9}"
+            if vendor:
+                line += f" | vendor: {vendor}"
+            lines.append(line)
+
+    return "\n".join(lines)
+
+
 def _tool_read_knowledge_base(ctx: AskContext, *, topic: str) -> str:
     """Read one of three local KB markdown files."""
     if topic == "baldwin_county_construction_reference":
@@ -349,11 +450,12 @@ def _tool_read_knowledge_base(ctx: AskContext, *, topic: str) -> str:
 
 
 TOOL_DISPATCH = {
-    "list_projects":           _tool_list_projects,
-    "get_project_status":      _tool_get_project_status,
-    "search_drive":            _tool_search_drive,
-    "read_drive_file":         _tool_read_drive_file,
-    "read_knowledge_base":     _tool_read_knowledge_base,
+    "list_projects":              _tool_list_projects,
+    "get_project_status":         _tool_get_project_status,
+    "search_drive":               _tool_search_drive,
+    "read_drive_file":            _tool_read_drive_file,
+    "read_knowledge_base":        _tool_read_knowledge_base,
+    "get_cost_tracker_summary":   _tool_get_cost_tracker_summary,
 }
 
 
@@ -373,14 +475,18 @@ the truck between job sites. He needs:
 You have tools to retrieve context from his project data:
   - list_projects: see active projects
   - get_project_status: full master schedule for one project
+  - get_cost_tracker_summary: budget vs actual vs billed by section + grand totals
+    (use for ANY money/budget/cost/vendor/spending question — much cheaper
+    than search+read for cost questions because totals are pre-aggregated)
   - search_drive: keyword-search his Google Drive
   - read_drive_file: open a specific file (THIS counts as a citation)
   - read_knowledge_base: Baldwin County codes, supplier list, Chad's voice rules
 
 PROCESS:
-  1. Decide which tools to call. Most questions need get_project_status
-     OR search_drive + read_drive_file. Don't over-retrieve — 1-3 tool
-     calls is normal; 5+ is a sign you're going down a rabbit hole.
+  1. Decide which tools to call. Most questions need get_project_status,
+     get_cost_tracker_summary (for money questions), OR search_drive +
+     read_drive_file. Don't over-retrieve — 1-3 tool calls is normal;
+     5+ is a sign you're going down a rabbit hole.
   2. After you have enough context, give Chad his answer.
   3. If a project name is mentioned but ambiguous, call list_projects
      first to resolve the UUID.
