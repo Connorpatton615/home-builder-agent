@@ -51,18 +51,18 @@
   <array>
     <string>/bin/sh</string>
     <string>-c</string>
-    <string>set -a; source /Users/connorpattonequipassid/Projects/home-builder-agent/.env; set +a; exec /Library/Frameworks/Python.framework/Versions/3.14/bin/hb-client-update --from-tracker --send</string>
+    <string>set -a; source /Users/connorpatton/Projects/home-builder-agent/.env; set +a; exec /Library/Frameworks/Python.framework/Versions/3.14/bin/hb-client-update --from-tracker --send</string>
   </array>
 
   <key>WorkingDirectory</key>
-  <string>/Users/connorpattonequipassid/Projects/home-builder-agent</string>
+  <string>/Users/connorpatton/Projects/home-builder-agent</string>
 
   <!-- PYTHONPATH required for Python 3.14 editable-install under launchd
        (.pth finder doesn't fire reliably in daemon context). -->
   <key>EnvironmentVariables</key>
   <dict>
     <key>PYTHONPATH</key>
-    <string>/Users/connorpattonequipassid/Projects/home-builder-agent</string>
+    <string>/Users/connorpatton/Projects/home-builder-agent</string>
   </dict>
 
   <!-- Mondays at 7:00 AM -->

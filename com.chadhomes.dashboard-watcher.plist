@@ -36,11 +36,11 @@
   <key>ProgramArguments</key>
   <array>
     <string>/Library/Frameworks/Python.framework/Versions/3.14/bin/python3</string>
-    <string>/Users/connorpattonequipassid/Projects/home-builder-agent/watcher.py</string>
+    <string>/Users/connorpatton/Projects/home-builder-agent/watcher.py</string>
   </array>
 
   <key>WorkingDirectory</key>
-  <string>/Users/connorpattonequipassid/Projects/home-builder-agent</string>
+  <string>/Users/connorpatton/Projects/home-builder-agent</string>
 
   <key>StartInterval</key>
   <integer>60</integer>

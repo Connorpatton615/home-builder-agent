@@ -50,11 +50,11 @@
   <array>
     <string>/bin/sh</string>
     <string>-c</string>
-    <string>set -a; source /Users/connorpattonequipassid/Projects/home-builder-agent/.env; set +a; exec /Library/Frameworks/Python.framework/Versions/3.14/bin/hb-reconcile</string>
+    <string>set -a; source /Users/connorpatton/Projects/home-builder-agent/.env; set +a; exec /Library/Frameworks/Python.framework/Versions/3.14/bin/hb-reconcile</string>
   </array>
 
   <key>WorkingDirectory</key>
-  <string>/Users/connorpattonequipassid/Projects/home-builder-agent</string>
+  <string>/Users/connorpatton/Projects/home-builder-agent</string>
 
   <!-- PYTHONPATH is required because Python 3.14's editable-install .pth
        finder doesn't fire reliably under launchd's daemon environment
@@ -64,7 +64,7 @@
   <key>EnvironmentVariables</key>
   <dict>
     <key>PYTHONPATH</key>
-    <string>/Users/connorpattonequipassid/Projects/home-builder-agent</string>
+    <string>/Users/connorpatton/Projects/home-builder-agent</string>
   </dict>
 
   <!-- Every 60 seconds -->
