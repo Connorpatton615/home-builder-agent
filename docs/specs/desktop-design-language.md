@@ -9,6 +9,7 @@
 **Lives in:** `~/Projects/patton-ai-ios/Mac/DesignSystem/` once built; tokens exported as a Swift `enum DesignTokens` and a `Color+Tokens` extension.
 **Cross-references:**
 - [`desktop-renderer.md`](desktop-renderer.md) — what gets rendered
+- [`mobile-design-language.md`](mobile-design-language.md) — companion doc for the iOS truck-cab surface; mobile inherits brand + discipline, diverges where field posture demands it
 - [`scheduling-engine.md`](scheduling-engine.md) — the data being rendered
 - `~/Projects/home-builder-agent/brand/` — source-of-truth logo + palette
 
