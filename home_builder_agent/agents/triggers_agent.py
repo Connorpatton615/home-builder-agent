@@ -43,18 +43,24 @@ logger = logging.getLogger(__name__)
 
 
 def _resolve_project(name_or_id: str | None):
-    """Return (project_id, project_name) for a name-substring or UUID arg."""
+    """Return (project_id, project_name) for a name-substring or UUID arg.
+
+    Resolution order:
+      1. UUID-shaped → load_project_by_id (exact)
+      2. exact name match → load_project_by_name
+      3. case-insensitive substring match against load_active_projects
+    """
     if not name_or_id:
         return None, None
 
     from home_builder_agent.scheduling.store_postgres import (
-        load_project_by_name,
+        load_active_projects,
         load_project_by_id,
+        load_project_by_name,
     )
 
-    # Try UUID-shaped first
+    # 1. UUID-shaped
     try:
-        # Quick UUID validation
         uuid.UUID(name_or_id)
         row = load_project_by_id(name_or_id)
         if row:
@@ -62,9 +68,21 @@ def _resolve_project(name_or_id: str | None):
     except (ValueError, KeyError):
         pass
 
+    # 2. Exact name match
     row = load_project_by_name(name_or_id)
     if row:
         return str(row["id"]), row.get("name")
+
+    # 3. Substring (case-insensitive) over active projects
+    needle = name_or_id.lower()
+    try:
+        for p in load_active_projects():
+            name = (p.get("name") or "")
+            if needle in name.lower():
+                return str(p["id"]), name
+    except Exception:
+        pass
+
     return None, None
 
 
