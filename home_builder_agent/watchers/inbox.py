@@ -225,15 +225,31 @@ def _handle_possible_supplier_email(client, summary: dict) -> bool:
     # Local imports to keep cold-import-time of the watcher unchanged
     # (these only matter on the supplier branch).
     from home_builder_agent.scheduling.events import make_event
-    from home_builder_agent.scheduling.store_postgres import insert_event
+    from home_builder_agent.scheduling.store_postgres import (
+        insert_event, upsert_vendor,
+    )
 
     payload = supplier_payload(extracted)
     payload["from_email"] = summary.get("from_email", "")
     payload["thread_subject"] = summary.get("subject", "")[:200]
 
+    # Upsert the vendor row by name and link the Event back to it. The
+    # supplier-email watcher is the V1 ingestion path into Vendor
+    # Intelligence's Vendor entity; this attaches identity + last-seen.
+    vendor_id: str | None = None
+    try:
+        vendor_id = upsert_vendor(
+            name=extracted.get("vendor_name", "") or "",
+            vendor_type=extracted.get("vendor_category") or None,
+            seen_via_email=True,
+        )
+    except Exception as e:
+        log(f"WARNING: vendor upsert failed for {extracted.get('vendor_name','?')}: {e}")
+
     event = make_event(
         type=extracted["event_type"],
         severity=extracted["event_severity"],
+        vendor_id=vendor_id,
         payload=payload,
         source="supplier-email-watcher",
     )
@@ -245,7 +261,8 @@ def _handle_possible_supplier_email(client, summary: dict) -> bool:
         return False
 
     log(f"SUPPLIER | {extracted['event_severity']:>8} | {extracted.get('vendor_name','?')} | "
-        f"{extracted.get('summary','')[:80]} | event {event_id[:8]}")
+        f"{extracted.get('summary','')[:80]} | event {event_id[:8]} "
+        f"vendor {(vendor_id or 'none')[:8]}")
 
     if extracted["event_severity"] in ("warning", "critical"):
         notify_macos(

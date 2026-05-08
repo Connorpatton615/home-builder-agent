@@ -256,3 +256,40 @@ def test_eta_change_summary_renders_with_supplier_payload():
     assert "Wholesale Plumbing" in s
     assert "Kohler bath valves" in s
     assert "2026-05-20" in s
+
+
+# ---------------------------------------------------------------------------
+# _normalize_vendor_type — pure function, the V1 watcher's category map
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("category,expected", [
+    # Direct matches in the schema's allowed set
+    ("plumbing",   "plumbing"),
+    ("electrical", "electrical"),
+    ("lumber",     "lumber"),
+    ("tile",       "tile"),
+    ("appliance",  "appliance"),
+    ("paint",      "paint"),
+    ("hardware",   "hardware"),
+    # Known aliases / pluralization
+    ("cabinets",   "cabinet"),
+    ("cabinet",    "cabinet"),
+    # Categories outside the schema CHECK list — fall to 'other'
+    ("hvac",       "other"),
+    ("windows",    "other"),
+    ("doors",      "other"),
+    ("flooring",   "other"),
+    ("concrete",   "other"),
+    ("roofing",    "other"),
+    ("insulation", "other"),
+    ("general",    "other"),
+    ("unknown",    "other"),
+    # Defensive cases
+    (None,         "other"),
+    ("",           "other"),
+    ("nonsense",   "other"),
+    ("PLUMBING",   "plumbing"),  # case-insensitive
+])
+def test_normalize_vendor_type(category, expected):
+    from home_builder_agent.scheduling.store_postgres import _normalize_vendor_type
+    assert _normalize_vendor_type(category) == expected

@@ -722,6 +722,120 @@ def update_checklist_item(
 import json as _json
 
 
+# The supplier-email classifier's vendor_category vocabulary is broader
+# than home_builder.vendor.type's CHECK list. Map down to the 9 canonical
+# types; everything else lands as 'other' (which the schema permits) so
+# the row inserts cleanly while the original category survives in the
+# Event payload for richer downstream rendering.
+_VENDOR_CATEGORY_TO_TYPE: dict[str, str] = {
+    "plumbing":   "plumbing",
+    "electrical": "electrical",
+    "lumber":     "lumber",
+    "tile":       "tile",
+    "cabinets":   "cabinet",
+    "cabinet":    "cabinet",
+    "appliance":  "appliance",
+    "paint":      "paint",
+    "hardware":   "hardware",
+    # Categories not in the schema's CHECK list — fall to 'other'.
+    "hvac":       "other",
+    "windows":    "other",
+    "doors":      "other",
+    "flooring":   "other",
+    "concrete":   "other",
+    "roofing":    "other",
+    "insulation": "other",
+    "general":    "other",
+    "unknown":    "other",
+}
+
+
+def _normalize_vendor_type(category: str | None) -> str:
+    """Map a classifier category to a vendor.type value the CHECK accepts."""
+    if not category:
+        return "other"
+    return _VENDOR_CATEGORY_TO_TYPE.get(category.lower(), "other")
+
+
+def upsert_vendor(
+    name: str,
+    *,
+    vendor_type: str | None = None,
+    seen_via_email: bool = False,
+    conn: psycopg.Connection | None = None,
+) -> str | None:
+    """Idempotently upsert a Vendor by case-insensitive name match.
+
+    Returns the vendor row's UUID (string), or None if `name` is empty
+    or whitespace-only. Called by the supplier-email watcher when an
+    email is extracted with a vendor_name; the watcher passes the
+    returned UUID to make_event(vendor_id=...) so the Event references
+    the canonical vendor row.
+
+    `vendor_type` accepts the classifier's broader category vocabulary
+    (e.g., 'windows', 'hvac') — they're normalized to the schema's CHECK
+    list ('paint' / 'lumber' / 'plumbing' / 'electrical' / 'tile' /
+    'cabinet' / 'appliance' / 'hardware' / 'other'). Anything outside
+    those 9 lands as 'other'; the original category survives in Event
+    payloads for richer rendering.
+
+    Match strategy: LOWER(name). On hit, refresh last_email_seen_at;
+    type is left alone (we don't second-guess existing classification
+    on subsequent emails — first email wins). On miss, insert a new
+    row with normalized type; tos_status defaults to 'compliant' per
+    the schema.
+
+    This is the V1 path into Vendor Intelligence's Vendor entity.
+    Catalog scrapers (Phase 3) extend the same row with address,
+    distance, preferred_vendor_weight, etc.
+    """
+    name = (name or "").strip()
+    if not name:
+        return None
+
+    normalized_type = _normalize_vendor_type(vendor_type)
+
+    sql_select = """
+        SELECT id::text AS id, type
+        FROM home_builder.vendor
+        WHERE LOWER(name) = LOWER(%s)
+        LIMIT 1
+    """
+    existing = _query_one(sql_select, (name,), conn=conn)
+    if existing:
+        sql_update = """
+            UPDATE home_builder.vendor
+            SET last_email_seen_at = CASE WHEN %s THEN NOW() ELSE last_email_seen_at END,
+                updated_at = NOW()
+            WHERE id = %s::uuid
+        """
+        params = (seen_via_email, existing["id"])
+        if conn is not None:
+            with conn.cursor() as cur:
+                cur.execute(sql_update, params)
+        else:
+            with connection(application_name="hb-engine-vendor-upsert") as c:
+                with c.cursor() as cur:
+                    cur.execute(sql_update, params)
+        return existing["id"]
+
+    # Insert — let tos_status default ('compliant') stand
+    sql_insert = """
+        INSERT INTO home_builder.vendor (name, type, last_email_seen_at)
+        VALUES (%s, %s, CASE WHEN %s THEN NOW() ELSE NULL END)
+        RETURNING id::text AS id
+    """
+    params = (name, normalized_type, seen_via_email)
+    if conn is not None:
+        with conn.cursor() as cur:
+            cur.execute(sql_insert, params)
+            return cur.fetchone()["id"]
+    with connection(application_name="hb-engine-vendor-upsert") as c:
+        with c.cursor() as cur:
+            cur.execute(sql_insert, params)
+            return cur.fetchone()["id"]
+
+
 def insert_event(
     event: Event,
     *,
