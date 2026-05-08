@@ -33,6 +33,11 @@ from datetime import datetime
 
 from home_builder_agent.classifiers.email import classify_thread
 from home_builder_agent.classifiers.invoice import is_invoice_email, extract_invoice_data
+from home_builder_agent.classifiers.supplier_email import (
+    extract_supplier_data,
+    is_supplier_email,
+    supplier_payload,
+)
 from home_builder_agent.config import (
     INBOX_WATCHER_NOTIFY_HIGH,
     INBOX_WATCHER_TIMEOUT_SEC,
@@ -204,6 +209,53 @@ def _handle_possible_invoice(gmail_svc, client, drive_svc, sheets_svc,
         return False
 
 
+def _handle_possible_supplier_email(client, summary: dict) -> bool:
+    """Phase 2 #11 — V1 feeder for Vendor Intelligence.
+
+    The heuristic gate (is_supplier_email) already passed; here we
+    extract structured data via Haiku and emit an Event into
+    home_builder.event so the iOS notification feed surfaces it.
+
+    Returns True if an Event was emitted, False otherwise.
+    """
+    extracted = extract_supplier_data(client, summary)
+    if not extracted:
+        return False  # heuristic false-positive or parse failure
+
+    # Local imports to keep cold-import-time of the watcher unchanged
+    # (these only matter on the supplier branch).
+    from home_builder_agent.scheduling.events import make_event
+    from home_builder_agent.scheduling.store_postgres import insert_event
+
+    payload = supplier_payload(extracted)
+    payload["from_email"] = summary.get("from_email", "")
+    payload["thread_subject"] = summary.get("subject", "")[:200]
+
+    event = make_event(
+        type=extracted["event_type"],
+        severity=extracted["event_severity"],
+        payload=payload,
+        source="supplier-email-watcher",
+    )
+
+    try:
+        event_id = insert_event(event)
+    except Exception as e:
+        log(f"WARNING: supplier event insert failed for {summary.get('subject','')[:60]}: {e}")
+        return False
+
+    log(f"SUPPLIER | {extracted['event_severity']:>8} | {extracted.get('vendor_name','?')} | "
+        f"{extracted.get('summary','')[:80]} | event {event_id[:8]}")
+
+    if extracted["event_severity"] in ("warning", "critical"):
+        notify_macos(
+            f"Supplier: {extracted.get('vendor_name','update')}",
+            extracted.get("summary", "")[:160],
+        )
+
+    return True
+
+
 # ---------------------------------------------------------------------
 # Main loop body (single invocation)
 # ---------------------------------------------------------------------
@@ -297,6 +349,7 @@ def main():
     classified = 0
     high = 0
     invoices_logged = 0
+    supplier_events = 0
     errors = 0
 
     for tid in thread_ids:
@@ -315,6 +368,17 @@ def main():
             if _handle_possible_invoice(gmail_svc, client, drive_svc,
                                         sheets_svc_obj, summary, tid):
                 invoices_logged += 1
+
+        # Supplier email detection — Phase 2 #11 V1 feeder for Vendor Intelligence.
+        # Heuristic gate cheap; LLM extraction only runs on positive matches.
+        if is_supplier_email(summary):
+            try:
+                if _handle_possible_supplier_email(client, summary):
+                    supplier_events += 1
+            except Exception as e:
+                errors += 1
+                if errors <= WATCHER_MAX_ERRORS_PER_RUN:
+                    log(f"ERROR supplier extract {summary['subject'][:50]}: {e}")
 
         try:
             classification, _usage = classify_thread(client, summary)
@@ -344,10 +408,10 @@ def main():
     state["last_history_id"] = latest_history_id or last_history_id
     save_state(state)
 
-    if classified or errors or invoices_logged:
+    if classified or errors or invoices_logged or supplier_events:
         log(f"Pass complete: classified={classified} high={high} "
-            f"invoices={invoices_logged} errors={errors} "
-            f"new_threads={len(thread_ids)}")
+            f"invoices={invoices_logged} supplier={supplier_events} "
+            f"errors={errors} new_threads={len(thread_ids)}")
 
     logger.info(
         "pass_complete",
@@ -357,6 +421,7 @@ def main():
             "classified": classified,
             "high_urgency": high,
             "invoices_logged": invoices_logged,
+            "supplier_events": supplier_events,
             "errors": errors,
             "new_threads": len(thread_ids),
         },

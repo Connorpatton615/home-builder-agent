@@ -47,12 +47,22 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 class EventType(str, Enum):
+    # Scheduling-engine emitted (V1 core)
     SELECTION_DEADLINE = "selection-deadline"
     WEATHER_DELAY = "weather-delay"
     MATERIAL_NO_SHOW = "material-no-show"
     SUB_NO_SHOW = "sub-no-show"
     INSPECTION_FAILURE = "inspection-failure"
     SCHEDULE_SLIP = "schedule-slip"
+    # Vendor-emitter side (Phase 3 Vendor Intelligence + Phase 2 #11
+    # supplier-email watcher). Per canonical-data-model.md § 17 — emitter
+    # taxonomy. The DB does not enforce these via CHECK; the engine
+    # validates payload contracts at insert time.
+    ETA_CHANGE = "eta-change"
+    BACKORDER_DETECTED = "backorder-detected"
+    STOCK_CHANGE = "stock-change"
+    PRICE_CHANGE = "price-change"
+    LEAD_TIME_CHANGE = "lead-time-change"
 
 
 class EventSeverity(str, Enum):
@@ -121,6 +131,16 @@ _DEFAULT_SUMMARY_BY_TYPE: dict[str, str] = {
         "{inspection_type} inspection failed — reinspect {reinspect_date}",
     EventType.SCHEDULE_SLIP.value:
         "Schedule slipped {slip_days}d — completion now {new_estimated_completion_date}",
+    EventType.ETA_CHANGE.value:
+        "{vendor_name}: ETA updated to {eta_or_ship_date} ({items_summary})",
+    EventType.BACKORDER_DETECTED.value:
+        "{vendor_name}: backorder ({items_summary})",
+    EventType.STOCK_CHANGE.value:
+        "{vendor_name}: stock change ({items_summary})",
+    EventType.PRICE_CHANGE.value:
+        "{vendor_name}: price change ({items_summary})",
+    EventType.LEAD_TIME_CHANGE.value:
+        "{vendor_name}: lead-time change ({items_summary})",
 }
 
 

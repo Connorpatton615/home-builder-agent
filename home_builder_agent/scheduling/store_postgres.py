@@ -791,19 +791,26 @@ def _insert_default_in_app_notification(
     Phase A only knows about the in-app surface. When APNs / email come
     online, the Notification dispatcher will insert additional rows per
     severity-driven channel.
+
+    Live notification table has its own project_id column (denormalized
+    for query speed) — populate from the parent event so RLS-by-project
+    works without a join.
     """
     sql = """
         INSERT INTO home_builder.notification (
-            event_id, channel, surface_target
+            event_id, project_id, channel, surface_target
         )
-        VALUES (%s::uuid, %s, %s)
+        SELECT
+            e.id, e.project_id, %s, %s
+        FROM home_builder.event e
+        WHERE e.id = %s::uuid
         RETURNING id::text AS id
     """
     with conn.cursor() as cur:
         cur.execute(sql, (
-            event_id,
             NotificationChannel.IN_APP.value,
             NotificationSurface.NOTIFICATION_FEED.value,
+            event_id,
         ))
         return cur.fetchone()["id"]
 
@@ -893,8 +900,7 @@ def acknowledge_event(
         UPDATE home_builder.event
         SET status = 'acknowledged',
             acknowledged_at = COALESCE(acknowledged_at, NOW()),
-            acknowledgement_actor = COALESCE(%s::uuid, acknowledgement_actor),
-            updated_at = NOW()
+            acknowledgement_actor = COALESCE(%s::uuid, acknowledgement_actor)
         WHERE id = %s::uuid
           AND status IN ('open', 'acknowledged')
     """
@@ -923,8 +929,7 @@ def resolve_event(
         SET status = 'resolved',
             resolved_at = COALESCE(resolved_at, NOW()),
             acknowledged_at = COALESCE(acknowledged_at, NOW()),
-            acknowledgement_actor = COALESCE(%s::uuid, acknowledgement_actor),
-            updated_at = NOW()
+            acknowledgement_actor = COALESCE(%s::uuid, acknowledgement_actor)
         WHERE id = %s::uuid
           AND status IN ('open', 'acknowledged')
     """
