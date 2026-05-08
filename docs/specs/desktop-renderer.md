@@ -8,11 +8,13 @@
 **Last updated:** 2026-05-07.
 **Lives in:** `~/Projects/patton-ai-ios/` (new `ios/PattonAIShellMac/` target alongside the existing `PattonAIShell/` iOS target).
 **Cross-references:**
+- [`desktop-design-language.md`](desktop-design-language.md) — palette, typography, motion, component vocabulary, full Gantt anatomy
 - [`scheduling-engine.md`](scheduling-engine.md) — produces the view-models this renders
 - [`canonical-data-model.md`](canonical-data-model.md) — entity contract + view-model schemas
 - [`chad-agent.md`](chad-agent.md) — `hb-chad` is the conversational surface; this is the visual surface
 - `view_models_schema.json` — Codable contract iOS already pre-generates from
 - `~/Projects/patton-ai-ios/CLAUDE.md` — backend + iOS conventions, must be honored
+- `~/Projects/home-builder-agent/brand/` — source-of-truth logo + palette (`#080b0f` ink, `#22c55e` signal, `#edf2f7` bone)
 
 ---
 
@@ -238,7 +240,7 @@ Each phase has explicit exit criteria. Phase numbers match the standard glide pa
 - Decide: SwiftUI native vs SwiftUI + AppKit interop for the Gantt? (Lean: native — `Canvas` is enough, AppKit only if the spike fails the perf bar)
 - Decide: Quick Look extension for `.spec.md` files? (Lean: defer — nice but not blocking)
 
-Exit: spike Gantt renders 200 phases at 60fps. project.yml multi-target compiles both. Distribution decision logged in `patton-os/data/decisions.md`.
+Exit: spike Gantt renders **1000 phases at 60fps** (per [`desktop-design-language.md` § Rendering strategy](desktop-design-language.md) — viewport culling + static layer cache makes this achievable; 200 was the floor, 1000 is the real bar). project.yml multi-target compiles both. Distribution decision logged in `patton-os/data/decisions.md`.
 
 ### Phase 2 — Engine V2 view-models (5 days, home-builder-agent repo)
 
@@ -253,6 +255,7 @@ Exit: `python3 -m home_builder_agent.scheduling.engine` against the Whitfield pr
 
 ### Phase 3 — Design (5 days, patton-ai-ios repo)
 
+- **Read [`desktop-design-language.md`](desktop-design-language.md) first** — palette, typography, spacing, motion, component vocabulary, and full Gantt anatomy are already specified. Phase 3 applies that language to the six surfaces; it does not relitigate it.
 - Figma-equivalent specs for all six surfaces (master / daily / weekly / monthly / checklist authoring / notification feed) at @1x and @2x retina
 - Mac-native interaction specs: keyboard shortcuts table, multi-window behavior, drag-drop targets, context menus
 - Auth flow for Mac (same Sign in with Apple via `ASAuthorizationAppleIDProvider`, same Supabase exchange — proven on iOS, just need Mac entitlement)
