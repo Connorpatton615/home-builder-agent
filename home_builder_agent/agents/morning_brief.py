@@ -43,6 +43,7 @@ from home_builder_agent.config import (
 from home_builder_agent.core.auth import get_credentials
 from home_builder_agent.core.chad_voice import chad_voice_system
 from home_builder_agent.core.claude_client import make_client, sonnet_cost
+from home_builder_agent.core.cost_guard import record_cost
 from home_builder_agent.core.heartbeat import beat_on_success
 from home_builder_agent.integrations import drive, sheets
 from home_builder_agent.integrations import gmail as gmail_int
@@ -482,6 +483,14 @@ def main():
         unwaived_payments=unwaived_payments,
     )
     usd = sonnet_cost(usage)["total"]
+
+    # Record to .cost_log.jsonl for daily-cap accounting.
+    record_cost(
+        agent="hb-brief",
+        model=WRITER_MODEL,
+        cost_usd=usd,
+        note=f"morning brief for {project_name}",
+    )
     print(f"  Subject: {subject}")
     print(f"  Cost: ${usd:.4f}")
 

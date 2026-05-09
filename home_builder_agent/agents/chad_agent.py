@@ -50,6 +50,7 @@ from home_builder_agent.core.chad_voice import (
     chad_voice_system,
 )
 from home_builder_agent.core.claude_client import make_client
+from home_builder_agent.core.cost_guard import check_budget, record_cost
 
 
 # ---------------------------------------------------------------------------
@@ -941,7 +942,7 @@ def _tool_approve_draft_action(
 def chad_turn(user_input: str, *, dry_run: bool = False, verbose: bool = False) -> dict:
     """Run one Chad-agent turn. Returns a dict shaped for CLI / API use.
 
-    Shape:
+    Shape on success:
       {
         "input":         "<original user input>",
         "answer":        "<Chad-voice prose>",
@@ -951,9 +952,82 @@ def chad_turn(user_input: str, *, dry_run: bool = False, verbose: bool = False) 
         "cost_usd":      0.123,           # opus turns + downstream specialists
         "duration_ms":   2345,
       }
+
+    Shape on Anthropic API failure (auth / rate-limit / connection) — the
+    function does NOT raise; it returns a structured error dict so any
+    caller (CLI, future direct backend callers, etc.) gets a graceful
+    response rather than a stack trace:
+      {
+        "input":      "<original user input>",
+        "answer":     "<short Chad-voice fallback message>",
+        "error":      {"type": "AuthenticationError", "message": "..."},
+        "model":      "claude-opus-4-7",
+        "cost_usd":   0.0,
+        "duration_ms": 12,
+        "actions_taken": [],
+        "tool_log":   [],
+        "iterations": 0,
+      }
+
+    The iOS Ask tab uses chad_turn_stream() which has its own SSE-style
+    error handling; this wrapper is for the synchronous path (terminal
+    hb-chad, future backend callers).
     """
     started_at = time.time()
-    client: Anthropic = make_client()
+
+    # Imports are lazy so we surface auth errors cleanly even if the env
+    # is missing the API key entirely.
+    from anthropic import (
+        APIConnectionError,
+        APIError,
+        AuthenticationError,
+        BadRequestError,
+        RateLimitError,
+    )
+
+    # Daily-spend circuit breaker — refuse Opus turns when today's
+    # Opus spend has already hit the cap. Fail loudly to Chad rather
+    # than burn through the budget on a runaway loop.
+    allowed, reason = check_budget("opus")
+    if not allowed:
+        return {
+            "input": user_input,
+            "answer": (
+                f"I'm holding off this turn — {reason} Connor will see "
+                "this in the structured log and can raise the cap or "
+                "let it cool down until tomorrow."
+            ),
+            "error": {"type": "DailyBudgetExceeded", "message": reason},
+            "actions_taken": [],
+            "tool_log": [],
+            "model": CHAD_MODEL,
+            "cost_usd": 0.0,
+            "opus_cost_usd": 0.0,
+            "downstream_cost_usd": 0.0,
+            "duration_ms": int((time.time() - started_at) * 1000),
+            "iterations": 0,
+        }
+
+    try:
+        client: Anthropic = make_client()
+    except Exception as e:
+        return {
+            "input": user_input,
+            "answer": (
+                "I can't reach Anthropic right now — likely a missing or "
+                f"invalid API key ({type(e).__name__}). Connor needs to "
+                "check ANTHROPIC_API_KEY in .env before I can answer."
+            ),
+            "error": {"type": type(e).__name__, "message": str(e)[:500]},
+            "actions_taken": [],
+            "tool_log": [],
+            "model": CHAD_MODEL,
+            "cost_usd": 0.0,
+            "opus_cost_usd": 0.0,
+            "downstream_cost_usd": 0.0,
+            "duration_ms": int((time.time() - started_at) * 1000),
+            "iterations": 0,
+        }
 
     voice = chad_voice_system("narrator")
     ctx = get_chad_context().to_prompt_block()
@@ -966,140 +1040,180 @@ def chad_turn(user_input: str, *, dry_run: bool = False, verbose: bool = False) 
     total_input_tokens = 0
     total_output_tokens = 0
     downstream_cost = 0.0
+    iteration = 0  # initialize so the error path can reference it before the loop
 
-    for iteration in range(MAX_TOOL_LOOP_ITERATIONS):
-        if verbose:
-            print(f"[iter {iteration + 1}] calling Opus...", file=sys.stderr)
-
-        response = client.messages.create(
-            model=CHAD_MODEL,
-            max_tokens=CHAD_MAX_TOKENS,
-            system=system,
-            tools=TOOLS,
-            messages=messages,
-        )
-
-        total_input_tokens += response.usage.input_tokens
-        total_output_tokens += response.usage.output_tokens
-
-        if response.stop_reason == "end_turn":
-            for block in response.content:
-                if block.type == "text":
-                    final_text += block.text
-            break
-
-        if response.stop_reason != "tool_use":
-            # Unexpected — capture what we have and stop
-            for block in response.content:
-                if block.type == "text":
-                    final_text += block.text
-            break
-
-        # Execute each requested tool, append results, loop
-        messages.append({"role": "assistant", "content": response.content})
-        tool_results = []
-        for block in response.content:
-            if block.type != "tool_use":
-                continue
-            tool_started = time.time()
-            name = block.name
-            inputs = block.input or {}
-
-            if name == "ask_chad":
-                output, cost = _tool_ask_chad(inputs.get("question", ""))
-            elif name == "dispatch_action":
-                output, cost = _tool_dispatch_action(
-                    inputs.get("nl_command", ""),
-                    inputs.get("project_id"),
-                    dry_run=dry_run,
-                )
-                if not dry_run:
-                    actions_taken.append(inputs.get("nl_command", ""))
-            elif name == "list_pending_drafts":
-                output, cost = _tool_list_pending_drafts(
-                    inputs.get("project_id", ""),
-                    inputs.get("limit"),
-                )
-            elif name == "read_morning_view":
-                output, cost = _tool_read_morning_view(inputs.get("project_id", ""))
-            elif name == "list_drop_deads":
-                output, cost = _tool_list_drop_deads(
-                    inputs.get("project_id", ""),
-                    inputs.get("bands"),
-                )
-            elif name == "list_overnight_events":
-                output, cost = _tool_list_overnight_events(
-                    inputs.get("project_id"),
-                    inputs.get("since_hours"),
-                )
-            elif name == "list_checklist_items_for_phase":
-                output, cost = _tool_list_checklist_items_for_phase(
-                    inputs.get("project_id", ""),
-                    inputs.get("phase_name", ""),
-                )
-            elif name == "log_site_note":
-                output, cost = _tool_log_site_note(
-                    inputs.get("text", ""),
-                    inputs.get("project_id"),
-                    dry_run=dry_run,
-                )
-                if not dry_run:
-                    actions_taken.append(f"site-log: {inputs.get('text', '')[:80]}")
-            elif name == "approve_draft_action":
-                if dry_run:
-                    output = (
-                        "(dry-run) Would approve draft "
-                        f"{inputs.get('draft_action_id', '')[:8]}…  + fire confirm hook"
-                    )
-                    cost = 0.0
-                else:
-                    output, cost = _tool_approve_draft_action(
-                        inputs.get("draft_action_id", ""),
-                        inputs.get("decision_notes"),
-                    )
-                    actions_taken.append(
-                        f"approved draft {inputs.get('draft_action_id', '')[:8]}…"
-                    )
-            else:
-                output = f"Unknown tool: {name}"
-                cost = 0.0
-
-            duration_ms = int((time.time() - tool_started) * 1000)
-            downstream_cost += cost
-            tool_log.append({
-                "name": name,
-                "input": inputs,
-                "duration_ms": duration_ms,
-                "cost_usd": cost,
-            })
-            tool_results.append({
-                "type": "tool_result",
-                "tool_use_id": block.id,
-                "content": output,
-            })
+    try:
+        for iteration in range(MAX_TOOL_LOOP_ITERATIONS):
             if verbose:
-                print(f"  → {name} ({duration_ms}ms, ${cost:.4f})", file=sys.stderr)
+                print(f"[iter {iteration + 1}] calling Opus...", file=sys.stderr)
 
-        messages.append({"role": "user", "content": tool_results})
+            response = client.messages.create(
+                model=CHAD_MODEL,
+                max_tokens=CHAD_MAX_TOKENS,
+                system=system,
+                tools=TOOLS,
+                messages=messages,
+            )
 
-    opus_cost = (
-        total_input_tokens * OPUS_INPUT_PER_M / 1_000_000
-        + total_output_tokens * OPUS_OUTPUT_PER_M / 1_000_000
-    )
-    duration_ms = int((time.time() - started_at) * 1000)
+            total_input_tokens += response.usage.input_tokens
+            total_output_tokens += response.usage.output_tokens
 
-    return {
-        "input": user_input,
-        "answer": final_text.strip(),
-        "actions_taken": actions_taken,
-        "tool_log": tool_log,
-        "model": CHAD_MODEL,
-        "cost_usd": round(opus_cost + downstream_cost, 4),
-        "opus_cost_usd": round(opus_cost, 4),
-        "downstream_cost_usd": round(downstream_cost, 4),
-        "duration_ms": duration_ms,
-        "iterations": iteration + 1,
-    }
+            if response.stop_reason == "end_turn":
+                for block in response.content:
+                    if block.type == "text":
+                        final_text += block.text
+                break
+
+            if response.stop_reason != "tool_use":
+                # Unexpected — capture what we have and stop
+                for block in response.content:
+                    if block.type == "text":
+                        final_text += block.text
+                break
+
+            # Execute each requested tool, append results, loop
+            messages.append({"role": "assistant", "content": response.content})
+            tool_results = []
+            for block in response.content:
+                if block.type != "tool_use":
+                    continue
+                tool_started = time.time()
+                name = block.name
+                inputs = block.input or {}
+
+                if name == "ask_chad":
+                    output, cost = _tool_ask_chad(inputs.get("question", ""))
+                elif name == "dispatch_action":
+                    output, cost = _tool_dispatch_action(
+                        inputs.get("nl_command", ""),
+                        inputs.get("project_id"),
+                        dry_run=dry_run,
+                    )
+                    if not dry_run:
+                        actions_taken.append(inputs.get("nl_command", ""))
+                elif name == "list_pending_drafts":
+                    output, cost = _tool_list_pending_drafts(
+                        inputs.get("project_id", ""),
+                        inputs.get("limit"),
+                    )
+                elif name == "read_morning_view":
+                    output, cost = _tool_read_morning_view(inputs.get("project_id", ""))
+                elif name == "list_drop_deads":
+                    output, cost = _tool_list_drop_deads(
+                        inputs.get("project_id", ""),
+                        inputs.get("bands"),
+                    )
+                elif name == "list_overnight_events":
+                    output, cost = _tool_list_overnight_events(
+                        inputs.get("project_id"),
+                        inputs.get("since_hours"),
+                    )
+                elif name == "list_checklist_items_for_phase":
+                    output, cost = _tool_list_checklist_items_for_phase(
+                        inputs.get("project_id", ""),
+                        inputs.get("phase_name", ""),
+                    )
+                elif name == "log_site_note":
+                    output, cost = _tool_log_site_note(
+                        inputs.get("text", ""),
+                        inputs.get("project_id"),
+                        dry_run=dry_run,
+                    )
+                    if not dry_run:
+                        actions_taken.append(f"site-log: {inputs.get('text', '')[:80]}")
+                elif name == "approve_draft_action":
+                    if dry_run:
+                        output = (
+                            "(dry-run) Would approve draft "
+                            f"{inputs.get('draft_action_id', '')[:8]}…  + fire confirm hook"
+                        )
+                        cost = 0.0
+                    else:
+                        output, cost = _tool_approve_draft_action(
+                            inputs.get("draft_action_id", ""),
+                            inputs.get("decision_notes"),
+                        )
+                        actions_taken.append(
+                            f"approved draft {inputs.get('draft_action_id', '')[:8]}…"
+                        )
+                else:
+                    output = f"Unknown tool: {name}"
+                    cost = 0.0
+
+                duration_ms = int((time.time() - tool_started) * 1000)
+                downstream_cost += cost
+                tool_log.append({
+                    "name": name,
+                    "input": inputs,
+                    "duration_ms": duration_ms,
+                    "cost_usd": cost,
+                })
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": output,
+                })
+                if verbose:
+                    print(f"  → {name} ({duration_ms}ms, ${cost:.4f})", file=sys.stderr)
+
+            messages.append({"role": "user", "content": tool_results})
+
+        opus_cost = (
+            total_input_tokens * OPUS_INPUT_PER_M / 1_000_000
+            + total_output_tokens * OPUS_OUTPUT_PER_M / 1_000_000
+        )
+        duration_ms = int((time.time() - started_at) * 1000)
+
+        # Record per-turn cost to .cost_log.jsonl for circuit-breaker
+        # accounting + retrospective audit. Opus + downstream tracked
+        # separately so the daily cap on Opus is enforceable.
+        if opus_cost > 0:
+            record_cost(
+                agent="hb-chad",
+                model=CHAD_MODEL,
+                cost_usd=opus_cost,
+                note=f"chad_turn iter={iteration + 1}",
+            )
+
+        return {
+            "input": user_input,
+            "answer": final_text.strip(),
+            "actions_taken": actions_taken,
+            "tool_log": tool_log,
+            "model": CHAD_MODEL,
+            "cost_usd": round(opus_cost + downstream_cost, 4),
+            "opus_cost_usd": round(opus_cost, 4),
+            "downstream_cost_usd": round(downstream_cost, 4),
+            "duration_ms": duration_ms,
+            "iterations": iteration + 1,
+        }
+
+    except (AuthenticationError, RateLimitError, APIConnectionError, BadRequestError, APIError) as e:
+        # Anthropic API errors mid-loop — return graceful error dict.
+        # iOS Ask tab uses chad_turn_stream() which has its own SSE error
+        # path; this is for the synchronous CLI + future direct callers.
+        opus_cost = (
+            total_input_tokens * OPUS_INPUT_PER_M / 1_000_000
+            + total_output_tokens * OPUS_OUTPUT_PER_M / 1_000_000
+        )
+        return {
+            "input": user_input,
+            "answer": (
+                f"I hit an Anthropic API error mid-thought "
+                f"({type(e).__name__}). Connor: check the key / rate "
+                "limits / network and try again. "
+                f"Already-completed tool calls in this turn: {len(tool_log)}."
+            ),
+            "error": {"type": type(e).__name__, "message": str(e)[:500]},
+            "actions_taken": actions_taken,
+            "tool_log": tool_log,
+            "model": CHAD_MODEL,
+            "cost_usd": round(opus_cost + downstream_cost, 4),
+            "opus_cost_usd": round(opus_cost, 4),
+            "downstream_cost_usd": round(downstream_cost, 4),
+            "duration_ms": int((time.time() - started_at) * 1000),
+            "iterations": iteration + 1,
+        }
 
 
 # ---------------------------------------------------------------------------

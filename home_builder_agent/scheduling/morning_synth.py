@@ -32,6 +32,7 @@ from typing import Any
 from home_builder_agent.config import BRIEF_MAX_TOKENS, WRITER_MODEL
 from home_builder_agent.core.chad_voice import chad_voice_system
 from home_builder_agent.core.claude_client import sonnet_cost
+from home_builder_agent.core.cost_guard import record_cost
 from home_builder_agent.scheduling.schemas import (
     MorningDropDeadsPayload,
     MorningJudgmentQueuePayload,
@@ -280,6 +281,15 @@ Now compose voice_brief + action_items per the output contract above. JSON only.
 
     cost = sonnet_cost(response.usage)
     cost_usd = cost.get("total") if isinstance(cost, dict) else None
+
+    # Record to .cost_log.jsonl for daily-cap accounting.
+    if cost_usd:
+        record_cost(
+            agent="hb-morning",
+            model=model,
+            cost_usd=cost_usd,
+            note=f"voice_brief + action_items synth for {project_name}",
+        )
 
     voice_brief = MorningVoiceBriefPayload(
         text=voice_brief_text,

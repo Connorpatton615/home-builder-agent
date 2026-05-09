@@ -48,7 +48,8 @@ from home_builder_agent.config import (
     WATCHER_SOCKET_TIMEOUT,
 )
 from home_builder_agent.core.auth import get_credentials
-from home_builder_agent.core.claude_client import make_client
+from home_builder_agent.core.claude_client import make_client, sonnet_cost
+from home_builder_agent.core.cost_guard import check_budget, record_cost
 from home_builder_agent.core.heartbeat import beat_on_success
 from home_builder_agent.observability.json_log import configure_json_logging
 
@@ -274,6 +275,148 @@ def _handle_possible_supplier_email(client, summary: dict) -> bool:
 
 
 # ---------------------------------------------------------------------
+# HIGH-urgency reply drafting (Phase 2 #11.5 — auto-draft on the 5-min cadence)
+# ---------------------------------------------------------------------
+# Per the system overview PDF: "Inbox scan + reply drafting every 5 min."
+# Today the watcher CLASSIFIES on the 5-min cadence; this helper adds the
+# DRAFTING side. For HIGH-urgency threads where Chad wasn't last sender:
+#   1. Sonnet (Chad-voice author mode) generates a reply draft
+#   2. Gmail draft is created via the existing create_draft helper
+#   3. draft_action row inserted into home_builder.draft_action so the
+#      morning view's judgment_queue surfaces it
+#
+# Mirror of agents/gmail_followup.py:main()'s drafting block, lifted into
+# the watcher so the cadence promise is honored without Chad having to
+# manually run hb-inbox.
+
+def _handle_possible_high_urgency_draft(
+    gmail_svc,
+    client,
+    summary: dict,
+    classification: dict,
+) -> bool:
+    """Returns True if a reply draft was created + logged."""
+    if (classification.get("urgency") or "").lower() != "high":
+        return False
+    if summary.get("last_from_me"):
+        return False
+    if not classification.get("needs_followup", False):
+        return False
+
+    # Budget check — skip drafting (not the whole watcher) if today's
+    # Sonnet spend has hit the cap. The watcher's classify path runs
+    # under Haiku which is cheap; only the drafting side would push us
+    # over. Skipping leaves the macOS notification + classification
+    # in place; Chad still sees the alert.
+    allowed, reason = check_budget("sonnet")
+    if not allowed:
+        log(f"DRAFT-SKIP (budget) | {summary['from_name'][:30]} | {reason[:80]}")
+        return False
+
+    short_subject = (summary.get("subject") or "")[:60]
+
+    try:
+        # Lazy import — keeps cold-import-time of the watcher minimal
+        # for the much more common no-HIGH-urgency case.
+        from home_builder_agent.agents.gmail_followup import generate_reply_draft
+        subject, body_html, draft_usage = generate_reply_draft(
+            client, summary, classification,
+        )
+        cost_usd = sonnet_cost(draft_usage)["total"]
+        record_cost(
+            agent="hb-inbox-watcher",
+            model="claude-sonnet-4-6",
+            cost_usd=cost_usd,
+            note=f"reply draft for HIGH thread: {short_subject}",
+        )
+    except Exception as e:
+        log(f"WARNING: reply draft generation failed for {short_subject!r}: {e}")
+        return False
+
+    # Create the Gmail draft so Chad sees it in Gmail Drafts immediately,
+    # in addition to the in-app judgment queue.
+    try:
+        draft = gmail_int.create_draft(
+            gmail_svc,
+            to=summary.get("from_email", ""),
+            subject=subject,
+            html_body=body_html,
+        )
+        gmail_draft_id = draft.get("id")
+    except Exception as e:
+        log(f"WARNING: gmail draft create failed for {short_subject!r}: {e}")
+        return False
+
+    # Best-effort: log to home_builder.draft_action. Failure here doesn't
+    # roll back the Gmail draft — Chad can still see + send from Gmail.
+    try:
+        from home_builder_agent.scheduling.draft_actions import (
+            DraftKind, make_draft_action,
+        )
+        from home_builder_agent.scheduling.store_postgres import (
+            insert_draft_action, load_project_by_name,
+        )
+        proj = load_project_by_name(FINANCE_PROJECT_NAME)
+    except Exception as e:
+        log(f"WARNING: Postgres lookup failed for draft_action: {e}")
+        proj = None
+
+    if proj is not None:
+        try:
+            agent_summary = (
+                f"{summary.get('from_name', '?')}: "
+                f"{(classification.get('reason', '') or short_subject)[:80]}"
+            )
+            da = make_draft_action(
+                project_id=proj["id"],
+                kind=DraftKind.GMAIL_REPLY_DRAFT,
+                originating_agent="hb-inbox-watcher",
+                summary=agent_summary,
+                subject_line=subject,
+                body_payload={
+                    "thread_id": summary.get("thread_id"),
+                    "original_subject": summary.get("subject"),
+                    "original_from": summary.get("from_email"),
+                    "original_from_name": summary.get("from_name"),
+                    "draft_subject": subject,
+                    "draft_body_html": body_html,
+                    "recipient": summary.get("from_email"),
+                    "classification_urgency": classification.get("urgency"),
+                    "classification_reason": classification.get("reason"),
+                },
+                external_ref=gmail_draft_id,
+                from_or_to=(
+                    f"From: {summary.get('from_name', '')} "
+                    f"<{summary.get('from_email', '')}>"
+                ).strip(),
+            )
+            insert_draft_action(da)
+            log(
+                f"DRAFTED | {summary['from_name'][:30]} | {short_subject:<40} "
+                f"| gmail={gmail_draft_id[:10]} draft={da.id[:8]} "
+                f"cost=${cost_usd:.4f}"
+            )
+        except Exception as e:
+            msg = str(e).lower()
+            if "does not exist" in msg and "draft_action" in msg:
+                log(
+                    f"DRAFTED (gmail-only) | {summary['from_name'][:30]} | "
+                    f"{short_subject:<40} | gmail={gmail_draft_id[:10]} "
+                    f"(draft_action table pending migration 007)"
+                )
+            else:
+                log(f"WARNING: draft_action insert failed for {short_subject!r}: {e}")
+    else:
+        log(
+            f"DRAFTED (gmail-only) | {summary['from_name'][:30]} | "
+            f"{short_subject:<40} | gmail={gmail_draft_id[:10]} "
+            "(no Postgres project row)"
+        )
+
+    return True
+
+
+# ---------------------------------------------------------------------
 # Main loop body (single invocation)
 # ---------------------------------------------------------------------
 
@@ -367,6 +510,7 @@ def main():
     high = 0
     invoices_logged = 0
     supplier_events = 0
+    drafts_created = 0
     errors = 0
 
     for tid in thread_ids:
@@ -417,6 +561,19 @@ def main():
                     "Chad Inbox: HIGH",
                     f"{summary['from_name']}: {summary['subject']}",
                 )
+            # Auto-draft a reply in Chad's voice for HIGH-urgency threads
+            # where Chad wasn't last sender. Lands in Gmail Drafts +
+            # home_builder.draft_action (judgment queue). Honors the
+            # PDF promise of "auto-draft replies every 5 min."
+            try:
+                if _handle_possible_high_urgency_draft(
+                    gmail_svc, client, summary, classification,
+                ):
+                    drafts_created += 1
+            except Exception as e:
+                errors += 1
+                if errors <= WATCHER_MAX_ERRORS_PER_RUN:
+                    log(f"ERROR drafting reply for {summary['subject'][:50]}: {e}")
         elif needs:
             log(f"{urgency:6} | {summary['from_name']} | "
                 f"{summary['subject'][:80]}")
@@ -425,10 +582,11 @@ def main():
     state["last_history_id"] = latest_history_id or last_history_id
     save_state(state)
 
-    if classified or errors or invoices_logged or supplier_events:
+    if classified or errors or invoices_logged or supplier_events or drafts_created:
         log(f"Pass complete: classified={classified} high={high} "
-            f"invoices={invoices_logged} supplier={supplier_events} "
-            f"errors={errors} new_threads={len(thread_ids)}")
+            f"drafts={drafts_created} invoices={invoices_logged} "
+            f"supplier={supplier_events} errors={errors} "
+            f"new_threads={len(thread_ids)}")
 
     logger.info(
         "pass_complete",
@@ -437,6 +595,7 @@ def main():
             "correlation_id": correlation_id,
             "classified": classified,
             "high_urgency": high,
+            "drafts_created": drafts_created,
             "invoices_logged": invoices_logged,
             "supplier_events": supplier_events,
             "errors": errors,
