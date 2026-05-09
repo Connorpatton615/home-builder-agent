@@ -56,7 +56,7 @@ class MilestoneStatus(str, Enum):
 
 
 class ViewType(str, Enum):
-    """The six view-model types projected by the engine."""
+    """The seven view-model types projected by the engine."""
 
     DAILY = "daily"
     WEEKLY = "weekly"
@@ -64,6 +64,17 @@ class ViewType(str, Enum):
     MASTER = "master"
     CHECKLIST_GATES = "checklist-gates"
     NOTIFICATION_FEED = "notification-feed"
+    MORNING = "morning"
+
+
+class UrgencyBand(str, Enum):
+    """3-value urgency model used on morning view's today_on_site +
+    todays_drop_deads sections. Per per-kind rules in
+    morning-view-model.md § urgency_band semantics."""
+
+    CALM = "calm"
+    WATCH = "watch"
+    URGENT = "urgent"
 
 
 class LeadTimeSource(str, Enum):
@@ -427,6 +438,137 @@ class DraftActionPayload(_Base):
 
 
 # ---------------------------------------------------------------------------
+# Morning view — Chad's coffee-cup landing surface (entity-anchored projection)
+# ---------------------------------------------------------------------------
+# Per docs/specs/morning-view-model.md. Section ordering is part of the
+# contract; field semantics are documented in that spec. Caller supplies
+# pre-computed weather + voice_brief + action_items (those involve
+# external calls — NOAA, Anthropic — that don't belong in pure
+# projection). All other sections derive from engine state via
+# scheduling/view_models.py:morning_view().
+# ---------------------------------------------------------------------------
+
+
+class MorningWeatherRiskPhasePayload(_Base):
+    """A phase whose work is at risk from the forecast."""
+
+    phase_id: str | None = None
+    phase_name: str
+    risk_kind: str = Field(description="rain | wind | extreme-cold | extreme-heat")
+    detail: str = Field(description="Plain-English chip — 'Wed-Thu rain conflicts with exterior trim install'")
+    severity: Severity
+
+
+class MorningWeatherPayload(_Base):
+    """Weather block — pinned to top of morning surface when risk_phases non-empty."""
+
+    summary_today: str
+    summary_tomorrow: str | None = None
+    risk_phases: list[MorningWeatherRiskPhasePayload] = Field(default_factory=list)
+
+
+class MorningVoiceBriefPayload(_Base):
+    """hb-chad narrator-voice synthesis. Composed in the same Sonnet
+    call as action_items (one call, two deliverables)."""
+
+    text: str = Field(description="3-5 sentences in Chad's voice synthesizing the day's state")
+    model: str | None = None
+    cost_usd: float | None = None
+    duration_ms: int | None = None
+
+
+class MorningJudgmentQueuePayload(_Base):
+    """Highest-leverage section. Drafts pending Chad's review."""
+
+    count: int = Field(ge=0)
+    items: list[DraftActionPayload] = Field(default_factory=list)
+
+
+class MorningTodayItemPayload(_Base):
+    """One item on the today_on_site surface — a phase active today, a
+    delivery expected, an inspection scheduled. urgency_band drives the
+    renderer's visual emphasis; per-kind rules in
+    morning-view-model.md § urgency_band semantics."""
+
+    kind: DailyItemKind = Field(description="phase-active | delivery | inspection (drop-dead lives in todays_drop_deads)")
+    phase_id: str | None = None
+    phase_name: str | None = None
+    day_n: int | None = None
+    of_total: int | None = None
+    material_category: str | None = None
+    install_phase_name: str | None = None
+    install_date: _date | None = None
+    urgency_band: UrgencyBand = UrgencyBand.CALM
+    urgency_reason: str | None = Field(default=None, description="Plain-English chip explaining urgency, surfaced in expanded density")
+    tap_action: str | None = None
+
+
+class MorningTodayOnSitePayload(_Base):
+    """Subset of daily view filtered to today + (project_id) + kinds in
+    {phase-active, delivery, inspection}."""
+
+    items: list[MorningTodayItemPayload] = Field(default_factory=list)
+
+
+class MorningDropDeadItemPayload(_Base):
+    """One drop-dead item on the morning surface. Spec mandates only
+    OVERDUE / ORDER NOW band reaches this view; later bands belong on
+    the daily/weekly surfaces."""
+
+    material_category: str
+    install_phase_name: str
+    install_date: _date
+    drop_dead_date: _date
+    lead_time_days: int = Field(ge=0)
+    urgency_band: UrgencyBand = UrgencyBand.URGENT
+    tap_action: str | None = None
+
+
+class MorningDropDeadsPayload(_Base):
+    items: list[MorningDropDeadItemPayload] = Field(default_factory=list)
+
+
+class MorningOvernightEventsPayload(_Base):
+    """Subset of notification-feed projection filtered to created_at >
+    now - 14h AND severity ≥ warning."""
+
+    items: list[NotificationItemPayload] = Field(default_factory=list)
+
+
+class MorningViewPayload(_Base):
+    """Chad's coffee-cup landing payload.
+
+    Section ordering reflects contract priority — the renderer is
+    expected to honor it. Empty-state behavior per spec § Section
+    ordering: weather risk + overnight_events omit when empty;
+    judgment_queue + today_on_site + todays_drop_deads render with
+    explicit empty-state copy; voice_brief + action_items never empty.
+    """
+
+    view_type: Literal[ViewType.MORNING] = ViewType.MORNING
+    project_id: str
+    project_name: str
+    generated_at: _datetime
+    as_of_local_date: _date
+    tz: str = Field(default="America/Chicago", description="IANA tz from user_profile.working_hours")
+
+    # Section 1
+    weather: MorningWeatherPayload | None = None
+    # Section 2
+    voice_brief: MorningVoiceBriefPayload | None = None
+    # Section 3 — highest-leverage real estate
+    judgment_queue: MorningJudgmentQueuePayload = Field(default_factory=lambda: MorningJudgmentQueuePayload(count=0))
+    # Section 4
+    today_on_site: MorningTodayOnSitePayload = Field(default_factory=MorningTodayOnSitePayload)
+    # Section 5
+    todays_drop_deads: MorningDropDeadsPayload = Field(default_factory=MorningDropDeadsPayload)
+    # Section 6
+    overnight_events: MorningOvernightEventsPayload = Field(default_factory=MorningOvernightEventsPayload)
+    # Section 7
+    action_items: list[str] = Field(default_factory=list, description="1–5 imperative items from hb-chad")
+
+
+# ---------------------------------------------------------------------------
 # Convenience: union for response typing
 # ---------------------------------------------------------------------------
 
@@ -437,6 +579,7 @@ ViewPayload = (
     | MonthlyViewPayload
     | ChecklistGatesViewPayload
     | NotificationFeedViewPayload
+    | MorningViewPayload
 )
 
 

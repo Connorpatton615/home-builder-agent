@@ -40,6 +40,9 @@ from home_builder_agent.scheduling.schemas import (
     DailyItemPayload,
     DailyProjectPayload,
     DailyViewPayload,
+    DraftActionPayload,
+    DraftKind,
+    DraftStatus,
     DropDeadDatePayload,
     LeadTimeSource,
     MasterPhasePayload,
@@ -49,11 +52,19 @@ from home_builder_agent.scheduling.schemas import (
     MonthlyPhaseInWindowPayload,
     MonthlyProjectPayload,
     MonthlyViewPayload,
+    MorningDropDeadItemPayload,
+    MorningDropDeadsPayload,
+    MorningJudgmentQueuePayload,
+    MorningOvernightEventsPayload,
+    MorningTodayItemPayload,
+    MorningTodayOnSitePayload,
+    MorningViewPayload,
     NotificationFeedViewPayload,
     NotificationItemPayload,
     NotificationStatus,
     PhaseStatus,
     Severity,
+    UrgencyBand,
     WeeklyItemKind,
     WeeklyItemPayload,
     WeeklyProjectPayload,
@@ -472,3 +483,220 @@ def notification_feed_view(
         for e in sorted_events
     ]
     return NotificationFeedViewPayload(items=items)
+
+
+# ---------------------------------------------------------------------------
+# Morning view — Chad's coffee-cup landing
+# ---------------------------------------------------------------------------
+# Per docs/specs/morning-view-model.md. This projection is the home-builder
+# vertical's contribution to the "morning coffee work station" surface;
+# the renderer (native Mac, mobile, future surfaces) consumes the
+# MorningViewPayload it returns.
+#
+# Section ordering (1 → 7) is part of the contract — the renderer is
+# expected to render top-to-bottom in the order the payload carries.
+#
+# External-call sections (weather, voice_brief, action_items) are NOT
+# computed here — those involve NOAA fetches and Anthropic API calls
+# that don't belong in a pure projection. The caller (route handler /
+# CLI / cron) precomputes them and passes via kwargs. If omitted, the
+# corresponding fields stay None / empty and the renderer handles the
+# empty state per spec.
+
+
+def _drop_dead_urgency_band(dd: DropDeadDate, today: date) -> UrgencyBand:
+    """Map a drop-dead date to the morning surface's urgency band.
+
+    Per spec: morning surface only carries OVERDUE / ORDER NOW band
+    items (everything else belongs on daily/weekly). The urgency
+    enumeration on the morning view is always URGENT for these.
+    """
+    days_until = (dd.drop_dead_date - today).days
+    # OVERDUE or ORDER NOW threshold: <=0 days → already past or due today
+    return UrgencyBand.URGENT if days_until <= 0 else UrgencyBand.WATCH
+
+
+def _phase_active_urgency(p: Phase, today: date) -> tuple[UrgencyBand, str | None]:
+    """Per § urgency_band semantics: phase-active urgency is drift from plan.
+
+    V1 rule (no critical-path computation yet):
+      calm   → on plan or ahead
+      watch  → 1-2 days behind plan
+      urgent → 3+ days behind plan
+
+    Returns (band, urgency_reason_chip).
+    """
+    if today < p.planned_start_date:
+        return (UrgencyBand.CALM, None)  # not started yet — calm
+    days_into_plan = (today - p.planned_start_date).days + 1
+    if p.duration_days <= 0:
+        return (UrgencyBand.CALM, None)
+    behind = days_into_plan - p.duration_days
+    if behind <= 0:
+        return (UrgencyBand.CALM, None)
+    if behind <= 2:
+        return (
+            UrgencyBand.WATCH,
+            f"{behind} day{'s' if behind != 1 else ''} behind plan",
+        )
+    return (
+        UrgencyBand.URGENT,
+        f"{behind} days behind plan",
+    )
+
+
+def _draft_row_to_payload(row: dict, *, now: _datetime | None = None) -> DraftActionPayload:
+    """Project a raw home_builder.draft_action row into the wire payload."""
+    now = now or _datetime.now(_timezone.utc)
+    created_at = row["created_at"]
+    age = max(0, int((now - created_at).total_seconds())) if hasattr(created_at, "tzinfo") else 0
+    created_date = created_at.date() if hasattr(created_at, "date") else created_at
+    decided_date = (
+        row["decided_at"].date() if row.get("decided_at") and hasattr(row["decided_at"], "date") else None
+    )
+    return DraftActionPayload(
+        draft_action_id=row["id"],
+        project_id=row["project_id"],
+        kind=DraftKind(row["kind"]),
+        status=DraftStatus(row["status"]),
+        originating_agent=row["originating_agent"],
+        summary=row["summary"],
+        subject_line=row.get("subject_line"),
+        from_or_to=row.get("from_or_to"),
+        external_ref=row.get("external_ref"),
+        age_seconds=age,
+        created_at=created_date,
+        decided_at=decided_date,
+        decided_by=row.get("decided_by"),
+        click_action=f"draft:{row['id']}",
+    )
+
+
+def morning_view(
+    project_id: str,
+    project_name: str,
+    *,
+    schedule: Schedule | None = None,
+    drop_dead_dates: list[DropDeadDate] | None = None,
+    overnight_events: list[Event] | None = None,
+    pending_drafts: list[dict] | None = None,
+    weather=None,                    # MorningWeatherPayload | None — caller-precomputed
+    voice_brief=None,                # MorningVoiceBriefPayload | None — caller-precomputed
+    action_items: list[str] | None = None,
+    today: date | None = None,
+    tz: str = "America/Chicago",
+    now: _datetime | None = None,
+    notification_ids_by_event: dict[str, str] | None = None,
+) -> MorningViewPayload:
+    """Project the morning view-model payload for Chad's coffee-cup landing.
+
+    Per docs/specs/morning-view-model.md.
+
+    Inputs (caller-supplied; this function does no I/O):
+      schedule              The active engine.Schedule for project_id.
+                            Used for today_on_site (phase-active items).
+                            None → today_on_site has no phase-active items.
+      drop_dead_dates       List of DropDeadDate for the project.
+                            Filtered to OVERDUE / ORDER NOW band only.
+      overnight_events      Events fired in the last ~14h, severity ≥ warning.
+                            Caller fetches via load_recent_events_for_project
+                            with the right time + severity filters.
+      pending_drafts        Raw rows from list_draft_actions_for_project
+                            (status='pending'). Most-recent-first.
+      weather               Pre-computed MorningWeatherPayload (NOAA fetch +
+                            weather_risk_check upstream of this call).
+      voice_brief           Pre-computed MorningVoiceBriefPayload (Sonnet
+                            call via chad_voice("narrator") upstream).
+      action_items          1–5 imperative items, composed in the same
+                            Sonnet call as voice_brief.
+
+    Empty-state behavior follows the spec (§ Section ordering):
+      - weather omitted entirely if None (renderer skips the section)
+      - voice_brief None → renderer handles fallback (synthesis didn't run)
+      - judgment_queue, today_on_site, todays_drop_deads always populated
+        (count=0 / items=[] is the empty state)
+      - overnight_events empty → renderer omits the section
+      - action_items empty → renderer handles fallback
+    """
+    if today is None:
+        today = date.today()
+    now = now or _datetime.now(_timezone.utc)
+    drop_dead_dates = drop_dead_dates or []
+    overnight_events = overnight_events or []
+    pending_drafts = pending_drafts or []
+    notification_ids_by_event = notification_ids_by_event or {}
+
+    # ── Section 3: Judgment queue ──────────────────────────────────────────
+    queue_items = [_draft_row_to_payload(r, now=now) for r in pending_drafts]
+    judgment_queue = MorningJudgmentQueuePayload(
+        count=len(queue_items),
+        items=queue_items,
+    )
+
+    # ── Section 4: Today on site ───────────────────────────────────────────
+    today_items: list[MorningTodayItemPayload] = []
+    if schedule is not None:
+        for p in schedule.phases:
+            if p.planned_start_date <= today <= p.planned_end_date:
+                day_n = (today - p.planned_start_date).days + 1
+                band, reason = _phase_active_urgency(p, today)
+                today_items.append(
+                    MorningTodayItemPayload(
+                        kind=DailyItemKind.PHASE_ACTIVE,
+                        phase_id=p.id,
+                        phase_name=p.name,
+                        day_n=day_n,
+                        of_total=p.duration_days,
+                        urgency_band=band,
+                        urgency_reason=reason,
+                        tap_action=f"phase:{p.id}",
+                    )
+                )
+    today_on_site = MorningTodayOnSitePayload(items=today_items)
+
+    # ── Section 5: Today's drop-deads (OVERDUE + ORDER NOW only) ──────────
+    drop_dead_items: list[MorningDropDeadItemPayload] = []
+    for dd in drop_dead_dates:
+        days_until = (dd.drop_dead_date - today).days
+        # OVERDUE = past, ORDER NOW = within next 3 days (heuristic V1)
+        if days_until > 3:
+            continue
+        drop_dead_items.append(
+            MorningDropDeadItemPayload(
+                material_category=dd.material_category,
+                install_phase_name=dd.install_phase_name,
+                install_date=dd.install_date,
+                drop_dead_date=dd.drop_dead_date,
+                lead_time_days=dd.lead_time_days,
+                urgency_band=_drop_dead_urgency_band(dd, today),
+                tap_action=f"drop-dead:{dd.material_category}",
+            )
+        )
+    todays_drop_deads = MorningDropDeadsPayload(items=drop_dead_items)
+
+    # ── Section 6: Overnight events ───────────────────────────────────────
+    sorted_events = sorted(overnight_events, key=lambda e: e.created_at, reverse=True)
+    overnight_items = [
+        _event_to_notification_payload(
+            e,
+            notification_id=notification_ids_by_event.get(e.id),
+            now=now,
+        )
+        for e in sorted_events
+    ]
+    overnight = MorningOvernightEventsPayload(items=overnight_items)
+
+    return MorningViewPayload(
+        project_id=project_id,
+        project_name=project_name,
+        generated_at=now,
+        as_of_local_date=today,
+        tz=tz,
+        weather=weather,
+        voice_brief=voice_brief,
+        judgment_queue=judgment_queue,
+        today_on_site=today_on_site,
+        todays_drop_deads=todays_drop_deads,
+        overnight_events=overnight,
+        action_items=action_items or [],
+    )
