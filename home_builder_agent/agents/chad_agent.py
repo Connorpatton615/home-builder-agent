@@ -80,23 +80,43 @@ preferences, and his judgment. You don't operate on Chad — you operate
 Your job each turn:
   1. Understand what Chad wants. Don't ask clarifying questions when
      reasonable inference works. Chad is busy.
-  2. Decide whether the turn needs retrieval (call ask_chad), action
-     (call dispatch_action), both, or neither.
+  2. Pick the right tool — see the tool selection guide below.
   3. Compose a response in Chad-voice prose. If you took an action,
      report it concretely. If you drafted something for Chad to send,
      say so and tell him where it is (Gmail Drafts, etc.).
   4. Suggest the obvious follow-up if there is one. Don't fabricate
      follow-ups when none is needed.
 
+Tool selection guide — pick the most specific tool, fall back to ask_chad:
+
+  Chad asks…                         Use…
+  ─────────────────────────────────  ──────────────────────────────
+  "what's pending in my queue?"      list_pending_drafts
+  "what does morning look like?"     read_morning_view
+  "what drop-deads are coming?"      list_drop_deads
+  "what's overdue?"                  list_drop_deads (bands=OVERDUE+ORDER NOW)
+  "what happened overnight?"         list_overnight_events
+  "what's left on Foundation?"       list_checklist_items_for_phase
+  "log a site note: rain pushed…"    log_site_note  (verbatim — no rephrasing)
+  "approve the Mason reply"          approve_draft_action  (after preview)
+  "log a $400 receipt for X"         dispatch_action
+  "create a CO for cabinet upgrade"  dispatch_action
+  "push framing two weeks"           dispatch_action
+  "what was framing's cost?"         ask_chad  (cross-cutting RAG)
+  "find emails about windows"        ask_chad
+
 Style rules:
   • Tight, operator prose. No hype, no AI hedging.
-  • If you don't know something and ask_chad won't tell you, say so plainly.
-  • Outbound communications (emails to clients/subs/vendors) are
-    drafted only — never auto-sent. Always tell Chad where the draft
-    landed and what to do next.
-  • The tools below are the only way to read truth or change state.
-    Don't invent project status, costs, or schedule data — call
-    ask_chad if you need it.
+  • If you don't know something and the tools won't tell you, say so plainly.
+  • Outbound communications drafted-only — never auto-sent until Chad
+    explicitly approves (approve_draft_action or sends from Gmail himself).
+  • Before approving anything, PREVIEW first via list_pending_drafts so
+    you can tell Chad what's about to be sent. Don't approve sight-unseen.
+  • The tools above are the only way to read truth or change state.
+    Don't invent project status, costs, or schedule data.
+  • When a tool returns "Postgres unavailable" or "table not present",
+    surface that to Chad plainly — don't hide infrastructure issues
+    behind Chad-voice fiction. He needs to know when the system is degraded.
 """
 
 
@@ -114,7 +134,11 @@ TOOLS = [
             "this whenever you need a fact you don't already have in context "
             "— current state, recent activity beyond the prompt window, "
             "files Chad referenced, etc. Returns a polished answer with "
-            "citations."
+            "citations. PREFER THE STRUCTURED TOOLS BELOW (list_pending_drafts, "
+            "read_morning_view, list_drop_deads, etc.) for their specific "
+            "domains — they're cheaper, faster, and more accurate. Fall back "
+            "to ask_chad only for cross-cutting questions or anything those "
+            "tools don't cover."
         ),
         "input_schema": {
             "type": "object",
@@ -135,12 +159,13 @@ TOOLS = [
         "name": "dispatch_action",
         "description": (
             "Take a state-changing action: log a receipt, update a phase, "
-            "create a change order, log a site entry, log an inspection, "
-            "log a lien waiver, etc. Delegates to hb-router which classifies "
-            "the NL command, dispatches the right specialist agent, and "
-            "writes the engine_activity audit row. Use this for anything "
-            "that should mutate Tracker / Cost Tracker / Drive / engine "
-            "state. Each call is logged."
+            "create a change order, log an inspection, log a lien waiver, "
+            "etc. Delegates to hb-router which classifies the NL command, "
+            "dispatches the right specialist agent, and writes the "
+            "engine_activity audit row. Use this for anything that should "
+            "mutate Tracker / Cost Tracker / Drive / engine state. Each "
+            "call is logged. PREFER log_site_note for site log entries and "
+            "approve_draft_action for queue approvals — they're more direct."
         ),
         "input_schema": {
             "type": "object",
@@ -164,6 +189,201 @@ TOOLS = [
                 },
             },
             "required": ["nl_command"],
+        },
+    },
+    {
+        "name": "list_pending_drafts",
+        "description": (
+            "List drafts pending Chad's review for a project — Gmail reply "
+            "drafts, change-order approvals to homeowners, weekly client "
+            "updates, supplier follow-ups. The judgment queue. Each row "
+            "includes the kind, the originating agent, a one-line summary, "
+            "the recipient, age, and the draft_action UUID Chad needs to "
+            "approve/edit/discard. Newest-first."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_id": {
+                    "type": "string",
+                    "description": "UUID of the project. Required.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max rows to return. Default 20.",
+                },
+            },
+            "required": ["project_id"],
+        },
+    },
+    {
+        "name": "read_morning_view",
+        "description": (
+            "Return today's morning view payload for a project — Chad's "
+            "coffee-cup landing surface. Includes the voice_brief paragraph, "
+            "weather + risk phases, judgment queue count, today on site, "
+            "today's drop-deads, overnight events, and the action items. "
+            "Reads from the launchd-pre-computed cache when fresh "
+            "(.morning_cache/<project_id>.json); returns clear staleness "
+            "warning when stale. Use this whenever Chad asks 'what's the "
+            "morning view' or 'what should I focus on today'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_id": {
+                    "type": "string",
+                    "description": "UUID of the project. Required.",
+                },
+            },
+            "required": ["project_id"],
+        },
+    },
+    {
+        "name": "list_drop_deads",
+        "description": (
+            "Return drop-dead order dates for a project's selections, "
+            "urgency-banded (OVERDUE / ORDER NOW / THIS WEEK / UPCOMING). "
+            "Use this whenever Chad asks 'what's coming up' or 'what's "
+            "overdue' or 'what selections need to land'. Each row includes "
+            "material category, install phase, install date, drop-dead "
+            "date, lead time, and the urgency band."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_id": {
+                    "type": "string",
+                    "description": "UUID of the project. Required.",
+                },
+                "bands": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Optional list of bands to include. Default: "
+                        "['OVERDUE', 'ORDER NOW', 'THIS WEEK', 'UPCOMING']. "
+                        "Pass ['OVERDUE', 'ORDER NOW'] for urgent-only."
+                    ),
+                },
+            },
+            "required": ["project_id"],
+        },
+    },
+    {
+        "name": "list_overnight_events",
+        "description": (
+            "Return recent Events for a project (or system-wide) at "
+            "severity ≥ warning. Use this whenever Chad asks 'what's "
+            "happened overnight' or 'what's the latest' or 'any events "
+            "I should know about'. Each row includes the type "
+            "(eta-change, weather-delay, supplier-email-detected, etc.), "
+            "severity, summary, age, and acknowledgement status."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_id": {
+                    "type": "string",
+                    "description": (
+                        "UUID of the project. Optional — omit for system-wide."
+                    ),
+                },
+                "since_hours": {
+                    "type": "integer",
+                    "description": "Lookback window in hours. Default 14.",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "list_checklist_items_for_phase",
+        "description": (
+            "Return the checklist for a specific phase on a project — "
+            "items grouped by category, with photo_required flags + "
+            "completion state. Use this whenever Chad asks about a phase's "
+            "gates, what's left to close, what photos are still needed, "
+            "or what the next step is on a particular phase."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_id": {
+                    "type": "string",
+                    "description": "UUID of the project. Required.",
+                },
+                "phase_name": {
+                    "type": "string",
+                    "description": (
+                        "Phase name (case-insensitive substring OK). "
+                        "Examples: 'foundation', 'framing', 'precon'."
+                    ),
+                },
+            },
+            "required": ["project_id", "phase_name"],
+        },
+    },
+    {
+        "name": "log_site_note",
+        "description": (
+            "Append a verbatim site log entry to a project's Drive site log. "
+            "Append-only legal record — Chad's words preserved exactly, no "
+            "AI rephrasing. Routes through hb-router so the engine_activity "
+            "audit row gets written. Use this whenever Chad says 'log a "
+            "site note', 'add to the site log', or otherwise wants a "
+            "verbatim entry recorded for the day."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string",
+                    "description": (
+                        "The site log entry text — verbatim, Chad's words. "
+                        "Don't rephrase or summarize."
+                    ),
+                },
+                "project_id": {
+                    "type": "string",
+                    "description": (
+                        "Optional UUID. Omit if Chad named the project in "
+                        "context — hb-router resolves from text."
+                    ),
+                },
+            },
+            "required": ["text"],
+        },
+    },
+    {
+        "name": "approve_draft_action",
+        "description": (
+            "Approve a pending draft (Gmail reply, CO approval, weekly "
+            "client update, vendor follow-up). Flips the draft_action row "
+            "to 'approved' and fires the per-kind confirm hook (e.g. send "
+            "the Gmail draft for gmail-reply-draft kind). Use this when "
+            "Chad explicitly says 'approve [draft]', 'send the Mason "
+            "reply', etc. PREVIEW first via list_pending_drafts so you "
+            "tell Chad what's about to be sent before doing it."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "draft_action_id": {
+                    "type": "string",
+                    "description": (
+                        "UUID of the draft_action row. Get this from "
+                        "list_pending_drafts."
+                    ),
+                },
+                "decision_notes": {
+                    "type": "string",
+                    "description": (
+                        "Optional Chad-supplied note about the decision "
+                        "(e.g., 'changed gate code from 4421 to 4435')."
+                    ),
+                },
+            },
+            "required": ["draft_action_id"],
         },
     },
 ]
@@ -230,6 +450,488 @@ def _tool_dispatch_action(
     if dry_run:
         parts.insert(0, "(dry-run — not actually dispatched)")
     return "\n".join(parts), cost
+
+
+# ---------------------------------------------------------------------------
+# Structured read tools (lower latency + cost than ask_chad for these domains)
+# ---------------------------------------------------------------------------
+
+# All return tuple[str, float] — (text_for_claude, cost_usd). Cost is 0.0 for
+# DB-backed reads (no Claude calls). All catch exceptions defensively and
+# return a clear error string rather than raising — Opus surfaces the error
+# in its next turn rather than the tool loop crashing.
+
+
+def _tool_list_pending_drafts(
+    project_id: str,
+    limit: int | None = None,
+) -> tuple[str, float]:
+    """List pending draft_actions for a project (judgment queue)."""
+    if not project_id:
+        return "list_pending_drafts requires a project_id (UUID).", 0.0
+    try:
+        from home_builder_agent.scheduling.store_postgres import (
+            list_draft_actions_for_project,
+        )
+        rows = list_draft_actions_for_project(
+            project_id=project_id,
+            limit=limit or 20,
+        )
+    except Exception as e:
+        msg = str(e).lower()
+        if "does not exist" in msg and "draft_action" in msg:
+            return (
+                "Judgment queue empty: home_builder.draft_action table not yet "
+                "applied to this database (migration 007). Drafting agents are "
+                "still running but the queue isn't persisted yet.",
+                0.0,
+            )
+        return f"list_pending_drafts failed: {type(e).__name__}: {e}", 0.0
+
+    if not rows:
+        return f"No pending drafts for project {project_id[:8]}…  (inbox is clear).", 0.0
+
+    lines = [f"{len(rows)} pending drafts for project {project_id[:8]}… (newest first):"]
+    for r in rows:
+        age = ""
+        try:
+            from datetime import datetime, timezone
+            now = datetime.now(timezone.utc)
+            ca = r.get("created_at")
+            if ca:
+                hrs = max(1, int((now - ca).total_seconds() // 3600))
+                age = f" ({hrs}h ago)"
+        except Exception:
+            pass
+        agent = r.get("originating_agent", "?")
+        kind = r.get("kind", "?")
+        summary = (r.get("summary") or "")[:140]
+        recipient = r.get("from_or_to") or ""
+        lines.append(
+            f"  • [{kind}] {summary}{age}\n"
+            f"    drafted by {agent}{' · ' + recipient if recipient else ''}\n"
+            f"    draft_action_id: {r['id']}"
+        )
+    return "\n".join(lines), 0.0
+
+
+def _tool_read_morning_view(project_id: str) -> tuple[str, float]:
+    """Return today's morning view payload (cache-or-empty, no synthesis)."""
+    if not project_id:
+        return "read_morning_view requires a project_id (UUID).", 0.0
+
+    import os
+    cache_path = os.path.normpath(
+        os.path.join(
+            os.path.dirname(__file__), "..", "..", ".morning_cache",
+            f"{project_id}.json",
+        )
+    )
+    if not os.path.exists(cache_path):
+        return (
+            f"No morning-view cache for project {project_id[:8]}…\n"
+            f"Expected at: {cache_path}\n"
+            "The 6:05 AM launchd job (com.chadhomes.morning-view) hasn't "
+            "produced a cache for this project yet. To force a fresh "
+            "compute, dispatch_action with 'compute morning view for "
+            f"<project>' or run hb-morning <project> --cache from terminal.",
+            0.0,
+        )
+
+    try:
+        with open(cache_path) as f:
+            payload = json.load(f)
+        cache_mtime = os.path.getmtime(cache_path)
+        from datetime import datetime, timezone
+        age_hours = max(0, int((datetime.now().timestamp() - cache_mtime) // 3600))
+    except Exception as e:
+        return f"read_morning_view failed reading cache: {type(e).__name__}: {e}", 0.0
+
+    project_name = payload.get("project_name", "?")
+    as_of = payload.get("as_of_local_date", "?")
+
+    lines = [f"Morning view for {project_name} (as_of={as_of}, cache age {age_hours}h):"]
+    if age_hours > 24:
+        lines.append(
+            "  ⚠️  STALE: cache is older than 24h — voice_brief and action_items "
+            "may not reflect today's reality. Surface the staleness to Chad."
+        )
+
+    weather = payload.get("weather")
+    if weather:
+        lines.append(f"\n  Weather:")
+        lines.append(f"    Today:    {weather.get('summary_today', '?')}")
+        if weather.get("summary_tomorrow"):
+            lines.append(f"    Tomorrow: {weather['summary_tomorrow']}")
+        for r in weather.get("risk_phases", []):
+            lines.append(
+                f"    ⚠️  {r.get('phase_name','?')}: {r.get('detail','')} "
+                f"(severity={r.get('severity','?')})"
+            )
+
+    vb = payload.get("voice_brief")
+    if vb and vb.get("text"):
+        lines.append(f"\n  Voice brief:")
+        lines.append(f"    {vb['text']}")
+
+    queue = payload.get("judgment_queue", {})
+    lines.append(f"\n  Judgment queue: {queue.get('count', 0)} pending")
+    for it in (queue.get("items") or [])[:10]:
+        lines.append(
+            f"    • [{it.get('kind','?')}] {(it.get('summary') or '')[:100]} "
+            f"(by {it.get('originating_agent','?')})"
+        )
+
+    today = payload.get("today_on_site", {})
+    site_items = today.get("items") or []
+    if site_items:
+        lines.append(f"\n  Today on site ({len(site_items)}):")
+        for it in site_items:
+            chip = ""
+            if it.get("urgency_band") and it.get("urgency_band") != "calm":
+                chip = f" [{it['urgency_band'].upper()}]"
+            reason = f" — {it['urgency_reason']}" if it.get("urgency_reason") else ""
+            label = it.get("phase_name") or it.get("material_category") or it.get("kind", "?")
+            lines.append(f"    • {label}{chip}{reason}")
+
+    drop_deads = (payload.get("todays_drop_deads") or {}).get("items") or []
+    if drop_deads:
+        lines.append(f"\n  Today's drop-deads ({len(drop_deads)}):")
+        for it in drop_deads:
+            lines.append(
+                f"    🚨 {it.get('material_category','?')} "
+                f"({it.get('install_phase_name','?')}) — "
+                f"drop-dead {it.get('drop_dead_date','?')}, "
+                f"{it.get('lead_time_days','?')}d lead"
+            )
+
+    overnight = (payload.get("overnight_events") or {}).get("items") or []
+    if overnight:
+        lines.append(f"\n  Overnight events ({len(overnight)}):")
+        for it in overnight[:6]:
+            lines.append(
+                f"    [{it.get('severity','?')}] {(it.get('summary') or '')[:120]}"
+            )
+
+    actions = payload.get("action_items") or []
+    if actions:
+        lines.append(f"\n  Action items ({len(actions)}):")
+        for i, a in enumerate(actions, 1):
+            lines.append(f"    {i}. {a}")
+
+    return "\n".join(lines), 0.0
+
+
+def _tool_list_drop_deads(
+    project_id: str,
+    bands: list[str] | None = None,
+) -> tuple[str, float]:
+    """Drop-dead order dates with urgency bands."""
+    if not project_id:
+        return "list_drop_deads requires a project_id (UUID).", 0.0
+    if bands is None:
+        bands = ["OVERDUE", "ORDER NOW", "THIS WEEK", "UPCOMING"]
+    bands_upper = {b.upper().strip() for b in bands}
+
+    try:
+        from home_builder_agent.scheduling.store_postgres import (
+            compose_schedule_from_db,
+        )
+        from home_builder_agent.scheduling.lead_times import compute_drop_dead_dates
+        schedule = compose_schedule_from_db(project_id)
+    except Exception as e:
+        return f"list_drop_deads failed loading schedule: {type(e).__name__}: {e}", 0.0
+    if schedule is None:
+        return f"No schedule found for project {project_id[:8]}…  (run hb-bridge?).", 0.0
+
+    drop_deads = compute_drop_dead_dates(schedule)
+    if not drop_deads:
+        return f"No drop-dead dates computed for {schedule.project_name} (no selections wired).", 0.0
+
+    from datetime import date as _date
+    today = _date.today()
+
+    def _band(dd) -> str:
+        days = (dd.drop_dead_date - today).days
+        if days <= 0:
+            return "OVERDUE" if days < 0 else "ORDER NOW"
+        if days <= 3:
+            return "ORDER NOW"
+        if days <= 7:
+            return "THIS WEEK"
+        if days <= 30:
+            return "UPCOMING"
+        return "FUTURE"
+
+    filtered = [(dd, _band(dd)) for dd in drop_deads]
+    filtered = [(dd, b) for dd, b in filtered if b in bands_upper]
+    filtered.sort(key=lambda x: x[0].drop_dead_date)
+
+    if not filtered:
+        return (
+            f"No drop-deads for {schedule.project_name} in bands "
+            f"{sorted(bands_upper)}. (Total drop-deads: {len(drop_deads)} — "
+            "all in non-matching bands.)",
+            0.0,
+        )
+
+    lines = [
+        f"{len(filtered)} drop-deads for {schedule.project_name} "
+        f"(bands: {sorted(bands_upper)}):"
+    ]
+    for dd, band in filtered:
+        days = (dd.drop_dead_date - today).days
+        when = "TODAY" if days == 0 else (f"in {days}d" if days > 0 else f"{abs(days)}d OVERDUE")
+        lines.append(
+            f"  [{band}] {dd.material_category} ({dd.install_phase_name}) — "
+            f"drop-dead {dd.drop_dead_date} ({when}, {dd.lead_time_days}d lead, "
+            f"install {dd.install_date})"
+        )
+    return "\n".join(lines), 0.0
+
+
+def _tool_list_overnight_events(
+    project_id: str | None = None,
+    since_hours: int | None = None,
+) -> tuple[str, float]:
+    """Recent Events at severity ≥ warning."""
+    since_hours = since_hours or 14
+    try:
+        from home_builder_agent.scheduling.store_postgres import (
+            load_recent_events_for_project,
+        )
+        events = load_recent_events_for_project(
+            project_id=project_id,
+            since_hours=since_hours,
+            limit=30,
+        )
+    except Exception as e:
+        return f"list_overnight_events failed: {type(e).__name__}: {e}", 0.0
+
+    filtered = [
+        e for e in events
+        if (getattr(e, "severity", "info") or "info") in ("warning", "critical", "blocking")
+    ]
+
+    if not filtered:
+        scope = f"project {project_id[:8]}…" if project_id else "all projects"
+        return (
+            f"No events at severity ≥ warning in the last {since_hours}h "
+            f"for {scope}. Quiet overnight.",
+            0.0,
+        )
+
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    scope = f"project {project_id[:8]}…" if project_id else "all projects"
+    lines = [f"{len(filtered)} events (last {since_hours}h, severity≥warning, {scope}):"]
+    for e in filtered:
+        try:
+            hrs = max(1, int((now - e.created_at).total_seconds() // 3600))
+        except Exception:
+            hrs = "?"
+        lines.append(
+            f"  [{e.severity}] {e.summary()[:140]}  "
+            f"({hrs}h ago, type={e.type}, status={e.status})"
+        )
+    return "\n".join(lines), 0.0
+
+
+def _tool_list_checklist_items_for_phase(
+    project_id: str,
+    phase_name: str,
+) -> tuple[str, float]:
+    """Return checklist items for a phase, grouped by category."""
+    if not project_id or not phase_name:
+        return "list_checklist_items_for_phase requires project_id + phase_name.", 0.0
+
+    try:
+        from home_builder_agent.scheduling.store_postgres import (
+            load_checklists_for_project,
+        )
+        checklists = load_checklists_for_project(project_id)
+    except Exception as e:
+        return f"list_checklist_items_for_phase failed: {type(e).__name__}: {e}", 0.0
+
+    # Match by phase name in the checklist's id (which encodes phase) or
+    # via instantiate_checklist as a fallback if no DB row exists yet.
+    needle = phase_name.lower().strip()
+    matched = None
+    for cl in checklists:
+        # checklist ids look like "{project_id}:{phase_id}:checklist"
+        # Try matching on a phase-name attribute if exposed; fall back to substring.
+        cl_phase = getattr(cl, "phase_name", "") or ""
+        if needle in cl_phase.lower():
+            matched = cl
+            break
+
+    if matched is None:
+        # Fall back to in-memory template instantiation so we can still answer
+        # "what does the Foundation checklist look like?" before any phase is
+        # actually instantiated for this project.
+        from home_builder_agent.scheduling.checklists import instantiate_checklist
+        matched = instantiate_checklist(
+            phase_id=f"preview-{needle}",
+            phase_name=phase_name,
+        )
+        if matched.total_count == 0:
+            return (
+                f"No checklist found for phase {phase_name!r} on project "
+                f"{project_id[:8]}…  (and no template file matched). Phase "
+                "name may be misspelled or the phase has no template.",
+                0.0,
+            )
+        prefix_note = (
+            f"(Showing TEMPLATE for {phase_name} — no instantiated checklist "
+            f"on this project yet.)\n"
+        )
+    else:
+        prefix_note = ""
+
+    by_cat: dict[str, list] = {}
+    for it in matched.items:
+        by_cat.setdefault(it.category, []).append(it)
+
+    photo_total = sum(1 for it in matched.items if it.photo_required)
+    lines = [
+        prefix_note +
+        f"{phase_name} checklist: {matched.completed_count}/{matched.total_count} complete · "
+        f"📷 {photo_total} photo-required · status={matched.status}"
+    ]
+    for cat, items in by_cat.items():
+        cat_done = sum(1 for it in items if it.is_complete)
+        cat_photo = sum(1 for it in items if it.photo_required)
+        lines.append(f"\n  {cat} ({cat_done}/{len(items)} done, {cat_photo}📷)")
+        for it in items[:25]:
+            tick = "☑" if it.is_complete else "☐"
+            cam = "📷" if it.photo_required else "  "
+            lines.append(f"    {tick} {cam} {it.label[:90]}")
+    return "\n".join(lines), 0.0
+
+
+# ---------------------------------------------------------------------------
+# Structured write tools — preserve audit trail discipline
+# ---------------------------------------------------------------------------
+
+
+def _tool_log_site_note(
+    text: str,
+    project_id: str | None = None,
+    dry_run: bool = False,
+) -> tuple[str, float]:
+    """Append a verbatim site log entry. Routes through hb-router so the
+    engine_activity audit row gets written (Rule 3)."""
+    if not text or not text.strip():
+        return "log_site_note requires text — Chad's verbatim words.", 0.0
+    nl_command = f"log: {text.strip()}"
+    return _tool_dispatch_action(
+        nl_command=nl_command,
+        project_id=project_id,
+        dry_run=dry_run,
+    )
+
+
+def _tool_approve_draft_action(
+    draft_action_id: str,
+    decision_notes: str | None = None,
+) -> tuple[str, float]:
+    """Flip a draft_action to 'approved' + fire the per-kind confirm hook.
+
+    Direct adapter call (does NOT go through hb-router) — matches the iOS
+    UserAction → reconcile pattern. The per-kind hook is the load-bearing
+    side effect (e.g., gmail.send_draft for gmail-reply-draft kind). Hook
+    failures are caught and surfaced; status flip stays applied (matches
+    reconcile.py:_dispatch_draft_action_approve semantics).
+    """
+    if not draft_action_id:
+        return "approve_draft_action requires draft_action_id.", 0.0
+
+    try:
+        from home_builder_agent.scheduling.draft_actions import DraftStatus
+        from home_builder_agent.scheduling.store_postgres import (
+            load_draft_action_by_id,
+            update_draft_action_status,
+        )
+        from home_builder_agent.scheduling.reconcile import DRAFT_CONFIRM_HOOKS
+    except Exception as e:
+        return f"approve_draft_action failed (import): {type(e).__name__}: {e}", 0.0
+
+    try:
+        draft_row = load_draft_action_by_id(draft_action_id)
+    except Exception as e:
+        msg = str(e).lower()
+        if "does not exist" in msg and "draft_action" in msg:
+            return (
+                "Cannot approve: home_builder.draft_action table not present "
+                "(migration 007 pending in this DB).",
+                0.0,
+            )
+        return f"approve_draft_action failed reading row: {type(e).__name__}: {e}", 0.0
+
+    if draft_row is None:
+        return f"Draft {draft_action_id[:8]}…  not found.", 0.0
+
+    if draft_row.get("status") != "pending":
+        return (
+            f"Draft {draft_action_id[:8]}…  is already in state "
+            f"{draft_row.get('status')!r}; cannot approve. Pull the queue "
+            "again with list_pending_drafts to see what's actually pending.",
+            0.0,
+        )
+
+    try:
+        ok = update_draft_action_status(
+            draft_action_id=draft_action_id,
+            new_status=DraftStatus.APPROVED,
+            decision_notes=decision_notes,
+        )
+    except Exception as e:
+        return f"approve_draft_action failed updating status: {type(e).__name__}: {e}", 0.0
+
+    if not ok:
+        return (
+            f"Draft {draft_action_id[:8]}…  status flip rejected (race? "
+            "row may have been decided in another tab).",
+            0.0,
+        )
+
+    # Fire per-kind confirm hook. Best-effort — status is already approved.
+    kind = draft_row.get("kind", "?")
+    hook = DRAFT_CONFIRM_HOOKS.get(kind)
+    hook_note = ""
+    if hook is None:
+        hook_note = (
+            f" (kind={kind!r}: no confirm hook registered yet — manual send "
+            "required; the underlying Gmail draft is still in Drafts)"
+        )
+    else:
+        try:
+            # Fabricate the action shape the hook expects (matches the
+            # reconcile dispatcher's interface).
+            fake_action = {
+                "id": "hb-chad-direct-approve",
+                "actor_user_id": None,
+                "target_entity_type": "draft-action",
+                "target_entity_id": draft_action_id,
+                "payload": {"decision_notes": decision_notes},
+                "synced_at": None,
+            }
+            hook(fake_action, draft_row, None)
+            hook_note = f" (kind={kind!r} confirm hook fired)"
+        except Exception as e:
+            hook_note = (
+                f" — confirm hook failed: {type(e).__name__}: {e} "
+                "(status is approved; manual recovery may be needed)"
+            )
+
+    summary = (draft_row.get("summary") or "")[:100]
+    return (
+        f"Approved draft_action {draft_action_id[:8]}…\n"
+        f"  kind: {kind}\n"
+        f"  summary: {summary}\n"
+        f"  result:{hook_note}",
+        0.0,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -313,6 +1015,51 @@ def chad_turn(user_input: str, *, dry_run: bool = False, verbose: bool = False) 
                 )
                 if not dry_run:
                     actions_taken.append(inputs.get("nl_command", ""))
+            elif name == "list_pending_drafts":
+                output, cost = _tool_list_pending_drafts(
+                    inputs.get("project_id", ""),
+                    inputs.get("limit"),
+                )
+            elif name == "read_morning_view":
+                output, cost = _tool_read_morning_view(inputs.get("project_id", ""))
+            elif name == "list_drop_deads":
+                output, cost = _tool_list_drop_deads(
+                    inputs.get("project_id", ""),
+                    inputs.get("bands"),
+                )
+            elif name == "list_overnight_events":
+                output, cost = _tool_list_overnight_events(
+                    inputs.get("project_id"),
+                    inputs.get("since_hours"),
+                )
+            elif name == "list_checklist_items_for_phase":
+                output, cost = _tool_list_checklist_items_for_phase(
+                    inputs.get("project_id", ""),
+                    inputs.get("phase_name", ""),
+                )
+            elif name == "log_site_note":
+                output, cost = _tool_log_site_note(
+                    inputs.get("text", ""),
+                    inputs.get("project_id"),
+                    dry_run=dry_run,
+                )
+                if not dry_run:
+                    actions_taken.append(f"site-log: {inputs.get('text', '')[:80]}")
+            elif name == "approve_draft_action":
+                if dry_run:
+                    output = (
+                        "(dry-run) Would approve draft "
+                        f"{inputs.get('draft_action_id', '')[:8]}…  + fire confirm hook"
+                    )
+                    cost = 0.0
+                else:
+                    output, cost = _tool_approve_draft_action(
+                        inputs.get("draft_action_id", ""),
+                        inputs.get("decision_notes"),
+                    )
+                    actions_taken.append(
+                        f"approved draft {inputs.get('draft_action_id', '')[:8]}…"
+                    )
             else:
                 output = f"Unknown tool: {name}"
                 cost = 0.0
@@ -538,6 +1285,47 @@ def chad_turn_stream(
                             dry_run=False,
                         )
                         actions_taken.append(inputs.get("nl_command", ""))
+                    elif block.name == "list_pending_drafts":
+                        output, cost = _tool_list_pending_drafts(
+                            inputs.get("project_id", ""),
+                            inputs.get("limit"),
+                        )
+                    elif block.name == "read_morning_view":
+                        output, cost = _tool_read_morning_view(
+                            inputs.get("project_id", "")
+                        )
+                    elif block.name == "list_drop_deads":
+                        output, cost = _tool_list_drop_deads(
+                            inputs.get("project_id", ""),
+                            inputs.get("bands"),
+                        )
+                    elif block.name == "list_overnight_events":
+                        output, cost = _tool_list_overnight_events(
+                            inputs.get("project_id"),
+                            inputs.get("since_hours"),
+                        )
+                    elif block.name == "list_checklist_items_for_phase":
+                        output, cost = _tool_list_checklist_items_for_phase(
+                            inputs.get("project_id", ""),
+                            inputs.get("phase_name", ""),
+                        )
+                    elif block.name == "log_site_note":
+                        output, cost = _tool_log_site_note(
+                            inputs.get("text", ""),
+                            inputs.get("project_id"),
+                            dry_run=False,  # iOS user — real action
+                        )
+                        actions_taken.append(
+                            f"site-log: {inputs.get('text', '')[:80]}"
+                        )
+                    elif block.name == "approve_draft_action":
+                        output, cost = _tool_approve_draft_action(
+                            inputs.get("draft_action_id", ""),
+                            inputs.get("decision_notes"),
+                        )
+                        actions_taken.append(
+                            f"approved draft {inputs.get('draft_action_id', '')[:8]}…"
+                        )
                     else:
                         output = f"Unknown tool: {block.name}"
                         cost = 0.0
