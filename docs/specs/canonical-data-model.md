@@ -440,6 +440,32 @@ The watcher owns the inbound Event stream from supplier emails. The engine owns 
 
 **Ownership classification.** Engine-owned (multiple emitters, single owner of the canonical record).
 
+### 18. DraftAction
+
+**Purpose.** A piece of work an agent has prepared and is holding for Chad's confirmation — drafted email replies, change-order approvals, weekly client updates, lien-waiver follow-ups, vendor confirmations, inspection scheduling requests. The judgment-queue substrate. One row per pending decision; the morning view-model's `judgment_queue` section reads from this table. Spec: [`morning-view-model.md`](morning-view-model.md).
+
+**Core fields.**
+- `id`
+- `project_id` (NOT NULL — every draft is anchored to a project)
+- `kind` (`gmail-reply-draft` / `change-order-approval` / `lien-waiver-followup` / `client-update-email` / `vendor-eta-confirmation` / `inspection-scheduling-request`)
+- `status` (`pending` / `approved` / `edited-then-approved` / `discarded`)
+- `originating_agent` (which CLI/agent produced the draft — `hb-inbox`, `hb-change`, etc.)
+- `subject_line` (nullable — email subject / CO title / etc.)
+- `summary` (one-line preview for the queue card)
+- `body_payload` (JSONB — per-kind structured body)
+- `external_ref` (nullable — pointer back to the agent's existing artifact: Gmail draft id, Drive doc id, etc.)
+- `from_or_to` (nullable — "From: vendor@…" / "To: homeowner@…")
+- `decided_at`, `decided_by`, `decision_notes`
+- `created_at`, `updated_at`
+
+**Relationships.** → Project (cascade). The `external_ref` points at out-of-engine artifacts (Gmail, Drive) — not modeled as FKs.
+
+**Lifecycle.** Drafting agents insert with status=`pending`. Chad's tap-to-approve / edit / discard emits a UserAction (`draft-action-approve` / `draft-action-edit` / `draft-action-discard`); the reconcile pass routes it to the originating-agent's confirm path (e.g. `gmail.send` via `external_ref`), updates `status` + `decided_at` + `decided_by`, and the row is preserved for audit. The active queue is the `WHERE status = 'pending'` slice.
+
+**Ownership classification.** Engine-owned (one canonical store; many drafting-agent emitters). Drafting agents emit by calling into `store_postgres.insert_draft_action()` — they do not maintain a parallel queue. Renderers never write to this table directly; mutations flow through UserAction.
+
+**Why this is its own entity, not a piggyback on Event.** Events are *what happened* (severity-driven, ack/resolve lifecycle, multi-channel delivery). DraftActions are *what an agent has prepared* (status-driven, confirm/edit/discard lifecycle, single delivery — Chad's review). They share the "engine-owned, one store, many emitters" rule but have different lifecycles, query patterns, and audit needs. Folding them would muddy both.
+
 ---
 
 ## State ownership boundaries

@@ -369,6 +369,64 @@ class NotificationFeedViewPayload(_Base):
 
 
 # ---------------------------------------------------------------------------
+# DraftAction wire format (entity 18 — Chad's judgment queue)
+# ---------------------------------------------------------------------------
+# Mirrors home_builder.draft_action from migration 007. Read by the
+# morning view-model's judgment_queue section. The Pydantic model is
+# the wire-format projection; the engine-side dataclass lives in
+# scheduling/draft_actions.py.
+# ---------------------------------------------------------------------------
+
+
+class DraftKind(str, Enum):
+    """V1 judgment-queue vocabulary. Per morning-view-model.md § DraftKind."""
+
+    GMAIL_REPLY_DRAFT = "gmail-reply-draft"
+    CHANGE_ORDER_APPROVAL = "change-order-approval"
+    LIEN_WAIVER_FOLLOWUP = "lien-waiver-followup"
+    CLIENT_UPDATE_EMAIL = "client-update-email"
+    VENDOR_ETA_CONFIRMATION = "vendor-eta-confirmation"
+    INSPECTION_SCHEDULING_REQUEST = "inspection-scheduling-request"
+
+
+class DraftStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    EDITED_THEN_APPROVED = "edited-then-approved"
+    DISCARDED = "discarded"
+
+
+class DraftActionPayload(_Base):
+    """One judgment-queue item on the wire.
+
+    Mirrors canonical-data-model.md § entity 18. Renderer reads this
+    array out of the morning view's `judgment_queue.items` field;
+    Chad's tap-to-approve / edit / discard emits a UserAction targeting
+    the `draft_action_id`.
+    """
+
+    draft_action_id: str
+    project_id: str
+    kind: DraftKind
+    status: DraftStatus
+    originating_agent: str = Field(description="Which agent produced the draft (e.g. 'hb-inbox')")
+    summary: str = Field(description="One-line preview for the queue card")
+    subject_line: str | None = None
+    from_or_to: str | None = Field(default=None, description="'From: …' or 'To: …' chip for the card")
+    external_ref: str | None = Field(default=None, description="Pointer to underlying artifact (Gmail draft id, Drive doc id)")
+    age_seconds: int = Field(ge=0)
+    created_at: _date
+
+    decided_at: _date | None = None
+    decided_by: str | None = None
+
+    approve_action: str | None = Field(default="draft-action-approve", description="UserAction emit target")
+    edit_action: str | None = Field(default="draft-action-edit", description="UserAction emit target")
+    discard_action: str | None = Field(default="draft-action-discard", description="UserAction emit target")
+    click_action: str | None = Field(default=None, description="Deep-link to the inline edit surface")
+
+
+# ---------------------------------------------------------------------------
 # Convenience: union for response typing
 # ---------------------------------------------------------------------------
 

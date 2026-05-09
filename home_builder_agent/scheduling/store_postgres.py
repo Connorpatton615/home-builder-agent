@@ -40,6 +40,10 @@ from home_builder_agent.scheduling.checklists import (
     STUB_TEMPLATE_VERSION,
     load_template,
 )
+from home_builder_agent.scheduling.draft_actions import (
+    DraftAction,
+    DraftStatus,
+)
 from home_builder_agent.scheduling.events import (
     Event,
     EventStatus,
@@ -1053,6 +1057,151 @@ def resolve_event(
             cur.execute(sql, params)
             return cur.rowcount > 0
     with connection(application_name="hb-engine-event-resolve") as c:
+        with c.cursor() as cur:
+            cur.execute(sql, params)
+            return cur.rowcount > 0
+
+
+# ---------------------------------------------------------------------------
+# DraftAction read/write — entity 18, Chad's judgment queue
+# ---------------------------------------------------------------------------
+# Per migration_007_draft_action.sql + canonical-data-model.md § 18.
+#
+# Drafting agents (gmail_followup, change_order_agent, client_update_agent,
+# lien_waiver_agent, supplier_email_watcher) call insert_draft_action
+# alongside their existing artifact write (Gmail draft, Drive doc).
+# Renderer reads via list_draft_actions_for_project to populate the
+# morning view's judgment_queue section. Chad's tap-to-approve / edit /
+# discard emits a UserAction; the reconcile pass resolves it via
+# update_draft_action_status.
+
+def insert_draft_action(
+    draft: DraftAction,
+    *,
+    conn: psycopg.Connection | None = None,
+) -> str:
+    """Persist a DraftAction. Returns the row's UUID (string).
+
+    The DraftAction must already have a generated id, project_id, kind,
+    status, originating_agent, summary, and created_at — typically built
+    via draft_actions.make_draft_action(). body_payload is serialized as
+    JSONB; per-kind shape contract is the agent's responsibility.
+    """
+    sql = """
+        INSERT INTO home_builder.draft_action (
+            id, project_id, kind, status,
+            originating_agent, subject_line, summary,
+            body_payload, external_ref, from_or_to,
+            created_at
+        )
+        VALUES (
+            %s::uuid, %s::uuid, %s, %s,
+            %s, %s, %s,
+            %s::jsonb, %s, %s,
+            %s
+        )
+        RETURNING id::text AS id
+    """
+    params = (
+        draft.id,
+        draft.project_id,
+        draft.kind,
+        draft.status,
+        draft.originating_agent,
+        draft.subject_line,
+        draft.summary,
+        _json.dumps(draft.body_payload or {}),
+        draft.external_ref,
+        draft.from_or_to,
+        draft.created_at,
+    )
+
+    if conn is not None:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            return cur.fetchone()["id"]
+
+    with connection(application_name="hb-engine-draft-write") as c:
+        with c.cursor() as cur:
+            cur.execute(sql, params)
+            return cur.fetchone()["id"]
+
+
+def list_draft_actions_for_project(
+    project_id: str,
+    *,
+    status_in: tuple[str, ...] = (DraftStatus.PENDING.value,),
+    limit: int = 50,
+    conn: psycopg.Connection | None = None,
+) -> list[dict]:
+    """Load DraftAction rows for a project, newest-first.
+
+    Default filter is `status = 'pending'` — the active queue. Pass a
+    wider tuple to include decided rows for audit / history surfaces.
+    Returns raw dict rows (not DraftAction dataclasses) so callers can
+    project to wire format directly without an extra hop.
+    """
+    sql = """
+        SELECT
+            id::text                     AS id,
+            project_id::text             AS project_id,
+            kind,
+            status,
+            originating_agent,
+            subject_line,
+            summary,
+            body_payload,
+            external_ref,
+            from_or_to,
+            created_at,
+            decided_at,
+            decided_by::text             AS decided_by,
+            decision_notes
+        FROM home_builder.draft_action
+        WHERE project_id = %s::uuid
+          AND status = ANY(%s)
+        ORDER BY created_at DESC
+        LIMIT %s
+    """
+    params = (project_id, list(status_in), limit)
+    return _query_many(sql, params, conn=conn)
+
+
+def update_draft_action_status(
+    draft_action_id: str,
+    *,
+    new_status: DraftStatus | str,
+    decided_by: str | None = None,
+    decision_notes: str | None = None,
+    conn: psycopg.Connection | None = None,
+) -> bool:
+    """Transition a DraftAction's status. Returns True if a row was
+    updated, False if the row doesn't exist or is already in a terminal
+    state (anything other than 'pending').
+
+    Stamps decided_at = NOW() and decided_by from the actor if provided.
+    Used by the reconcile pass when handling
+    draft-action-approve / draft-action-edit / draft-action-discard
+    UserActions emitted by Chad's renderer taps.
+    """
+    status_str = (
+        new_status.value if isinstance(new_status, DraftStatus) else new_status
+    )
+    sql = """
+        UPDATE home_builder.draft_action
+        SET status = %s,
+            decided_at = NOW(),
+            decided_by = COALESCE(%s::uuid, decided_by),
+            decision_notes = COALESCE(%s, decision_notes)
+        WHERE id = %s::uuid
+          AND status = 'pending'
+    """
+    params = (status_str, decided_by, decision_notes, draft_action_id)
+    if conn is not None:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            return cur.rowcount > 0
+    with connection(application_name="hb-engine-draft-decide") as c:
         with c.cursor() as cur:
             cur.execute(sql, params)
             return cur.rowcount > 0
