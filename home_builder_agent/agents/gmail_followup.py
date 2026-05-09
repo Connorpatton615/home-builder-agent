@@ -1,25 +1,34 @@
 """gmail_followup.py — Gmail Follow-Up Checklist agent.
 
 Reads recent Gmail threads, classifies via Claude Haiku, generates a
-Chad-voice action checklist via Claude Sonnet.
+Chad-voice action checklist via Claude Sonnet, AND now drafts
+individual reply emails for HIGH-urgency threads.
 
 Pipeline:
   1. Auth + list inbox threads (configurable lookback)
   2. Pull metadata + snippet for each
   3. Haiku classifies: needs-follow-up? urgency?
-  4. Sonnet writes the consolidated checklist (with Chad communication rules)
-  5. Print to stdout, optionally upload as a Google Doc
+  4. For HIGH-urgency threads where Chad wasn't last sender: Sonnet
+     drafts a reply in Chad's voice → gmail.create_draft → log to
+     home_builder.draft_action so the morning view's judgment_queue
+     surfaces it. (NEW — see step 4 below.)
+  5. Sonnet writes the consolidated checklist (with Chad communication rules)
+  6. Print to stdout, optionally upload as a Google Doc
 
-Cost: ~$0.05–0.10 for a typical 30–50 thread inbox scan.
+Cost: ~$0.05–0.10 for a typical 30–50 thread inbox scan, +~$0.01 per
+high-urgency reply drafted.
 
 CLI:
   hb-inbox                     # last 7 days, terminal output
   hb-inbox --days 14           # 2-week lookback
   hb-inbox --upload            # also save as Google Doc in GENERATED TIMELINES/
+  hb-inbox --no-drafts         # skip the per-thread reply drafting (saves $$)
 """
 
 import argparse
 import io
+import json
+import re
 from datetime import date, datetime
 
 import markdown
@@ -29,6 +38,7 @@ from home_builder_agent.classifiers.email import classify_thread
 from home_builder_agent.config import (
     CLASSIFIER_MODEL,
     DRIVE_FOLDER_PATH,
+    FINANCE_PROJECT_NAME,
     GMAIL_DEFAULT_LOOKBACK_DAYS,
     GMAIL_MAX_THREADS_TO_CLASSIFY,
     HAIKU_INPUT_COST,
@@ -36,6 +46,7 @@ from home_builder_agent.config import (
     WRITER_MODEL,
 )
 from home_builder_agent.core.auth import get_credentials
+from home_builder_agent.core.chad_voice import chad_voice_system
 from home_builder_agent.core.claude_client import (
     haiku_cost,
     make_client,
@@ -115,6 +126,80 @@ THREADS:
 
 
 # ---------------------------------------------------------------------
+# Per-thread reply draft (Sonnet, Chad voice — author mode)
+# ---------------------------------------------------------------------
+
+_REPLY_DRAFT_OUTPUT_CONTRACT = """
+
+Output requirements:
+- JSON only. No markdown fence, no preamble.
+- Two top-level keys: "subject" (string) and "body_html" (string).
+- subject: prefix with "Re: " unless the original subject already starts
+  with "Re:" / "RE:" / "Fwd:". Keep it concise.
+- body_html: complete HTML email body. NO <html>/<head>/<body> tags —
+  just the inner content. Use <p>, <ul>, <li>, <strong>. Sign off with
+  Chad's first name on a new line. No formal letterhead — the relationship
+  is established. Inline styles only if you need them; mostly let Gmail's
+  default rendering do the work.
+- Voice: Chad's. Direct, calm, status-led. No "I hope this finds you
+  well" pleasantries. No "Just wanted to circle back" filler. Lead with
+  the answer or the ask.
+"""
+
+
+def generate_reply_draft(
+    client,
+    thread_summary: dict,
+    classification: dict,
+):
+    """Draft a Chad-voice reply to one thread.
+
+    Uses chad_voice_system("author") — Chad will send this.
+
+    Returns (subject, html_body, usage). Raises on Sonnet error or
+    JSON parse failure (caller catches per-thread).
+    """
+    system_prompt = chad_voice_system("author") + _REPLY_DRAFT_OUTPUT_CONTRACT
+
+    user_prompt = f"""Draft a reply to the following thread on Chad's behalf.
+
+ORIGINAL SUBJECT: {thread_summary.get('subject', '(no subject)')}
+FROM:             {thread_summary.get('from_name', '')} <{thread_summary.get('from_email', '')}>
+LAST ACTIVITY:    {thread_summary.get('days_old', '?')} days ago
+MESSAGE COUNT:    {thread_summary.get('message_count', '?')}
+CLASSIFIER FLAG:  urgency={classification.get('urgency', '?')}, reason={classification.get('reason', '')}
+
+LATEST SNIPPET:
+{thread_summary.get('snippet', '(no snippet)')}
+
+Draft Chad's reply. JSON only per the output contract."""
+
+    response = client.messages.create(
+        model=WRITER_MODEL,
+        max_tokens=1500,
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_prompt}],
+    )
+
+    raw = response.content[0].text.strip()
+    raw = re.sub(r"^```(?:json)?\s*\n?", "", raw)
+    raw = re.sub(r"\n?```\s*$", "", raw)
+
+    parsed = json.loads(raw)
+    subject = (parsed.get("subject") or "").strip()
+    body_html = (parsed.get("body_html") or "").strip()
+
+    if not subject:
+        # Fallback — prepend Re: to the original subject
+        orig = thread_summary.get("subject", "(no subject)")
+        subject = orig if orig.lower().startswith(("re:", "fwd:")) else f"Re: {orig}"
+    if not body_html:
+        raise ValueError("Sonnet response missing body_html")
+
+    return subject, body_html, response.usage
+
+
+# ---------------------------------------------------------------------
 # Optional Doc upload
 # ---------------------------------------------------------------------
 
@@ -148,7 +233,8 @@ def upload_checklist_doc(drive_svc, markdown_text, doc_name, parent_folder_id):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate a Chad-voice email follow-up checklist."
+        description="Generate a Chad-voice email follow-up checklist + "
+                    "draft replies for HIGH-urgency threads."
     )
     parser.add_argument("--days", type=int, default=GMAIL_DEFAULT_LOOKBACK_DAYS,
                         help=f"How many days back to scan "
@@ -159,6 +245,10 @@ def main():
                         default=GMAIL_MAX_THREADS_TO_CLASSIFY,
                         help=f"Max threads to classify "
                              f"(default: {GMAIL_MAX_THREADS_TO_CLASSIFY})")
+    parser.add_argument("--no-drafts", action="store_true",
+                        help="Skip the per-thread reply drafting step "
+                             "(saves ~$0.01/high-urgency thread). The "
+                             "consolidated checklist is still generated.")
     args = parser.parse_args()
 
     print("Authenticating with Google...")
@@ -215,6 +305,134 @@ def main():
         print("\nNothing actionable. Inbox zero today.")
         return
 
+    # ─── New: per-thread reply drafting for HIGH urgency ────────────────────
+    # For each high-urgency thread where Chad wasn't the last sender,
+    # draft a reply via Sonnet (chad_voice author mode), create the
+    # Gmail draft, and log a draft_action row so it surfaces in the
+    # morning view's judgment_queue.
+    drafts_created = 0
+    drafts_failed = 0
+    drafts_writer_usd = 0.0
+    if not args.no_drafts:
+        high_urgency = [
+            (s, c) for s, c in needs_followup
+            if (c.get("urgency") or "").lower() == "high"
+            and not s.get("last_from_me")
+        ]
+        if high_urgency:
+            print(
+                f"\nDrafting replies for {len(high_urgency)} HIGH-urgency thread"
+                f"{'s' if len(high_urgency) != 1 else ''}..."
+            )
+
+            # Lazy-import the engine pieces so non-DB users (legacy
+            # callers, smoke tests) don't have to spin up a connection
+            # if no high-urgency threads exist.
+            try:
+                from home_builder_agent.scheduling.draft_actions import (
+                    DraftKind,
+                    make_draft_action,
+                )
+                from home_builder_agent.scheduling.store_postgres import (
+                    insert_draft_action,
+                    load_project_by_name,
+                )
+                project_row = load_project_by_name(FINANCE_PROJECT_NAME)
+            except Exception as e:
+                print(
+                    f"  ⚠️  Postgres not available — drafts will be created in "
+                    f"Gmail but not registered in the morning queue: "
+                    f"{type(e).__name__}: {e}"
+                )
+                project_row = None
+
+            for summary, classification in high_urgency:
+                short_subject = (summary.get("subject") or "")[:60]
+                try:
+                    subject, body_html, draft_usage = generate_reply_draft(
+                        client, summary, classification,
+                    )
+                    drafts_writer_usd += sonnet_cost(draft_usage)["total"]
+
+                    # Create the Gmail draft so Chad can review it in
+                    # Gmail Drafts AND in the morning queue.
+                    draft = gmail_int.create_draft(
+                        gmail_svc,
+                        to=summary.get("from_email", ""),
+                        subject=subject,
+                        html_body=body_html,
+                    )
+                    gmail_draft_id = draft.get("id")
+
+                    # Log to home_builder.draft_action for the
+                    # morning view's judgment_queue. Best-effort —
+                    # skip silently if Postgres isn't reachable or
+                    # the project row is missing (matches the
+                    # change_order / client_update adapter pattern).
+                    if project_row is not None:
+                        try:
+                            agent_summary = (
+                                f"{summary.get('from_name', '?')}: "
+                                f"{classification.get('reason', '')[:80] or short_subject}"
+                            )
+                            da = make_draft_action(
+                                project_id=project_row["id"],
+                                kind=DraftKind.GMAIL_REPLY_DRAFT,
+                                originating_agent="hb-inbox",
+                                summary=agent_summary,
+                                subject_line=subject,
+                                body_payload={
+                                    "thread_id": summary.get("thread_id"),
+                                    "original_subject": summary.get("subject"),
+                                    "original_from": summary.get("from_email"),
+                                    "original_from_name": summary.get("from_name"),
+                                    "draft_subject": subject,
+                                    "draft_body_html": body_html,
+                                    "recipient": summary.get("from_email"),
+                                    "classification_urgency": classification.get("urgency"),
+                                    "classification_reason": classification.get("reason"),
+                                },
+                                external_ref=gmail_draft_id,
+                                from_or_to=(
+                                    f"From: {summary.get('from_name', '')} "
+                                    f"<{summary.get('from_email', '')}>"
+                                ).strip(),
+                            )
+                            insert_draft_action(da)
+                            print(
+                                f"  ✅  drafted reply to {short_subject!r:<60} "
+                                f"(gmail_draft_id={gmail_draft_id[:12]}…, "
+                                f"draft_action={da.id[:8]}…)"
+                            )
+                        except Exception as e:
+                            msg = str(e).lower()
+                            if "does not exist" in msg and "draft_action" in msg:
+                                print(
+                                    f"  ✅  drafted reply to {short_subject!r:<60} "
+                                    f"(gmail draft id={gmail_draft_id[:12]}…; "
+                                    "morning queue pending migration 007)"
+                                )
+                            else:
+                                print(
+                                    f"  ⚠️  drafted reply to {short_subject!r}, "
+                                    f"but draft_action insert failed: "
+                                    f"{type(e).__name__}: {e}"
+                                )
+                    else:
+                        print(
+                            f"  ✅  drafted reply to {short_subject!r:<60} "
+                            f"(gmail draft id={gmail_draft_id[:12]}…; "
+                            "morning queue skipped — no project row)"
+                        )
+
+                    drafts_created += 1
+                except Exception as e:
+                    drafts_failed += 1
+                    print(
+                        f"  ⚠️  draft for {short_subject!r} failed: "
+                        f"{type(e).__name__}: {e}"
+                    )
+
     print(f"\nGenerating Chad-voice checklist via {WRITER_MODEL}...")
     checklist, writer_usage = generate_checklist(client, needs_followup)
 
@@ -245,8 +463,14 @@ def main():
     print("=" * 60)
     print(f"Cost:  classifier=${classifier_usd:.4f} "
           f"({len(threads)} threads × ~${classifier_usd/max(len(threads),1):.5f})")
-    print(f"       writer=${writer_usd:.4f}")
-    print(f"       TOTAL=${classifier_usd + writer_usd:.4f}")
+    print(f"       checklist writer=${writer_usd:.4f}")
+    if drafts_created > 0 or drafts_failed > 0:
+        print(
+            f"       reply drafts=${drafts_writer_usd:.4f} "
+            f"({drafts_created} drafted, {drafts_failed} failed)"
+        )
+    total_usd = classifier_usd + writer_usd + drafts_writer_usd
+    print(f"       TOTAL=${total_usd:.4f}")
     print()
 
 
