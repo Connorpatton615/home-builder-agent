@@ -45,11 +45,14 @@ from typing import Any, Callable
 import psycopg
 
 from home_builder_agent.integrations.postgres import connection
+from home_builder_agent.scheduling.draft_actions import DraftStatus
 from home_builder_agent.scheduling.store_postgres import (
     acknowledge_event,
+    load_draft_action_by_id,
     resolve_event,
     save_phase_status_change,
     update_checklist_item,
+    update_draft_action_status,
 )
 
 
@@ -521,6 +524,286 @@ def _dispatch_event_resolve(
     return base
 
 
+# ---------------------------------------------------------------------------
+# DraftAction dispatch — Chad's judgment queue tap-to-decide handlers
+# ---------------------------------------------------------------------------
+# Per canonical-data-model.md § 18 + morning-view-model.md.
+#
+# State-transition only. The actual "send the email / publish the doc /
+# call the dept" side effect is owned by a per-kind confirm hook that
+# the originating drafting agent registers via register_draft_confirm_hook
+# at import time. V1 hook contract: hook(action_row, draft_row, conn)
+# is invoked AFTER the status flip, best-effort. Hook errors are caught
+# and noted in the DispatchResult; status stays flipped (Chad's
+# perspective: "approved" means the engine accepted the decision).
+# Manual recovery if a hook fails — the failure is logged and surfaces
+# in the reconcile report's notes.
+
+DRAFT_CONFIRM_HOOKS: dict[str, Callable[[dict, dict, psycopg.Connection], None]] = {}
+
+
+def register_draft_confirm_hook(
+    kind: str,
+    hook: Callable[[dict, dict, psycopg.Connection], None],
+) -> None:
+    """Register a per-kind confirm hook for draft-action-approve and
+    draft-action-edit dispatches. Drafting agents call this at import
+    time. Hook signature: hook(action, draft_row, conn).
+
+    For draft-action-discard, register a separate cleanup hook via
+    register_draft_discard_hook (e.g. delete the orphaned Gmail draft
+    so it doesn't pile up in Chad's Drafts folder).
+    """
+    DRAFT_CONFIRM_HOOKS[kind] = hook
+
+
+DRAFT_DISCARD_HOOKS: dict[str, Callable[[dict, dict, psycopg.Connection], None]] = {}
+
+
+def register_draft_discard_hook(
+    kind: str,
+    hook: Callable[[dict, dict, psycopg.Connection], None],
+) -> None:
+    """Register a per-kind discard cleanup hook. Best-effort cleanup of
+    the underlying artifact (Gmail draft, Drive doc) when Chad discards.
+    Failures are non-fatal — the row is marked discarded regardless.
+    """
+    DRAFT_DISCARD_HOOKS[kind] = hook
+
+
+def _dispatch_draft_action_approve(
+    action: dict,
+    conn: psycopg.Connection,
+) -> DispatchResult:
+    """Approve a drafted action — flip status to 'approved' and fire the
+    per-kind confirm hook (e.g. gmail.send_draft for gmail-reply-draft).
+
+    target_entity_type must be "draft-action"; target_entity_id is the
+    DraftAction UUID. Idempotent — re-approving an already-approved
+    row is a no-op (the status guard rejects non-pending rows).
+    """
+    target_type = action["target_entity_type"]
+    target_id = action["target_entity_id"]
+
+    base = DispatchResult(
+        action_id=action["id"],
+        action_type="draft-action-approve",
+        target_entity_type=target_type,
+        target_entity_id=target_id,
+        outcome=DispatchOutcome.SKIPPED,
+        synced_at=action["synced_at"],
+    )
+
+    if target_type != "draft-action":
+        base.notes = (
+            f"target_entity_type={target_type!r}; "
+            "draft-action-approve must target 'draft-action'"
+        )
+        return base
+
+    # Read draft row to get kind + external_ref before status flips
+    # (so we can hand them to the hook).
+    draft_row = load_draft_action_by_id(target_id, conn=conn)
+    if draft_row is None:
+        base.notes = f"draft_action {target_id[:8]}… not found"
+        return base
+
+    decision_notes = (action.get("payload") or {}).get("decision_notes")
+    ok = update_draft_action_status(
+        draft_action_id=target_id,
+        new_status=DraftStatus.APPROVED,
+        decided_by=action.get("actor_user_id"),
+        decision_notes=decision_notes,
+        conn=conn,
+    )
+    if not ok:
+        base.outcome = DispatchOutcome.SKIPPED
+        base.notes = (
+            f"draft_action {target_id[:8]}… not in pending state; skipped"
+        )
+        return base
+
+    base.outcome = DispatchOutcome.APPLIED
+    hook = DRAFT_CONFIRM_HOOKS.get(draft_row["kind"])
+    if hook is None:
+        base.notes = (
+            f"draft_action {target_id[:8]}… approved (kind={draft_row['kind']!r}; "
+            "no send hook registered — manual send required for V1)"
+        )
+        return base
+    try:
+        hook(action, draft_row, conn)
+        base.notes = (
+            f"draft_action {target_id[:8]}… approved + {draft_row['kind']!r} "
+            "confirm hook fired"
+        )
+    except Exception as e:                            # pragma: no cover — hook safety net
+        base.notes = (
+            f"draft_action {target_id[:8]}… approved BUT {draft_row['kind']!r} "
+            f"confirm hook failed: {type(e).__name__}: {e}"
+        )
+    return base
+
+
+def _dispatch_draft_action_edit(
+    action: dict,
+    conn: psycopg.Connection,
+) -> DispatchResult:
+    """Approve a drafted action with Chad's edits — overwrite body_payload
+    and flip status to 'edited-then-approved'. Same hook semantics as
+    approve; the hook sees the post-edit body.
+
+    action.payload contract:
+      { "edited_body": <new body_payload object>,
+        "decision_notes": "<optional Chad note>" }
+    """
+    target_type = action["target_entity_type"]
+    target_id = action["target_entity_id"]
+
+    base = DispatchResult(
+        action_id=action["id"],
+        action_type="draft-action-edit",
+        target_entity_type=target_type,
+        target_entity_id=target_id,
+        outcome=DispatchOutcome.SKIPPED,
+        synced_at=action["synced_at"],
+    )
+
+    if target_type != "draft-action":
+        base.notes = (
+            f"target_entity_type={target_type!r}; "
+            "draft-action-edit must target 'draft-action'"
+        )
+        return base
+
+    payload = action.get("payload") or {}
+    edited_body = payload.get("edited_body")
+    if edited_body is None or not isinstance(edited_body, dict):
+        base.notes = (
+            "draft-action-edit requires payload.edited_body (object); "
+            f"got {type(edited_body).__name__}"
+        )
+        return base
+
+    draft_row = load_draft_action_by_id(target_id, conn=conn)
+    if draft_row is None:
+        base.notes = f"draft_action {target_id[:8]}… not found"
+        return base
+
+    ok = update_draft_action_status(
+        draft_action_id=target_id,
+        new_status=DraftStatus.EDITED_THEN_APPROVED,
+        decided_by=action.get("actor_user_id"),
+        decision_notes=payload.get("decision_notes"),
+        new_body_payload=edited_body,
+        conn=conn,
+    )
+    if not ok:
+        base.outcome = DispatchOutcome.SKIPPED
+        base.notes = (
+            f"draft_action {target_id[:8]}… not in pending state; skipped"
+        )
+        return base
+
+    # Re-fetch to get the post-edit body before the hook sees it.
+    draft_row = load_draft_action_by_id(target_id, conn=conn) or draft_row
+
+    base.outcome = DispatchOutcome.APPLIED
+    hook = DRAFT_CONFIRM_HOOKS.get(draft_row["kind"])
+    if hook is None:
+        base.notes = (
+            f"draft_action {target_id[:8]}… edited+approved "
+            f"(kind={draft_row['kind']!r}; no send hook registered)"
+        )
+        return base
+    try:
+        hook(action, draft_row, conn)
+        base.notes = (
+            f"draft_action {target_id[:8]}… edited+approved + "
+            f"{draft_row['kind']!r} confirm hook fired"
+        )
+    except Exception as e:                            # pragma: no cover
+        base.notes = (
+            f"draft_action {target_id[:8]}… edited+approved BUT "
+            f"{draft_row['kind']!r} confirm hook failed: "
+            f"{type(e).__name__}: {e}"
+        )
+    return base
+
+
+def _dispatch_draft_action_discard(
+    action: dict,
+    conn: psycopg.Connection,
+) -> DispatchResult:
+    """Discard a drafted action — flip status to 'discarded' and fire
+    the per-kind cleanup hook (e.g. delete the orphaned Gmail draft).
+
+    target_entity_type must be "draft-action". Idempotent; re-discarding
+    is a no-op.
+    """
+    target_type = action["target_entity_type"]
+    target_id = action["target_entity_id"]
+
+    base = DispatchResult(
+        action_id=action["id"],
+        action_type="draft-action-discard",
+        target_entity_type=target_type,
+        target_entity_id=target_id,
+        outcome=DispatchOutcome.SKIPPED,
+        synced_at=action["synced_at"],
+    )
+
+    if target_type != "draft-action":
+        base.notes = (
+            f"target_entity_type={target_type!r}; "
+            "draft-action-discard must target 'draft-action'"
+        )
+        return base
+
+    draft_row = load_draft_action_by_id(target_id, conn=conn)
+    if draft_row is None:
+        base.notes = f"draft_action {target_id[:8]}… not found"
+        return base
+
+    decision_notes = (action.get("payload") or {}).get("decision_notes")
+    ok = update_draft_action_status(
+        draft_action_id=target_id,
+        new_status=DraftStatus.DISCARDED,
+        decided_by=action.get("actor_user_id"),
+        decision_notes=decision_notes,
+        conn=conn,
+    )
+    if not ok:
+        base.outcome = DispatchOutcome.SKIPPED
+        base.notes = (
+            f"draft_action {target_id[:8]}… not in pending state; skipped"
+        )
+        return base
+
+    base.outcome = DispatchOutcome.APPLIED
+    hook = DRAFT_DISCARD_HOOKS.get(draft_row["kind"])
+    if hook is None:
+        base.notes = (
+            f"draft_action {target_id[:8]}… discarded "
+            f"(kind={draft_row['kind']!r}; no cleanup hook — orphaned "
+            "artifact remains in Gmail Drafts / Drive)"
+        )
+        return base
+    try:
+        hook(action, draft_row, conn)
+        base.notes = (
+            f"draft_action {target_id[:8]}… discarded + "
+            f"{draft_row['kind']!r} cleanup hook fired"
+        )
+    except Exception as e:                            # pragma: no cover
+        base.notes = (
+            f"draft_action {target_id[:8]}… discarded BUT "
+            f"{draft_row['kind']!r} cleanup hook failed: "
+            f"{type(e).__name__}: {e}"
+        )
+    return base
+
+
 def _dispatch_unknown(action_type: str) -> Callable[[dict, psycopg.Connection], DispatchResult]:
     """Factory for action types we know about but haven't implemented yet."""
     def _handler(action: dict, conn: psycopg.Connection) -> DispatchResult:
@@ -543,6 +826,9 @@ DISPATCHERS: dict[str, Callable[[dict, psycopg.Connection], DispatchResult]] = {
     "checklist-tick":            _dispatch_checklist_tick,
     "event-acknowledge":         _dispatch_event_acknowledge,
     "event-resolve":             _dispatch_event_resolve,
+    "draft-action-approve":      _dispatch_draft_action_approve,
+    "draft-action-edit":         _dispatch_draft_action_edit,
+    "draft-action-discard":      _dispatch_draft_action_discard,
     "material-delivery-confirm": _dispatch_unknown("material-delivery-confirm"),
     "sub-checkin":               _dispatch_unknown("sub-checkin"),
     "vendor-pin":                _dispatch_unknown("vendor-pin"),

@@ -1173,6 +1173,7 @@ def update_draft_action_status(
     new_status: DraftStatus | str,
     decided_by: str | None = None,
     decision_notes: str | None = None,
+    new_body_payload: dict | None = None,
     conn: psycopg.Connection | None = None,
 ) -> bool:
     """Transition a DraftAction's status. Returns True if a row was
@@ -1183,20 +1184,43 @@ def update_draft_action_status(
     Used by the reconcile pass when handling
     draft-action-approve / draft-action-edit / draft-action-discard
     UserActions emitted by Chad's renderer taps.
+
+    For the edit path, pass `new_body_payload` to overwrite body_payload
+    in the same atomic update — Chad's edits land alongside the status
+    flip so the per-kind confirm hook downstream sees the updated body.
     """
     status_str = (
         new_status.value if isinstance(new_status, DraftStatus) else new_status
     )
-    sql = """
-        UPDATE home_builder.draft_action
-        SET status = %s,
-            decided_at = NOW(),
-            decided_by = COALESCE(%s::uuid, decided_by),
-            decision_notes = COALESCE(%s, decision_notes)
-        WHERE id = %s::uuid
-          AND status = 'pending'
-    """
-    params = (status_str, decided_by, decision_notes, draft_action_id)
+    if new_body_payload is not None:
+        sql = """
+            UPDATE home_builder.draft_action
+            SET status = %s,
+                decided_at = NOW(),
+                decided_by = COALESCE(%s::uuid, decided_by),
+                decision_notes = COALESCE(%s, decision_notes),
+                body_payload = %s::jsonb
+            WHERE id = %s::uuid
+              AND status = 'pending'
+        """
+        params = (
+            status_str,
+            decided_by,
+            decision_notes,
+            _json.dumps(new_body_payload),
+            draft_action_id,
+        )
+    else:
+        sql = """
+            UPDATE home_builder.draft_action
+            SET status = %s,
+                decided_at = NOW(),
+                decided_by = COALESCE(%s::uuid, decided_by),
+                decision_notes = COALESCE(%s, decision_notes)
+            WHERE id = %s::uuid
+              AND status = 'pending'
+        """
+        params = (status_str, decided_by, decision_notes, draft_action_id)
     if conn is not None:
         with conn.cursor() as cur:
             cur.execute(sql, params)
@@ -1205,6 +1229,38 @@ def update_draft_action_status(
         with c.cursor() as cur:
             cur.execute(sql, params)
             return cur.rowcount > 0
+
+
+def load_draft_action_by_id(
+    draft_action_id: str,
+    *,
+    conn: psycopg.Connection | None = None,
+) -> dict | None:
+    """Read a single DraftAction row by id. Used by the reconcile pass
+    to fetch kind + external_ref + body_payload before invoking the
+    per-kind confirm hook. Returns None if the row doesn't exist.
+    """
+    sql = """
+        SELECT
+            id::text                     AS id,
+            project_id::text             AS project_id,
+            kind,
+            status,
+            originating_agent,
+            subject_line,
+            summary,
+            body_payload,
+            external_ref,
+            from_or_to,
+            created_at,
+            decided_at,
+            decided_by::text             AS decided_by,
+            decision_notes
+        FROM home_builder.draft_action
+        WHERE id = %s::uuid
+        LIMIT 1
+    """
+    return _query_one(sql, (draft_action_id,), conn=conn)
 
 
 # ---------------------------------------------------------------------------
