@@ -46,6 +46,9 @@ watcher.log
 # Heartbeat-watchdog runtime state — written every successful watcher run
 .heartbeats/
 
+# Morning view-model launchd cache — written every 6:05 AM by hb-morning
+.morning_cache/
+
 # Claude Code worktrees — managed by Claude Code, not part of repo
 .claude/worktrees/
 

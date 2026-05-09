@@ -31,6 +31,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 import uuid as _uuid
 from datetime import date, datetime, timedelta, timezone
@@ -41,6 +42,7 @@ from home_builder_agent.config import (
     BRIEF_SITE_LNG,
 )
 from home_builder_agent.core.claude_client import make_client
+from home_builder_agent.core.heartbeat import beat_on_success
 from home_builder_agent.observability.json_log import configure_json_logging
 from home_builder_agent.scheduling.lead_times import compute_drop_dead_dates
 from home_builder_agent.scheduling.morning_synth import (
@@ -59,6 +61,18 @@ from home_builder_agent.scheduling.weather import (
 
 
 logger = logging.getLogger(__name__)
+
+
+# Cache directory for the launchd-computed morning view payload. The
+# platform thread's /v1/turtles/.../views/morning/{project_id} HTTP
+# handler reads from here when the cache is fresh, falling back to a
+# synchronous orchestration only when the cache is stale or missing.
+# Repo-root-relative so it follows the existing state-file convention
+# (.watcher_state.json, .reconcile_watermark.json, etc.). One file per
+# project so multi-project rolldown is forward-compatible.
+MORNING_CACHE_DIR = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..", ".morning_cache")
+)
 
 
 # ---------------------------------------------------------------------------
@@ -310,6 +324,7 @@ def _wrap(text: str, width: int) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+@beat_on_success("morning-view", stale_after_seconds=90000)
 def main():
     configure_json_logging("hb-morning")
 
@@ -340,6 +355,17 @@ def main():
     parser.add_argument(
         "--json", action="store_true",
         help="Emit JSON instead of pretty terminal output.",
+    )
+    parser.add_argument(
+        "--cache", action="store_true",
+        help=(
+            "Write the JSON payload to "
+            f"{MORNING_CACHE_DIR}/<project_id>.json so the platform's "
+            "HTTP route handler can serve it without re-running the "
+            "orchestration. Implies --json. Used by the launchd job "
+            "(com.chadhomes.morning-view) to pre-compute the payload "
+            "every morning at 6:05 AM."
+        ),
     )
     parser.add_argument(
         "--lat", type=float, default=BRIEF_SITE_LAT,
@@ -480,8 +506,21 @@ def main():
             print(f"⚠️  Sonnet synthesis failed: {type(e).__name__}: {e}", file=sys.stderr)
             print(f"   Continuing with empty voice_brief / action_items.", file=sys.stderr)
 
+    # ── Cache write (for launchd) ────────────────────────────────────────
+    cache_path = None
+    if args.cache:
+        os.makedirs(MORNING_CACHE_DIR, exist_ok=True)
+        cache_path = os.path.join(MORNING_CACHE_DIR, f"{project_id}.json")
+        # Atomic write — write to a tempfile, then rename, so a reader
+        # never sees a half-written file.
+        tmp_path = cache_path + ".tmp"
+        with open(tmp_path, "w") as f:
+            f.write(payload.model_dump_json(indent=2, exclude_none=False))
+        os.replace(tmp_path, cache_path)
+        print(f"✅  Cache written: {cache_path}")
+
     # ── Output ────────────────────────────────────────────────────────────
-    if args.json:
+    if args.json or args.cache:
         print(payload.model_dump_json(indent=2, exclude_none=False))
     else:
         _print_pretty(payload)
@@ -498,6 +537,7 @@ def main():
             "overnight_events_count": len(payload.overnight_events.items),
             "action_items_count": len(payload.action_items),
             "synthesized": not args.no_synth and payload.voice_brief is not None,
+            "cache_path": cache_path,
         },
     )
 

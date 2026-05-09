@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd job for the morning view-model cache pre-compute.
+
+  Fires once daily at 6:05 AM (right after hb-brief at 6:00 AM, so the
+  email and the in-app surface stay consistent), runs hb-morning with
+  --cache to write the JSON payload to .morning_cache/<project_id>.json.
+  The platform's /v1/turtles/.../views/morning/{project_id} HTTP route
+  reads from there at cold-launch, returning the pre-synthesized payload
+  without making Chad wait on the Sonnet call from his coffee chair.
+
+  Per docs/specs/morning-view-model.md § Caching: the cache payload is
+  fresh-from-overnight and renders immediately on cold launch; the
+  platform-side stale-cache policy (render-stale + banner) handles
+  any case where the launchd job didn't fire.
+
+  Project: hardcoded to "Whitfield" for V1 (single active project).
+  Multi-project: V2 — wrap into a per-project loop or pass --all-projects.
+
+  Install:
+    cp com.chadhomes.morning-view.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.chadhomes.morning-view.plist
+
+  Stop / unload:
+    launchctl unload ~/Library/LaunchAgents/com.chadhomes.morning-view.plist
+
+  Run immediately (for testing):
+    launchctl start com.chadhomes.morning-view
+
+  Inspect:
+    launchctl list | grep chadhomes
+    tail -f /tmp/morning-view.stdout.log
+    tail -f /tmp/morning-view.stderr.log
+    cat ~/Projects/home-builder-agent/.morning_cache/<project_id>.json | jq
+
+  Cost: ~$0.02/day (one Sonnet call per fire). The voice_brief +
+  action_items synthesis is the only paid component; everything else
+  is engine projections + NOAA fetch (free).
+
+  Heartbeat: hb-morning's main() is decorated with
+  beat_on_success("morning-view", stale_after_seconds=90000) — the
+  watchdog (com.chadhomes.watchdog) alerts if 25h+ pass without a
+  successful run.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.chadhomes.morning-view</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>set -a; source /Users/connorpatton/Projects/home-builder-agent/.env; set +a; exec /Library/Frameworks/Python.framework/Versions/3.14/bin/hb-morning Whitfield --cache</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/connorpatton/Projects/home-builder-agent</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONPATH</key>
+    <string>/Users/connorpatton/Projects/home-builder-agent</string>
+  </dict>
+
+  <!-- 6:05 AM every day — 5 minutes after hb-brief, so morning-brief's
+       email is consistent with the in-app surface Chad sees on cold
+       launch. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>6</integer>
+    <key>Minute</key>
+    <integer>5</integer>
+  </dict>
+
+  <!-- Don't fire at load time — only at 6:05 AM. -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/morning-view.stdout.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/morning-view.stderr.log</string>
+</dict>
+</plist>
