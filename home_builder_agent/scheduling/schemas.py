@@ -336,6 +336,10 @@ class ChecklistItemPayload(_Base):
         default=None,
         description="UserAction emit target for photo upload (e.g. 'checklist-item-photo-upload:<id>')",
     )
+    template_item_id: str | None = Field(
+        default=None,
+        description="Audit pointer back to the canonical checklist_template_item — used by the renderer's long-press-to-edit affordance to resolve the template row to PATCH",
+    )
 
 
 class ChecklistPayload(_Base):
@@ -349,6 +353,10 @@ class ChecklistPayload(_Base):
     total_count: int = Field(ge=0)
     items_by_category: dict[str, list[ChecklistItemPayload]] = Field(
         description="Items grouped by category for renderer convenience"
+    )
+    template_id: str | None = Field(
+        default=None,
+        description="Pointer to the canonical checklist_template row — used by the renderer to construct PATCH/POST URLs against the template (per spec § REST routes)",
     )
 
 

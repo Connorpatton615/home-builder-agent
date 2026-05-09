@@ -371,6 +371,7 @@ def _checklist_item_to_payload(item: ChecklistItem) -> ChecklistItemPayload:
         photo_upload_action=(
             f"checklist-item-photo-upload:{item.id}" if item.photo_required else None
         ),
+        template_item_id=item.template_item_id,
     )
 
 
@@ -387,6 +388,7 @@ def _checklist_to_payload(cl: Checklist) -> ChecklistPayload:
         completed_count=cl.completed_count,
         total_count=cl.total_count,
         items_by_category=items_by_cat,
+        template_id=cl.template_id,
     )
 
 

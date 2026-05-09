@@ -58,6 +58,7 @@ hb-profile = "home_builder_agent.agents.profile_agent:main"
 hb-watchdog = "home_builder_agent.watchers.watchdog:main"
 hb-chad = "home_builder_agent.agents.chad_agent:main"
 hb-triggers = "home_builder_agent.agents.triggers_agent:main"
+hb-checklist-seed = "home_builder_agent.agents.checklist_seed_agent:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

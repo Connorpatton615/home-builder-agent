@@ -39,6 +39,7 @@ from home_builder_agent.scheduling.checklists import (
     ChecklistItem,
     STUB_TEMPLATE_VERSION,
     load_template,
+    slugify,
 )
 from home_builder_agent.scheduling.draft_actions import (
     DraftAction,
@@ -509,12 +510,21 @@ def load_checklists_for_project(
     against this project's phases). The view-model layer treats absent
     checklists as "no checklist data yet" — degraded-mode rendering.
     """
+    # template_id is sourced via the items' template_item_id pointers.
+    # Checklists with no template-linked items (legacy rows pre-migration
+    # 010) get template_id=NULL — renderer treats absent template_id as
+    # "no PATCH/POST surface available for this checklist."
     cl_sql = """
         SELECT
             c.id::text             AS id,
             c.phase_id::text       AS phase_id,
-            c.template_name,
-            c.template_version
+            c.template_version,
+            (SELECT ti.template_id::text
+               FROM home_builder.checklist_item ci
+               JOIN home_builder.checklist_template_item ti
+                 ON ti.id = ci.template_item_id
+              WHERE ci.checklist_id = c.id
+              LIMIT 1)             AS template_id
         FROM home_builder.checklist c
         JOIN home_builder.phase p ON p.id = c.phase_id
         WHERE p.project_id = %s::uuid
@@ -535,7 +545,9 @@ def load_checklists_for_project(
             is_complete,
             completed_by::text     AS completed_by,
             completed_at,
-            notes
+            notes,
+            photo_required,
+            template_item_id::text AS template_item_id
         FROM home_builder.checklist_item
         WHERE checklist_id = ANY(%s::uuid[])
         ORDER BY checklist_id, category, sort_index
@@ -546,12 +558,50 @@ def load_checklists_for_project(
     for r in item_rows:
         items_by_cl.setdefault(r["checklist_id"], []).append(r)
 
+    # Fetch photos for every item in one round-trip (newest-first per item).
+    # Per spec D3 / migration 010: photo_id (the row PK) is the canonical
+    # identifier; drive_url is included for click-through display only.
+    item_ids = [it["id"] for it in item_rows]
+    photos_by_item: dict[str, list[dict]] = {}
+    if item_ids:
+        photo_rows = _query_many(
+            """
+            SELECT
+                id::text                AS photo_id,
+                checklist_item_id::text AS checklist_item_id,
+                drive_file_id,
+                drive_url,
+                caption,
+                uploaded_by::text       AS uploaded_by,
+                uploaded_at
+            FROM home_builder.checklist_item_photo
+            WHERE checklist_item_id = ANY(%s::uuid[])
+            ORDER BY checklist_item_id, uploaded_at DESC
+            """,
+            (item_ids,),
+            conn=conn,
+        )
+        for p in photo_rows:
+            photos_by_item.setdefault(p["checklist_item_id"], []).append({
+                "photo_id": p["photo_id"],
+                "drive_file_id": p["drive_file_id"],
+                "drive_url": p["drive_url"],
+                "caption": p.get("caption"),
+                "uploaded_by": p.get("uploaded_by"),
+                "uploaded_at": (
+                    p["uploaded_at"].isoformat()
+                    if p.get("uploaded_at") is not None
+                    else None
+                ),
+            })
+
     out: dict[str, Checklist] = {}
     for r in cl_rows:
         cl = Checklist(
             id=r["id"],
             phase_id=r["phase_id"],
             template_version=r["template_version"],
+            template_id=r.get("template_id"),
             items=[
                 ChecklistItem(
                     id=it["id"],
@@ -566,6 +616,9 @@ def load_checklists_for_project(
                         else it.get("completed_at")
                     ),
                     notes=it.get("notes"),
+                    photo_required=bool(it.get("photo_required") or False),
+                    photos=photos_by_item.get(it["id"], []),
+                    template_item_id=it.get("template_item_id"),
                 )
                 for it in items_by_cl.get(r["id"], [])
             ],
@@ -578,19 +631,28 @@ def seed_checklist_for_phase(
     phase_id: str,
     template_name: str,
     *,
+    tenant_id: str | None = None,
     conn: psycopg.Connection | None = None,
 ) -> str:
     """Idempotently create a Checklist + items for a Phase from its template.
 
     Returns the checklist UUID (existing or newly inserted). If a checklist
     row already exists for `phase_id`, this is a no-op — the existing
-    UUID is returned without touching items. Re-seeding to a newer
-    template version is intentionally not handled here; that's a separate
-    flow (regenerate_checklist_to_template_version).
+    UUID is returned without touching items.
 
-    Stub case (template not on disk): inserts a Checklist row with no items.
-    The empty-items-closes semantic in the engine treats this as a passthrough
-    gate — same as canonical-data-model.md § 6 fallback.
+    Hydration source order (per ADR 2026-05-09 D1 — DB is canonical):
+      1. home_builder.checklist_template + checklist_template_item for
+         the matching phase_slug (+ tenant_id). Template wording reflects
+         Chad's in-app edits.
+      2. JSON fallback (scheduling/checklist_templates/<slug>.json) for
+         cold-start dev environments where hb-checklist-seed hasn't run.
+      3. Stub (no items) if neither path produces a template — the
+         empty-items-closes semantic in the engine treats this as a
+         passthrough gate.
+
+    For hydration source 1, the live checklist_item rows are linked back
+    to their template_item_id and inherit photo_required from the template
+    item — both denormalized columns added in migration 010.
     """
     existing = _query_one(
         "SELECT id::text FROM home_builder.checklist WHERE phase_id = %s::uuid",
@@ -600,6 +662,56 @@ def seed_checklist_for_phase(
     if existing:
         return existing["id"]
 
+    # Source 1: DB-backed template (preferred per D1)
+    db_template = load_checklist_template(
+        slugify(template_name), tenant_id=tenant_id, conn=conn
+    )
+    db_items: list[dict] = []
+    if db_template is not None:
+        db_items = list_checklist_template_items(db_template["id"], conn=conn)
+
+    # The live home_builder.checklist schema has denormalized project_id
+    # (for query speed) — look it up from the phase. checklist also has
+    # status/completed_count/total_count which we initialize at insert time.
+    phase_lookup = _query_one(
+        "SELECT project_id::text AS project_id FROM home_builder.phase WHERE id = %s::uuid",
+        (phase_id,),
+        conn=conn,
+    )
+    if phase_lookup is None:
+        raise ValueError(f"phase_id {phase_id} does not exist in home_builder.phase")
+    project_id = phase_lookup["project_id"]
+
+    if db_items:
+        total = len(db_items)
+        cl_row = _query_one(
+            """
+            INSERT INTO home_builder.checklist
+                (phase_id, project_id, template_version, status, completed_count, total_count)
+            VALUES (%s::uuid, %s::uuid, %s, %s, 0, %s)
+            RETURNING id::text AS id
+            """,
+            (phase_id, project_id, db_template["template_version"],
+             "open" if total > 0 else "closed", total),
+            conn=conn,
+        )
+        cl_id = cl_row["id"]
+        item_params = [
+            (cl_id, project_id, it["category"], it["label"], it["sequence_index"],
+             bool(it.get("photo_required") or False), it["id"])
+            for it in db_items
+        ]
+        insert_sql = """
+            INSERT INTO home_builder.checklist_item
+                (checklist_id, project_id, category, label, sort_index,
+                 photo_required, template_item_id)
+            VALUES (%s::uuid, %s::uuid, %s, %s, %s, %s, %s::uuid)
+        """
+        _executemany(insert_sql, item_params, conn=conn,
+                     application_name="hb-engine-checklist-seed-db")
+        return cl_id
+
+    # Source 2: JSON fallback (cold-start)
     template = load_template(template_name)
     template_version = (
         template.get("template_version", STUB_TEMPLATE_VERSION)
@@ -607,45 +719,360 @@ def seed_checklist_for_phase(
         else STUB_TEMPLATE_VERSION
     )
 
+    # JSON items may be plain strings (legacy) or {label, photo_required}.
+    item_params_json: list[tuple] = []
+    if template is not None:
+        for cat in template.get("categories", []):
+            cat_name = cat.get("name", "Uncategorized")
+            for idx, raw in enumerate(cat.get("items", [])):
+                if isinstance(raw, str):
+                    label, photo_required = raw, False
+                elif isinstance(raw, dict):
+                    label = raw.get("label", "")
+                    photo_required = bool(raw.get("photo_required", False))
+                else:
+                    continue
+                if not label:
+                    continue
+                item_params_json.append((cat_name, label, idx, photo_required))
+
+    total_json = len(item_params_json)
     cl_row = _query_one(
         """
         INSERT INTO home_builder.checklist
-            (phase_id, template_name, template_version)
-        VALUES (%s::uuid, %s, %s)
+            (phase_id, project_id, template_version, status, completed_count, total_count)
+        VALUES (%s::uuid, %s::uuid, %s, %s, 0, %s)
         RETURNING id::text AS id
         """,
-        (phase_id, template_name, template_version),
+        (phase_id, project_id, template_version,
+         "open" if total_json > 0 else "closed", total_json),
         conn=conn,
     )
     cl_id = cl_row["id"]
 
-    if template is None:
+    if not item_params_json:
         return cl_id  # stub — no items
-
-    # Bulk-insert items.
-    item_params: list[tuple] = []
-    for cat in template.get("categories", []):
-        cat_name = cat.get("name", "Uncategorized")
-        for idx, label in enumerate(cat.get("items", [])):
-            item_params.append((cl_id, cat_name, label, idx))
-
-    if not item_params:
-        return cl_id
 
     insert_sql = """
         INSERT INTO home_builder.checklist_item
-            (checklist_id, category, label, sort_index)
-        VALUES (%s::uuid, %s, %s, %s)
+            (checklist_id, project_id, category, label, sort_index, photo_required)
+        VALUES (%s::uuid, %s::uuid, %s, %s, %s, %s)
     """
-    if conn is not None:
-        with conn.cursor() as cur:
-            cur.executemany(insert_sql, item_params)
-    else:
-        with connection(application_name="hb-engine-checklist-seed") as c:
-            with c.cursor() as cur:
-                cur.executemany(insert_sql, item_params)
+    _executemany(
+        insert_sql,
+        [(cl_id, project_id, cat, label, seq, pr) for (cat, label, seq, pr) in item_params_json],
+        conn=conn,
+        application_name="hb-engine-checklist-seed-json",
+    )
 
     return cl_id
+
+
+def _executemany(
+    sql: str,
+    params: list[tuple],
+    *,
+    conn: psycopg.Connection | None,
+    application_name: str,
+) -> None:
+    """Bulk-insert helper that respects the optional caller-owned connection."""
+    if conn is not None:
+        with conn.cursor() as cur:
+            cur.executemany(sql, params)
+        return
+    with connection(application_name=application_name) as c:
+        with c.cursor() as cur:
+            cur.executemany(sql, params)
+
+
+# ---------------------------------------------------------------------------
+# Checklist template CRUD (migration 010)
+# ---------------------------------------------------------------------------
+#
+# The DB-backed canonical template store. REST routes in patton-ai-ios
+# /v1/turtles/home-builder/checklist-templates/* call into these. Per
+# ADR 2026-05-09 D1, these tables are the source of truth for what a
+# phase's checklist looks like — JSON files are first-launch seeds only.
+#
+# Concurrency: the `version` column on checklist_template_item is the
+# optimistic-update guard. update_checklist_template_item compares
+# expected_version against the row's current version inside a single
+# UPDATE; a mismatch returns None (the route translates to 409).
+
+
+def load_checklist_template(
+    phase_slug: str,
+    *,
+    tenant_id: str | None = None,
+    conn: psycopg.Connection | None = None,
+) -> dict | None:
+    """Load the canonical template row for a phase. Returns None if the
+    seed hasn't run for this (phase_slug, tenant_id) pair."""
+    return _query_one(
+        """
+        SELECT
+            id::text                AS id,
+            phase_slug,
+            phase_template_id,
+            template_version,
+            description,
+            source,
+            seeded_at,
+            tenant_id::text         AS tenant_id,
+            created_at,
+            updated_at
+        FROM home_builder.checklist_template
+        WHERE phase_slug = %s
+          AND tenant_id IS NOT DISTINCT FROM %s::uuid
+        """,
+        (phase_slug, tenant_id),
+        conn=conn,
+    )
+
+
+def list_checklist_template_items(
+    template_id: str,
+    *,
+    include_deleted: bool = False,
+    conn: psycopg.Connection | None = None,
+) -> list[dict]:
+    """Return template items in (category, sequence_index) order.
+
+    is_deleted rows are excluded by default — the soft-delete column is
+    a v1.1 placeholder and the renderer should never see deleted rows.
+    """
+    where = "template_id = %s::uuid"
+    if not include_deleted:
+        where += " AND is_deleted = FALSE"
+    return _query_many(
+        f"""
+        SELECT
+            id::text             AS id,
+            template_id::text    AS template_id,
+            category,
+            label,
+            photo_required,
+            sequence_index,
+            is_deleted,
+            version,
+            created_at,
+            updated_at
+        FROM home_builder.checklist_template_item
+        WHERE {where}
+        ORDER BY category, sequence_index
+        """,
+        (template_id,),
+        conn=conn,
+    )
+
+
+def update_checklist_template_item(
+    item_id: str,
+    *,
+    expected_version: int,
+    label: str | None = None,
+    photo_required: bool | None = None,
+    conn: psycopg.Connection | None = None,
+) -> dict | None:
+    """Edit wording or photo_required on a template item with optimistic
+    concurrency. Returns the updated row dict, or None on version mismatch
+    or missing row.
+
+    The route handler translates None → 409 (when the row exists but
+    expected_version stale) vs 404 (row missing). Caller can fetch the
+    current row via list_checklist_template_items if it needs to
+    distinguish.
+
+    Per spec D2 + D4: this is a synchronous explicit edit (not a
+    UserAction) and the change does NOT propagate to in-flight
+    home_builder.checklist_item rows — they keep their cached label.
+    Future instantiations of the phase pick up the new wording.
+
+    Side effects: source flips to 'chad-authored' on the parent template
+    on first edit. The trigger handles updated_at on both rows.
+    """
+    sets: list[str] = ["version = version + 1"]
+    params: list = []
+    if label is not None:
+        sets.append("label = %s")
+        params.append(label)
+    if photo_required is not None:
+        sets.append("photo_required = %s")
+        params.append(photo_required)
+
+    sql = f"""
+        WITH updated AS (
+            UPDATE home_builder.checklist_template_item
+               SET {", ".join(sets)}
+             WHERE id = %s::uuid
+               AND version = %s
+               AND is_deleted = FALSE
+         RETURNING id::text AS id, template_id::text AS template_id,
+                   category, label, photo_required, sequence_index,
+                   version, updated_at
+        ),
+        flipped AS (
+            UPDATE home_builder.checklist_template
+               SET source = 'chad-authored'
+              FROM updated u
+             WHERE checklist_template.id::text = u.template_id
+               AND checklist_template.source = 'seeded'
+            RETURNING 1
+        )
+        SELECT * FROM updated
+    """
+    params.extend([item_id, expected_version])
+    return _query_one(sql, tuple(params), conn=conn)
+
+
+def insert_checklist_template_item(
+    template_id: str,
+    *,
+    category: str,
+    label: str,
+    photo_required: bool,
+    after_item_id: str | None = None,
+    conn: psycopg.Connection | None = None,
+) -> dict:
+    """Add a new item to a template. Returns the inserted row dict.
+
+    Sequence_index resolution:
+      - If after_item_id is given, the new item gets that row's
+        sequence_index + 1. Existing rows at or beyond that index keep
+        their sequence_index — we don't shift in v1, since the renderer
+        sorts by (category, sequence_index, created_at) and ties are
+        broken naturally. Reorder UI is v1.5.
+      - Otherwise, the new item lands at the end of the category:
+        max(sequence_index) + 1, or 0 if the category is empty.
+
+    Per spec D4 (structural propagation policy): the new item appears in
+    the template; it does NOT inject into existing checklist_item rows
+    in in-flight projects. Future instantiations pick it up.
+
+    UNIQUE (template_id, category, label) WHERE NOT is_deleted is the
+    backstop against accidental dups — the caller surfaces a 409 when
+    psycopg raises UniqueViolation.
+    """
+    if after_item_id is not None:
+        anchor = _query_one(
+            """
+            SELECT sequence_index
+              FROM home_builder.checklist_template_item
+             WHERE id = %s::uuid AND template_id = %s::uuid
+            """,
+            (after_item_id, template_id),
+            conn=conn,
+        )
+        seq = (anchor["sequence_index"] + 1) if anchor else 0
+    else:
+        max_row = _query_one(
+            """
+            SELECT COALESCE(MAX(sequence_index), -1) AS max_seq
+              FROM home_builder.checklist_template_item
+             WHERE template_id = %s::uuid
+               AND category = %s
+               AND is_deleted = FALSE
+            """,
+            (template_id, category),
+            conn=conn,
+        )
+        seq = int(max_row["max_seq"]) + 1
+
+    inserted = _query_one(
+        """
+        WITH new_item AS (
+            INSERT INTO home_builder.checklist_template_item (
+                template_id, category, label, photo_required, sequence_index
+            )
+            VALUES (%s::uuid, %s, %s, %s, %s)
+            RETURNING id::text AS id, template_id::text AS template_id,
+                      category, label, photo_required, sequence_index,
+                      version, created_at
+        ),
+        flipped AS (
+            UPDATE home_builder.checklist_template
+               SET source = 'chad-authored'
+             WHERE id = %s::uuid AND source = 'seeded'
+            RETURNING 1
+        )
+        SELECT * FROM new_item
+        """,
+        (template_id, category, label, photo_required, seq, template_id),
+        conn=conn,
+    )
+    return inserted
+
+
+# ---------------------------------------------------------------------------
+# Checklist item photo CRUD (migration 010)
+# ---------------------------------------------------------------------------
+
+
+def insert_checklist_item_photo(
+    checklist_item_id: str,
+    *,
+    drive_file_id: str,
+    drive_url: str,
+    caption: str | None = None,
+    uploaded_by: str | None = None,
+    tenant_id: str | None = None,
+    conn: psycopg.Connection | None = None,
+) -> dict:
+    """Persist a photo upload row. Returns {photo_id, drive_file_id,
+    drive_url, caption, uploaded_at, checklist_item_id}.
+
+    Per ADR D3 — photo_id is the primary identifier returned to the
+    renderer. drive_url is included for click-through display only.
+    Storage backend (Drive today, S3/Supabase Storage tomorrow) is
+    swappable without touching the iOS surface.
+    """
+    return _query_one(
+        """
+        INSERT INTO home_builder.checklist_item_photo (
+            checklist_item_id, drive_file_id, drive_url, caption,
+            uploaded_by, tenant_id
+        )
+        VALUES (%s::uuid, %s, %s, %s, %s::uuid, %s::uuid)
+        RETURNING
+            id::text                AS photo_id,
+            checklist_item_id::text AS checklist_item_id,
+            drive_file_id,
+            drive_url,
+            caption,
+            uploaded_by::text       AS uploaded_by,
+            uploaded_at
+        """,
+        (
+            checklist_item_id, drive_file_id, drive_url, caption,
+            uploaded_by, tenant_id,
+        ),
+        conn=conn,
+    )
+
+
+def list_checklist_item_photos(
+    checklist_item_id: str,
+    *,
+    conn: psycopg.Connection | None = None,
+) -> list[dict]:
+    """Return all photos for a checklist_item, newest-first."""
+    return _query_many(
+        """
+        SELECT
+            id::text                AS photo_id,
+            checklist_item_id::text AS checklist_item_id,
+            drive_file_id,
+            drive_url,
+            caption,
+            uploaded_by::text       AS uploaded_by,
+            uploaded_at
+        FROM home_builder.checklist_item_photo
+        WHERE checklist_item_id = %s::uuid
+        ORDER BY uploaded_at DESC
+        """,
+        (checklist_item_id,),
+        conn=conn,
+    )
 
 
 def update_checklist_item(

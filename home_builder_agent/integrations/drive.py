@@ -115,6 +115,67 @@ def archive_existing_artifact(service, name, parent_folder_id, archive_folder_id
     return len(files)
 
 
+def ensure_subfolder(service, name, parent_folder_id):
+    """Find a child folder by exact name match, creating it if missing.
+
+    Returns the (existing or created) folder's ID. Used by callers that
+    need to walk into a structured path that may not exist yet — e.g.
+    the checklist photo uploader walks
+    `<project>/Site Logs/Checklist Photos/<phase>/<item>` and creates
+    each segment lazily on first use.
+    """
+    escaped = name.replace("'", r"\'")
+    query = (
+        f"name='{escaped}' "
+        "and mimeType='application/vnd.google-apps.folder' "
+        f"and '{parent_folder_id}' in parents "
+        "and trashed=false"
+    )
+    folders = service.files().list(
+        q=query, fields="files(id)"
+    ).execute().get("files", [])
+    if folders:
+        return folders[0]["id"]
+    folder = service.files().create(
+        body={
+            "name": name,
+            "mimeType": "application/vnd.google-apps.folder",
+            "parents": [parent_folder_id],
+        },
+        fields="id",
+    ).execute()
+    return folder["id"]
+
+
+def ensure_subfolder_path(service, segments, parent_folder_id):
+    """Walk a list of folder names under `parent_folder_id`, creating
+    each as needed. Returns the deepest folder's ID.
+
+    Empty `segments` returns `parent_folder_id` unchanged — convenient
+    for callers that compute the segment list dynamically.
+    """
+    cur = parent_folder_id
+    for name in segments:
+        cur = ensure_subfolder(service, name, cur)
+    return cur
+
+
+def upload_binary_file(service, file_bytes, file_name, mime_type, parent_folder_id):
+    """Upload arbitrary binary data to Drive. Returns {id, webViewLink}.
+
+    Used by the checklist-photo upload route. mime_type is the request's
+    Content-Type (e.g. 'image/jpeg', 'image/png'); Drive stores it as-is
+    rather than auto-converting to a Google Doc.
+    """
+    metadata = {"name": file_name, "parents": [parent_folder_id]}
+    media = MediaIoBaseUpload(
+        io.BytesIO(file_bytes), mimetype=mime_type, resumable=False
+    )
+    return service.files().create(
+        body=metadata, media_body=media, fields="id, webViewLink"
+    ).execute()
+
+
 def upload_as_google_doc(service, html, doc_name, parent_folder_id):
     """Upload HTML to Drive as a Google Doc (Drive auto-converts HTML)."""
     metadata = {

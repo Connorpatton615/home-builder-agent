@@ -69,6 +69,11 @@ class ChecklistItem:
     notes: str | None = None
     photo_required: bool = False
     photos: list[dict] = field(default_factory=list)
+    # Audit pointer back to the canonical checklist_template_item row
+    # this instance was hydrated from. Set when DB-first hydration runs;
+    # None for legacy rows + JSON-only in-memory instantiations.
+    # See migration 010 + spec § Engine-side adapter changes.
+    template_item_id: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -81,6 +86,7 @@ class ChecklistItem:
             "notes": self.notes,
             "photo_required": self.photo_required,
             "photos": list(self.photos),
+            "template_item_id": self.template_item_id,
         }
 
 
@@ -92,6 +98,11 @@ class Checklist:
     phase_id: str
     template_version: str
     items: list[ChecklistItem] = field(default_factory=list)
+    # Pointer back to the canonical checklist_template row this checklist
+    # was hydrated from. Renderer needs this to construct the PATCH /
+    # POST URLs against the template (per spec § REST routes). None for
+    # legacy rows + JSON-only in-memory instantiations.
+    template_id: str | None = None
 
     # ---- Derived properties -------------------------------------------------
 
@@ -189,14 +200,71 @@ def instantiate_checklist(
     phase_name: str,
     *,
     id_prefix: str | None = None,
+    conn=None,
+    tenant_id: str | None = None,
 ) -> Checklist:
     """Build a fresh Checklist for a Phase from its template (if any).
 
     `id_prefix` scopes item IDs to a parent context (typically
     "{project_id}:{phase_id}") so checklist item IDs are globally unique
     when persisted. Defaults to `phase_id` for in-memory use.
+
+    Hydration source order (per ADR 2026-05-09 D1 — DB is canonical):
+      1. If `conn` is provided AND a checklist_template row exists for
+         (slugify(phase_name), tenant_id), hydrate from
+         checklist_template_item rows. Wording reflects Chad's in-app
+         edits.
+      2. JSON fallback at scheduling/checklist_templates/<slug>.json —
+         used by tests and any caller that doesn't pass a connection.
+      3. Stub (no items) when neither path produces a template.
+
+    Callers that already own a Postgres connection (e.g. the engine's
+    schedule composer when running against the live store) should pass
+    it. In-memory use cases (tests, the round-trip CLI) get the JSON
+    path automatically by leaving conn=None.
     """
     prefix = id_prefix or phase_id
+
+    # Source 1: DB-backed template (preferred per D1)
+    if conn is not None:
+        # Local import to avoid circular import (store_postgres imports
+        # from this module too).
+        from home_builder_agent.scheduling.store_postgres import (
+            list_checklist_template_items,
+            load_checklist_template,
+        )
+
+        db_template = load_checklist_template(
+            slugify(phase_name), tenant_id=tenant_id, conn=conn
+        )
+        if db_template is not None:
+            db_items = list_checklist_template_items(db_template["id"], conn=conn)
+            if db_items:
+                items: list[ChecklistItem] = []
+                # Group within category so id suffix matches sequence.
+                seq_per_cat: dict[str, int] = {}
+                for it in db_items:
+                    cat = it["category"]
+                    cat_slug = _slugify(cat)
+                    seq = seq_per_cat.setdefault(cat, 0)
+                    items.append(
+                        ChecklistItem(
+                            id=f"{prefix}:{cat_slug}:{seq:02d}",
+                            category=cat,
+                            label=it["label"],
+                            photo_required=bool(it.get("photo_required") or False),
+                            template_item_id=it["id"],
+                        )
+                    )
+                    seq_per_cat[cat] = seq + 1
+                return Checklist(
+                    id=f"{prefix}:checklist",
+                    phase_id=phase_id,
+                    template_version=db_template["template_version"],
+                    items=items,
+                )
+
+    # Source 2: JSON fallback
     template = load_template(phase_name)
 
     if template is None:
@@ -208,7 +276,7 @@ def instantiate_checklist(
             items=[],
         )
 
-    items: list[ChecklistItem] = []
+    items = []
     for cat in template.get("categories", []):
         cat_name = cat.get("name", "Uncategorized")
         cat_slug = _slugify(cat_name)
