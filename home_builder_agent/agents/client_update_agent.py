@@ -431,6 +431,59 @@ def main():
         print(f"Draft created — review in Gmail before sending.")
         print(f"Tip: open Gmail → Drafts → review → Send")
 
+        # Engine-side: register the draft in home_builder.draft_action so
+        # it surfaces in the morning view's judgment queue (per
+        # docs/specs/morning-view-model.md). Best-effort — failure here
+        # does NOT fail the run; the Gmail draft is already created.
+        try:
+            from home_builder_agent.scheduling.draft_actions import (
+                DraftKind,
+                make_draft_action,
+            )
+            from home_builder_agent.scheduling.store_postgres import (
+                insert_draft_action,
+                load_project_by_name,
+            )
+
+            proj = load_project_by_name(project_name)
+            if proj is not None:
+                week_str = today.strftime("%B %-d, %Y")
+                draft = make_draft_action(
+                    project_id=proj["id"],
+                    kind=DraftKind.CLIENT_UPDATE_EMAIL,
+                    originating_agent="hb-client-update",
+                    summary=(
+                        f"Weekly homeowner update for {project_name} drafted "
+                        f"(week ending {week_str})"
+                    ),
+                    subject_line=subject,
+                    body_payload={
+                        "week_ending": today.isoformat(),
+                        "recipient_homeowner_email": recipient_email,
+                        "recipient_name": recipient_name,
+                        "draft_subject": subject,
+                        # html_body retained server-side so the renderer can
+                        # show a preview; reconcile-time send fetches the
+                        # canonical version from the Gmail draft via external_ref
+                    },
+                    external_ref=draft_id,
+                    from_or_to=f"To: {recipient_email}",
+                )
+                insert_draft_action(draft)
+                print(
+                    f"draft_action row inserted ({draft.id[:8]}…) — visible in morning queue"
+                )
+            else:
+                print(
+                    f"⚠️  No Postgres project row for {project_name!r}; "
+                    "draft_action skipped (run hb-bridge?)"
+                )
+        except Exception as e:
+            print(
+                f"⚠️  draft_action insert failed: {type(e).__name__}: {e} "
+                "(Gmail draft created normally; morning queue will miss this entry)"
+            )
+
     print(f"Cost: ${usd:.4f}")
     print()
 

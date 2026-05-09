@@ -556,6 +556,72 @@ def main():
                 FINANCE_PROJECT_NAME, doc_url,
             )
             print(f"  ✅  Gmail draft created — open Gmail to review and send")
+
+            # Engine-side: register the draft in home_builder.draft_action so
+            # it surfaces in the morning view's judgment queue (per
+            # docs/specs/morning-view-model.md). Best-effort — failure here
+            # does NOT fail the run; the Gmail draft is already created.
+            try:
+                from home_builder_agent.scheduling.draft_actions import (
+                    DraftKind,
+                    make_draft_action,
+                )
+                from home_builder_agent.scheduling.store_postgres import (
+                    insert_draft_action,
+                    load_project_by_name,
+                )
+
+                proj = load_project_by_name(FINANCE_PROJECT_NAME)
+                if proj is not None:
+                    delta = co.get("cost_delta", 0)
+                    sign = "+" if delta >= 0 else "-"
+                    delta_str = f"{sign}${abs(delta):,.0f}"
+                    sched = co.get("schedule_impact_days") or 0
+                    sched_str = (
+                        f", {abs(sched)}d {'added' if sched > 0 else 'saved'}"
+                        if sched else ""
+                    )
+                    summary = (
+                        f"{co_number} ({delta_str}{sched_str}) — homeowner approval drafted: "
+                        f"{(co.get('description') or '')[:80]}"
+                    )
+                    draft = make_draft_action(
+                        project_id=proj["id"],
+                        kind=DraftKind.CHANGE_ORDER_APPROVAL,
+                        originating_agent="hb-change",
+                        summary=summary,
+                        subject_line=(
+                            f"Change Order {co_number} — {FINANCE_PROJECT_NAME} "
+                            "— Approval Required"
+                        ),
+                        body_payload={
+                            "co_number": co_number,
+                            "change_summary": co.get("description"),
+                            "cost_delta_usd": co.get("cost_delta"),
+                            "schedule_impact_days": co.get("schedule_impact_days") or 0,
+                            "drive_doc_url": doc_url,
+                            "recipient_homeowner_email": args.client_email,
+                        },
+                        external_ref=draft_id,
+                        from_or_to=f"To: {args.client_email}",
+                    )
+                    insert_draft_action(draft)
+                    print(
+                        f"  ✅  draft_action row inserted ({draft.id[:8]}…) — "
+                        "visible in morning queue"
+                    )
+                else:
+                    print(
+                        "  ⚠️  No Postgres project row for "
+                        f"{FINANCE_PROJECT_NAME!r}; draft_action skipped (run hb-bridge?)"
+                    )
+            except Exception as e:
+                print(
+                    f"  ⚠️  draft_action insert failed: {type(e).__name__}: {e}"
+                )
+                print(
+                    "      (Gmail draft created normally; morning queue will miss this entry)"
+                )
         except Exception as e:
             print(f"  ⚠️  Email draft failed: {e}")
     else:
