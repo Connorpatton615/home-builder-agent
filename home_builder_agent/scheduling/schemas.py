@@ -305,7 +305,14 @@ class MonthlyViewPayload(_Base):
 # ---------------------------------------------------------------------------
 
 class ChecklistItemPayload(_Base):
-    """Mirrors canonical-data-model.md § entity 7 ChecklistItem."""
+    """Mirrors canonical-data-model.md § entity 7 ChecklistItem.
+
+    `photo_required` and `photos` flag/carry photo-evidence support per
+    item — Chad's flow of approval treats some items as requiring a
+    photo upload before close. The renderer surfaces a camera affordance
+    on photo_required items; uploaded photos land in Drive under
+    Site Logs/<Project>/Checklist Photos/<phase>/<item-slug>/.
+    """
 
     id: str
     category: str = Field(
@@ -316,7 +323,19 @@ class ChecklistItemPayload(_Base):
     completed_by: str | None = None
     completed_at: _date | None = None
     notes: str | None = None
+    photo_required: bool = Field(
+        default=False,
+        description="True if Chad's flow of approval expects photo evidence to close this item",
+    )
+    photos: list[dict] = Field(
+        default_factory=list,
+        description="Drive references for uploaded photos: [{drive_file_id, drive_url, uploaded_at, uploaded_by}, ...]",
+    )
     tap_action: str | None = None
+    photo_upload_action: str | None = Field(
+        default=None,
+        description="UserAction emit target for photo upload (e.g. 'checklist-item-photo-upload:<id>')",
+    )
 
 
 class ChecklistPayload(_Base):

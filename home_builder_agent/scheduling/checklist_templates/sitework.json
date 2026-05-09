@@ -6,75 +6,192 @@
     {
       "name": "Permits & Approvals On-Site",
       "items": [
-        "Building permit card posted on-site in weatherproof holder, visible from street",
-        "Septic / sewer permit approved and copy on-site (Baldwin County Health Department)",
-        "Land-disturbing activity permit confirmed if disturbed area exceeds 1 acre (ADEM NPDES requirement)",
-        "Driveway / access permit issued by Baldwin County Engineering if county road access is required",
-        "Wetlands determination letter on file; Army Corps 404 permit confirmed if any fill within jurisdictional wetlands"
+        {
+          "label": "Building permit card posted on-site in weatherproof holder, visible from street",
+          "photo_required": true
+        },
+        {
+          "label": "Septic / sewer permit approved and copy on-site (Baldwin County Health Department)",
+          "photo_required": false
+        },
+        {
+          "label": "Land-disturbing activity permit confirmed if disturbed area exceeds 1 acre (ADEM NPDES requirement)",
+          "photo_required": false
+        },
+        {
+          "label": "Driveway / access permit issued by Baldwin County Engineering if county road access is required",
+          "photo_required": false
+        },
+        {
+          "label": "Wetlands determination letter on file; Army Corps 404 permit confirmed if any fill within jurisdictional wetlands",
+          "photo_required": false
+        }
       ]
     },
     {
       "name": "Clearing & Demolition",
       "items": [
-        "Tree-save fence installed at drip line of all trees designated for preservation on site plan",
-        "Clearing limits staked and flagged to match approved site plan \u2014 no clearing beyond staked boundary",
-        "All trees, stumps, and organic debris removed from building footprint and within 10 feet of foundation perimeter",
-        "Demolished concrete, asphalt, or existing structure materials hauled off-site; no burial of organics or demolition debris on lot",
-        "Topsoil stripped from building footprint and stockpiled on-site per grading plan for reuse or disposal"
+        {
+          "label": "Tree-save fence installed at drip line of all trees designated for preservation on site plan",
+          "photo_required": true
+        },
+        {
+          "label": "Clearing limits staked and flagged to match approved site plan — no clearing beyond staked boundary",
+          "photo_required": true
+        },
+        {
+          "label": "All trees, stumps, and organic debris removed from building footprint and within 10 feet of foundation perimeter",
+          "photo_required": true
+        },
+        {
+          "label": "Demolished concrete, asphalt, or existing structure materials hauled off-site; no burial of organics or demolition debris on lot",
+          "photo_required": true
+        },
+        {
+          "label": "Topsoil stripped from building footprint and stockpiled on-site per grading plan for reuse or disposal",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Erosion & Sediment Control",
       "items": [
-        "Silt fence installed along downslope perimeter of all disturbed areas before any grading begins",
-        "Construction entrance stabilized with 6-inch minimum compacted #57 stone pad, minimum 50 feet long, to prevent mud tracking onto road",
-        "Inlet protection installed on any storm drain inlets within 100 feet of disturbed area",
-        "Sediment basin or sediment trap installed if disturbed area exceeds threshold per ADEM SWPPP requirements",
-        "SWPPP binder on-site, signed by qualified person, with inspection log started \u2014 first inspection documented before grading commences",
-        "All erosion controls inspected by superintendent after first rain event and after any storm exceeding 0.5 inch; deficiencies corrected within 24 hours"
+        {
+          "label": "Silt fence installed along downslope perimeter of all disturbed areas before any grading begins",
+          "photo_required": true
+        },
+        {
+          "label": "Construction entrance stabilized with 6-inch minimum compacted #57 stone pad, minimum 50 feet long, to prevent mud tracking onto road",
+          "photo_required": true
+        },
+        {
+          "label": "Inlet protection installed on any storm drain inlets within 100 feet of disturbed area",
+          "photo_required": true
+        },
+        {
+          "label": "Sediment basin or sediment trap installed if disturbed area exceeds threshold per ADEM SWPPP requirements",
+          "photo_required": true
+        },
+        {
+          "label": "SWPPP binder on-site, signed by qualified person, with inspection log started — first inspection documented before grading commences",
+          "photo_required": true
+        },
+        {
+          "label": "All erosion controls inspected by superintendent after first rain event and after any storm exceeding 0.5 inch; deficiencies corrected within 24 hours",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Grading & Drainage",
       "items": [
-        "Rough grade matches approved site plan finish floor elevation (FFE) within +/- 0.10 foot; FFE confirmed against flood zone BFE plus required freeboard",
-        "Positive drainage slope established away from building pad \u2014 minimum 6 inches of fall in first 10 feet on all sides per IRC R401.3",
-        "Swales cut to plan dimensions and flow direction confirmed by level; no ponding low spots within 20 feet of foundation",
-        "Fill material is clean select fill, free of organics, debris, and unsuitable soils; source and material type documented",
-        "Cut and fill quantities reconciled against grading plan; any deviation from plan approved in writing by engineer of record before proceeding"
+        {
+          "label": "Rough grade matches approved site plan finish floor elevation (FFE) within +/- 0.10 foot; FFE confirmed against flood zone BFE plus required freeboard",
+          "photo_required": true
+        },
+        {
+          "label": "Positive drainage slope established away from building pad — minimum 6 inches of fall in first 10 feet on all sides per IRC R401.3",
+          "photo_required": true
+        },
+        {
+          "label": "Swales cut to plan dimensions and flow direction confirmed by level; no ponding low spots within 20 feet of foundation",
+          "photo_required": true
+        },
+        {
+          "label": "Fill material is clean select fill, free of organics, debris, and unsuitable soils; source and material type documented",
+          "photo_required": true
+        },
+        {
+          "label": "Cut and fill quantities reconciled against grading plan; any deviation from plan approved in writing by engineer of record before proceeding",
+          "photo_required": false
+        }
       ]
     },
     {
       "name": "Underground Utilities",
       "items": [
-        "Sewer lateral or septic system stub-out installed to within 5 feet of building footprint at correct invert elevation per engineered plan",
-        "Water service tap and meter set by Baldwin County Water Authority (or applicable utility); service line sleeved under any driveways or hardscape",
-        "Electrical service conduit stubbed to within 5 feet of meter location; conduit depth complies with NEC 300.5 burial depth requirements",
-        "Gas service line (if applicable) installed and pressure-tested per utility provider requirements before backfill",
-        "All underground utility locations marked with color-coded tracer wire or conduit; as-built sketch with depths documented and filed",
-        "All trench backfill compacted in maximum 8-inch lifts to 95% Standard Proctor per geotechnical report requirements; no water jetting used as compaction method"
+        {
+          "label": "Sewer lateral or septic system stub-out installed to within 5 feet of building footprint at correct invert elevation per engineered plan",
+          "photo_required": true
+        },
+        {
+          "label": "Water service tap and meter set by Baldwin County Water Authority (or applicable utility); service line sleeved under any driveways or hardscape",
+          "photo_required": true
+        },
+        {
+          "label": "Electrical service conduit stubbed to within 5 feet of meter location; conduit depth complies with NEC 300.5 burial depth requirements",
+          "photo_required": true
+        },
+        {
+          "label": "Gas service line (if applicable) installed and pressure-tested per utility provider requirements before backfill",
+          "photo_required": true
+        },
+        {
+          "label": "All underground utility locations marked with color-coded tracer wire or conduit; as-built sketch with depths documented and filed",
+          "photo_required": true
+        },
+        {
+          "label": "All trench backfill compacted in maximum 8-inch lifts to 95% Standard Proctor per geotechnical report requirements; no water jetting used as compaction method",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Building Pad & Compaction",
       "items": [
-        "Geotechnical engineer or certified testing lab has proofrolled subgrade with loaded dump truck; no pumping, rutting, or soft spots observed",
-        "Compaction testing (nuclear gauge or sand cone) confirms minimum 95% Standard Proctor density at subgrade and at each 12-inch lift of fill \u2014 test reports signed and on file",
-        "Pad elevation surveyed by licensed surveyor and confirmed to match engineered finish floor elevation within +/- 0.05 foot",
-        "All tree stumps, roots larger than 1.5 inches diameter, and organic material removed from footprint to minimum 24 inches below finish subgrade",
-        "Vapor retarder or capillary break layer (if required by foundation engineer) placed and intact across full footprint before any form work begins",
-        "Superintendent and foundation sub have walked pad together and signed off that subgrade is acceptable to proceed to foundation"
+        {
+          "label": "Geotechnical engineer or certified testing lab has proofrolled subgrade with loaded dump truck; no pumping, rutting, or soft spots observed",
+          "photo_required": true
+        },
+        {
+          "label": "Compaction testing (nuclear gauge or sand cone) confirms minimum 95% Standard Proctor density at subgrade and at each 12-inch lift of fill — test reports signed and on file",
+          "photo_required": true
+        },
+        {
+          "label": "Pad elevation surveyed by licensed surveyor and confirmed to match engineered finish floor elevation within +/- 0.05 foot",
+          "photo_required": true
+        },
+        {
+          "label": "All tree stumps, roots larger than 1.5 inches diameter, and organic material removed from footprint to minimum 24 inches below finish subgrade",
+          "photo_required": true
+        },
+        {
+          "label": "Vapor retarder or capillary break layer (if required by foundation engineer) placed and intact across full footprint before any form work begins",
+          "photo_required": true
+        },
+        {
+          "label": "Superintendent and foundation sub have walked pad together and signed off that subgrade is acceptable to proceed to foundation",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Inspections & Sign-Off",
       "items": [
-        "Baldwin County Building Department setback / survey inspection passed (if required prior to foundation); inspection card signed",
-        "Compaction test reports reviewed and approved by project engineer of record in writing",
-        "SWPPP inspection log current with no unresolved deficiencies noted",
-        "Septic system installation inspected and approved by Baldwin County Health Department before any backfill over tank or field lines",
-        "Superintendent has completed site walk against this checklist; all open items resolved or written into a dated punch-log with assigned responsible party and due date",
-        "Client notified in writing that Sitework phase is closed and foundation phase is authorized to begin"
+        {
+          "label": "Baldwin County Building Department setback / survey inspection passed (if required prior to foundation); inspection card signed",
+          "photo_required": true
+        },
+        {
+          "label": "Compaction test reports reviewed and approved by project engineer of record in writing",
+          "photo_required": false
+        },
+        {
+          "label": "SWPPP inspection log current with no unresolved deficiencies noted",
+          "photo_required": true
+        },
+        {
+          "label": "Septic system installation inspected and approved by Baldwin County Health Department before any backfill over tank or field lines",
+          "photo_required": true
+        },
+        {
+          "label": "Superintendent has completed site walk against this checklist; all open items resolved or written into a dated punch-log with assigned responsible party and due date",
+          "photo_required": false
+        },
+        {
+          "label": "Client notified in writing that Sitework phase is closed and foundation phase is authorized to begin",
+          "photo_required": false
+        }
       ]
     }
   ]

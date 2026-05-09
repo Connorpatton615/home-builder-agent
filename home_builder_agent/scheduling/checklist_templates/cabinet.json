@@ -6,59 +6,158 @@
     {
       "name": "Pre-Install Verification",
       "items": [
-        "Cabinet shop drawings reviewed and approved by client (door style, finish, interior layout, hardware placement)",
-        "Cabinet delivery confirmed received in full \u2014 all boxes and components checked against packing list before installer arrival",
-        "All boxes inspected for shipping damage; damaged or incorrect pieces documented and replacements ordered before install begins",
-        "Walls and floors in cabinet zones confirmed plumb, level, and flat within 3/16\" over 8 ft; shims and blocking plan confirmed with installer",
-        "Blocking installed in all upper cabinet walls per cabinet layout drawing (typically 2\u00d7 blocking between studs at specified heights)",
-        "Rough plumbing, electrical, and HVAC rough-in confirmed complete and inspected before cabinets close off access",
-        "Cabinet hardware (knobs, pulls, hinges) confirmed on-site and matched to approved selection sheet"
+        {
+          "label": "Cabinet shop drawings reviewed and approved by client (door style, finish, interior layout, hardware placement)",
+          "photo_required": false
+        },
+        {
+          "label": "Cabinet delivery confirmed received in full — all boxes and components checked against packing list before installer arrival",
+          "photo_required": true
+        },
+        {
+          "label": "All boxes inspected for shipping damage; damaged or incorrect pieces documented and replacements ordered before install begins",
+          "photo_required": true
+        },
+        {
+          "label": "Walls and floors in cabinet zones confirmed plumb, level, and flat within 3/16\" over 8 ft; shims and blocking plan confirmed with installer",
+          "photo_required": true
+        },
+        {
+          "label": "Blocking installed in all upper cabinet walls per cabinet layout drawing (typically 2× blocking between studs at specified heights)",
+          "photo_required": true
+        },
+        {
+          "label": "Rough plumbing, electrical, and HVAC rough-in confirmed complete and inspected before cabinets close off access",
+          "photo_required": true
+        },
+        {
+          "label": "Cabinet hardware (knobs, pulls, hinges) confirmed on-site and matched to approved selection sheet",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Installation",
       "items": [
-        "Upper cabinets installed first; all secured to wall studs or blocking with minimum #8 \u00d7 2-1/2\" screws, not drywall anchors",
-        "All upper cabinet runs level across full run within 1/8\"; shims concealed or scribed, no exposed gaps at wall",
-        "Base cabinets installed level across full run within 1/8\"; toe kicks aligned and continuous, no rocking on floor",
-        "Cabinet face frames tight at all joints; stile-to-stile seams at joined cabinets flush within 1/32\" and clamped/screwed per manufacturer spec",
-        "All fillers, scribe moldings, and end panels cut, fit, and secured \u2014 no raw MDF edges exposed at wall or ceiling interfaces",
-        "Sink base confirmed positioned over drain and supply rough-in; no cabinet modification that violates structural integrity of box",
-        "Island or peninsula cabinets secured to subfloor per cabinet manufacturer's anchoring method; no movement or racking",
-        "Range, refrigerator, dishwasher, and appliance openings measured and confirmed against confirmed appliance specs before install is finalized"
+        {
+          "label": "Upper cabinets installed first; all secured to wall studs or blocking with minimum #8 × 2-1/2\" screws, not drywall anchors",
+          "photo_required": true
+        },
+        {
+          "label": "All upper cabinet runs level across full run within 1/8\"; shims concealed or scribed, no exposed gaps at wall",
+          "photo_required": true
+        },
+        {
+          "label": "Base cabinets installed level across full run within 1/8\"; toe kicks aligned and continuous, no rocking on floor",
+          "photo_required": true
+        },
+        {
+          "label": "Cabinet face frames tight at all joints; stile-to-stile seams at joined cabinets flush within 1/32\" and clamped/screwed per manufacturer spec",
+          "photo_required": true
+        },
+        {
+          "label": "All fillers, scribe moldings, and end panels cut, fit, and secured — no raw MDF edges exposed at wall or ceiling interfaces",
+          "photo_required": true
+        },
+        {
+          "label": "Sink base confirmed positioned over drain and supply rough-in; no cabinet modification that violates structural integrity of box",
+          "photo_required": true
+        },
+        {
+          "label": "Island or peninsula cabinets secured to subfloor per cabinet manufacturer's anchoring method; no movement or racking",
+          "photo_required": true
+        },
+        {
+          "label": "Range, refrigerator, dishwasher, and appliance openings measured and confirmed against confirmed appliance specs before install is finalized",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Doors, Drawers & Hardware",
       "items": [
-        "All cabinet doors hang plumb and level; gap between door and frame consistent at 1/16\" \u00b1 1/32\" on all sides",
-        "All doors and drawer fronts aligned across adjacent cabinets \u2014 reveals consistent, no stair-stepping across a run",
-        "All hinges adjusted to three-axis spec (vertical, horizontal, depth); soft-close function confirmed on every door",
-        "All drawer boxes fully operational \u2014 slides extend to full extension, soft-close engages, no binding or mistrack",
-        "All pulls and knobs installed at uniform placement per approved hardware template; pilot holes clean, no tear-out",
-        "All interior shelf pins installed, shelves seated level and confirmed to rated load (pull test by hand, no deflection on span)",
-        "All doors and drawers opened and closed minimum three times by superintendent and confirmed smooth with no rub, catch, or squeak"
+        {
+          "label": "All cabinet doors hang plumb and level; gap between door and frame consistent at 1/16\" ± 1/32\" on all sides",
+          "photo_required": true
+        },
+        {
+          "label": "All doors and drawer fronts aligned across adjacent cabinets — reveals consistent, no stair-stepping across a run",
+          "photo_required": true
+        },
+        {
+          "label": "All hinges adjusted to three-axis spec (vertical, horizontal, depth); soft-close function confirmed on every door",
+          "photo_required": true
+        },
+        {
+          "label": "All drawer boxes fully operational — slides extend to full extension, soft-close engages, no binding or mistrack",
+          "photo_required": true
+        },
+        {
+          "label": "All pulls and knobs installed at uniform placement per approved hardware template; pilot holes clean, no tear-out",
+          "photo_required": true
+        },
+        {
+          "label": "All interior shelf pins installed, shelves seated level and confirmed to rated load (pull test by hand, no deflection on span)",
+          "photo_required": true
+        },
+        {
+          "label": "All doors and drawers opened and closed minimum three times by superintendent and confirmed smooth with no rub, catch, or squeak",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Quality & Punch",
       "items": [
-        "All finish surfaces (doors, drawer fronts, face frames, end panels) inspected under raking light for scratches, dents, finish holidays, or color inconsistency",
-        "All cut edges at scribe, filler, and toe kick confirmed clean \u2014 no chipping on painted or thermofoil finish, no raw substrate visible",
-        "All cabinet interiors clean and free of sawdust, hardware packaging, and debris",
-        "Caulk line at cabinet-to-wall and cabinet-to-ceiling interfaces confirmed uniform, tooled, and painted-grade (paintable caulk, not silicone) where painted finish will be applied",
-        "Under-cabinet lighting rough-in (if applicable) confirmed stubbed to correct location and accessible post-install",
-        "Any items requiring cabinet shop warranty service (damaged doors, wrong sizes, defective hinges) documented on punch list with ETA for resolution"
+        {
+          "label": "All finish surfaces (doors, drawer fronts, face frames, end panels) inspected under raking light for scratches, dents, finish holidays, or color inconsistency",
+          "photo_required": true
+        },
+        {
+          "label": "All cut edges at scribe, filler, and toe kick confirmed clean — no chipping on painted or thermofoil finish, no raw substrate visible",
+          "photo_required": true
+        },
+        {
+          "label": "All cabinet interiors clean and free of sawdust, hardware packaging, and debris",
+          "photo_required": true
+        },
+        {
+          "label": "Caulk line at cabinet-to-wall and cabinet-to-ceiling interfaces confirmed uniform, tooled, and painted-grade (paintable caulk, not silicone) where painted finish will be applied",
+          "photo_required": true
+        },
+        {
+          "label": "Under-cabinet lighting rough-in (if applicable) confirmed stubbed to correct location and accessible post-install",
+          "photo_required": true
+        },
+        {
+          "label": "Any items requiring cabinet shop warranty service (damaged doors, wrong sizes, defective hinges) documented on punch list with ETA for resolution",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Sign-Off & Next-Phase Handoff",
       "items": [
-        "Superintendent final walk of all cabinet zones completed and sign-off recorded in project management system",
-        "Client walkthrough completed; client signs Cabinet Phase Acceptance form acknowledging layout, finish, and function meet selections and shop drawings",
-        "Any open punch items documented in writing with responsible party and due date before countertop template is scheduled",
-        "Countertop fabricator notified that cabinets are level, complete, and ready for template \u2014 template date locked on schedule",
-        "Cabinet installer's final invoice approved and submitted for draw processing only after client sign-off is received"
+        {
+          "label": "Superintendent final walk of all cabinet zones completed and sign-off recorded in project management system",
+          "photo_required": true
+        },
+        {
+          "label": "Client walkthrough completed; client signs Cabinet Phase Acceptance form acknowledging layout, finish, and function meet selections and shop drawings",
+          "photo_required": false
+        },
+        {
+          "label": "Any open punch items documented in writing with responsible party and due date before countertop template is scheduled",
+          "photo_required": false
+        },
+        {
+          "label": "Countertop fabricator notified that cabinets are level, complete, and ready for template — template date locked on schedule",
+          "photo_required": false
+        },
+        {
+          "label": "Cabinet installer's final invoice approved and submitted for draw processing only after client sign-off is received",
+          "photo_required": false
+        }
       ]
     }
   ]

@@ -1,72 +1,180 @@
 {
   "phase_name": "Countertop",
   "template_version": "v1.0-2026-05-07",
-  "description": "All countertop surfaces templated, fabricated, set, and inspected \u2014 phase closes when superintendent and client have signed off on fit, finish, and functionality prior to plumbing trim-out.",
+  "description": "All countertop surfaces templated, fabricated, set, and inspected — phase closes when superintendent and client have signed off on fit, finish, and functionality prior to plumbing trim-out.",
   "categories": [
     {
       "name": "Pre-Template Verification",
       "items": [
-        "Cabinet installation fully complete and signed off before template appointment is scheduled \u2014 no exceptions",
-        "All upper cabinets, fillers, and crown blocking installed and plumb; no cabinet movement expected after template",
-        "Sink, cooktop, and undermount appliance rough openings confirmed on-site against approved selections prior to templator arrival",
-        "Backsplash tile selection and thickness confirmed with templator so reveal and scribing allowances are correct",
-        "Any waterfall edges, mitered returns, or book-matched slabs flagged on shop drawing before template is taken",
-        "Client-selected slab(s) physically tagged and held at fabricator yard; superintendent or client has viewed and approved specific slab faces"
+        {
+          "label": "Cabinet installation fully complete and signed off before template appointment is scheduled — no exceptions",
+          "photo_required": false
+        },
+        {
+          "label": "All upper cabinets, fillers, and crown blocking installed and plumb; no cabinet movement expected after template",
+          "photo_required": true
+        },
+        {
+          "label": "Sink, cooktop, and undermount appliance rough openings confirmed on-site against approved selections prior to templator arrival",
+          "photo_required": true
+        },
+        {
+          "label": "Backsplash tile selection and thickness confirmed with templator so reveal and scribing allowances are correct",
+          "photo_required": false
+        },
+        {
+          "label": "Any waterfall edges, mitered returns, or book-matched slabs flagged on shop drawing before template is taken",
+          "photo_required": false
+        },
+        {
+          "label": "Client-selected slab(s) physically tagged and held at fabricator yard; superintendent or client has viewed and approved specific slab faces",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Fabrication Coordination",
       "items": [
-        "Signed template drawing returned from fabricator with all cutout locations, edge profiles, and seam placement marked \u2014 reviewed and approved by superintendent before fabrication begins",
-        "Seam locations reviewed with client on shop drawing; seams positioned away from high-visibility sightlines and high-stress areas where possible",
-        "Edge profile confirmed matches approved selection (e.g., 3 cm eased, mitered waterfall, ogee) on shop drawing sign-off",
-        "Sink cutout type confirmed (undermount radius, farmhouse apron reveal) and matches plumbing rough-in stub locations",
-        "Cooktop cutout dimensions verified against appliance spec sheet on file",
-        "Fabrication lead time confirmed; countertop install date locked in schedule to protect plumbing trim-out start date"
+        {
+          "label": "Signed template drawing returned from fabricator with all cutout locations, edge profiles, and seam placement marked — reviewed and approved by superintendent before fabrication begins",
+          "photo_required": false
+        },
+        {
+          "label": "Seam locations reviewed with client on shop drawing; seams positioned away from high-visibility sightlines and high-stress areas where possible",
+          "photo_required": false
+        },
+        {
+          "label": "Edge profile confirmed matches approved selection (e.g., 3 cm eased, mitered waterfall, ogee) on shop drawing sign-off",
+          "photo_required": false
+        },
+        {
+          "label": "Sink cutout type confirmed (undermount radius, farmhouse apron reveal) and matches plumbing rough-in stub locations",
+          "photo_required": false
+        },
+        {
+          "label": "Cooktop cutout dimensions verified against appliance spec sheet on file",
+          "photo_required": false
+        },
+        {
+          "label": "Fabrication lead time confirmed; countertop install date locked in schedule to protect plumbing trim-out start date",
+          "photo_required": false
+        }
       ]
     },
     {
       "name": "Pre-Install Site Readiness",
       "items": [
-        "All walls behind countertop runs painted finish coat before install \u2014 painter will not have clean access after stone is set",
-        "Substrate checked for level along full run; no more than 1/8-inch deviation over 10 feet \u2014 shim plan in place for any high or low points",
-        "Plumbing stubs confirmed at correct height and lateral position so they will clear the underside of stone and cabinet floor cutouts",
-        "Electrical outlets, USB ports, and pop-up receptacles in island or peninsula verified at correct height before stone arrives",
-        "Pathway from delivery point to kitchen clear of debris, temporary stairs rated for slab weight if applicable (3 cm quartz slabs can exceed 18 lbs/sq ft)"
+        {
+          "label": "All walls behind countertop runs painted finish coat before install — painter will not have clean access after stone is set",
+          "photo_required": true
+        },
+        {
+          "label": "Substrate checked for level along full run; no more than 1/8-inch deviation over 10 feet — shim plan in place for any high or low points",
+          "photo_required": true
+        },
+        {
+          "label": "Plumbing stubs confirmed at correct height and lateral position so they will clear the underside of stone and cabinet floor cutouts",
+          "photo_required": true
+        },
+        {
+          "label": "Electrical outlets, USB ports, and pop-up receptacles in island or peninsula verified at correct height before stone arrives",
+          "photo_required": true
+        },
+        {
+          "label": "Pathway from delivery point to kitchen clear of debris, temporary stairs rated for slab weight if applicable (3 cm quartz slabs can exceed 18 lbs/sq ft)",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Installation",
       "items": [
-        "Slabs delivered and staged without contact with other slabs or sharp edges; no chips on finished faces or edges at delivery",
-        "Countertop sections set dry first and checked for fit, overhang consistency (typically 1-1/2 inch standard, 12\u201315 inch bar overhang per plan), and seam alignment before adhesive is applied",
-        "Seams tight, flush, and filled with color-matched epoxy; seam height variation does not exceed 1/32 inch across joint",
-        "Sink undermounted with manufacturer-specified clips, silicone bead continuous around full perimeter, no gaps visible from below",
-        "Cooktop and any built-in appliance cutouts verified for correct clearance per appliance manufacturer specs before stone is permanently set",
-        "All exposed edges confirmed to match approved profile with no chipping, rough grinding marks, or uneven polish",
-        "Stone scribed tight to wall at all backsplash contacts; gap at wall does not exceed 1/8 inch before caulk (to be caulked, not grouted)"
+        {
+          "label": "Slabs delivered and staged without contact with other slabs or sharp edges; no chips on finished faces or edges at delivery",
+          "photo_required": true
+        },
+        {
+          "label": "Countertop sections set dry first and checked for fit, overhang consistency (typically 1-1/2 inch standard, 12–15 inch bar overhang per plan), and seam alignment before adhesive is applied",
+          "photo_required": true
+        },
+        {
+          "label": "Seams tight, flush, and filled with color-matched epoxy; seam height variation does not exceed 1/32 inch across joint",
+          "photo_required": true
+        },
+        {
+          "label": "Sink undermounted with manufacturer-specified clips, silicone bead continuous around full perimeter, no gaps visible from below",
+          "photo_required": true
+        },
+        {
+          "label": "Cooktop and any built-in appliance cutouts verified for correct clearance per appliance manufacturer specs before stone is permanently set",
+          "photo_required": true
+        },
+        {
+          "label": "All exposed edges confirmed to match approved profile with no chipping, rough grinding marks, or uneven polish",
+          "photo_required": true
+        },
+        {
+          "label": "Stone scribed tight to wall at all backsplash contacts; gap at wall does not exceed 1/8 inch before caulk (to be caulked, not grouted)",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Quality & Punch",
       "items": [
-        "All seams inspected under direct light for color/vein match, flush height, and epoxy color blend",
-        "Overhang measured at each end and midpoint of every run; no run varies more than 1/4 inch from specified overhang dimension",
-        "Stone surface free of haze, adhesive residue, epoxy smear, and tooling marks across 100% of exposed faces",
-        "All cutout edges (sink, cooktop, outlets) polished or eased to match specified edge profile \u2014 no raw sawn edges left exposed",
-        "Waterfall or mitered joints checked for continuous vein alignment and flush exterior face",
-        "Any natural stone (marble, quartzite) sealed per fabricator specification; sealer product and application date logged in project file"
+        {
+          "label": "All seams inspected under direct light for color/vein match, flush height, and epoxy color blend",
+          "photo_required": true
+        },
+        {
+          "label": "Overhang measured at each end and midpoint of every run; no run varies more than 1/4 inch from specified overhang dimension",
+          "photo_required": true
+        },
+        {
+          "label": "Stone surface free of haze, adhesive residue, epoxy smear, and tooling marks across 100% of exposed faces",
+          "photo_required": true
+        },
+        {
+          "label": "All cutout edges (sink, cooktop, outlets) polished or eased to match specified edge profile — no raw sawn edges left exposed",
+          "photo_required": true
+        },
+        {
+          "label": "Waterfall or mitered joints checked for continuous vein alignment and flush exterior face",
+          "photo_required": true
+        },
+        {
+          "label": "Any natural stone (marble, quartzite) sealed per fabricator specification; sealer product and application date logged in project file",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Sign-Off & Turnover",
       "items": [
-        "Superintendent completes full countertop inspection and documents any punch items with photos in project management system before client walkthrough",
-        "Client walkthrough completed; client reviews all surfaces, seams, edges, and cutouts under both natural and artificial light",
-        "All punch items from client walkthrough assigned to fabricator with due date; no plumbing trim-out scheduled until stone punch is resolved or formally accepted",
-        "Care and maintenance instructions for countertop material (sealing schedule, approved cleaners, heat/impact warnings) provided to client in writing",
-        "Fabricator warranty documentation collected and filed in project closeout folder",
-        "Client sign-off on countertop phase obtained in writing before plumbing trim-out crew is released to set fixtures"
+        {
+          "label": "Superintendent completes full countertop inspection and documents any punch items with photos in project management system before client walkthrough",
+          "photo_required": true
+        },
+        {
+          "label": "Client walkthrough completed; client reviews all surfaces, seams, edges, and cutouts under both natural and artificial light",
+          "photo_required": true
+        },
+        {
+          "label": "All punch items from client walkthrough assigned to fabricator with due date; no plumbing trim-out scheduled until stone punch is resolved or formally accepted",
+          "photo_required": false
+        },
+        {
+          "label": "Care and maintenance instructions for countertop material (sealing schedule, approved cleaners, heat/impact warnings) provided to client in writing",
+          "photo_required": false
+        },
+        {
+          "label": "Fabricator warranty documentation collected and filed in project closeout folder",
+          "photo_required": false
+        },
+        {
+          "label": "Client sign-off on countertop phase obtained in writing before plumbing trim-out crew is released to set fixtures",
+          "photo_required": false
+        }
       ]
     }
   ]

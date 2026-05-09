@@ -6,89 +6,233 @@
     {
       "name": "Crew & Schedule",
       "items": [
-        "Trim carpenter crew confirmed on-site and schedule locked with superintendent",
-        "Stair subcontractor or millwork fabricator confirmed and lead time verified against overall schedule",
-        "All drywall punch and texture complete, superintendent sign-off on file before trim crew mobilizes",
-        "Paint contractor notified of trim completion target date for back-scheduling prime coat",
-        "Sequencing confirmed: stair rough carriages inspected before treads and risers delivered"
+        {
+          "label": "Trim carpenter crew confirmed on-site and schedule locked with superintendent",
+          "photo_required": false
+        },
+        {
+          "label": "Stair subcontractor or millwork fabricator confirmed and lead time verified against overall schedule",
+          "photo_required": false
+        },
+        {
+          "label": "All drywall punch and texture complete, superintendent sign-off on file before trim crew mobilizes",
+          "photo_required": true
+        },
+        {
+          "label": "Paint contractor notified of trim completion target date for back-scheduling prime coat",
+          "photo_required": false
+        },
+        {
+          "label": "Sequencing confirmed: stair rough carriages inspected before treads and risers delivered",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Materials On-Site",
       "items": [
-        "All interior door units on-site, counted against door schedule, and verified correct swing, size, and hardware prep",
-        "Casing profile, base profile, and crown profile verified against client selections; samples approved by client in writing",
-        "Window and door casing stock acclimated on-site minimum 72 hours before installation",
-        "Stair treads (species, thickness, width) verified against approved selection and delivered undamaged; no cupping or splits exceeding 1/16 inch",
-        "Stair risers, skirt boards, newel posts, balusters, and handrail stock all on-site and counted against stair drawings",
-        "Craftsman or specialty millwork items (built-ins, wainscoting panels, coffered ceiling components) on-site and verified against shop drawings",
-        "Fastener and adhesive supplies on-site: finish nailers loaded, construction adhesive, wood filler, and sandpaper stock confirmed"
+        {
+          "label": "All interior door units on-site, counted against door schedule, and verified correct swing, size, and hardware prep",
+          "photo_required": true
+        },
+        {
+          "label": "Casing profile, base profile, and crown profile verified against client selections; samples approved by client in writing",
+          "photo_required": true
+        },
+        {
+          "label": "Window and door casing stock acclimated on-site minimum 72 hours before installation",
+          "photo_required": true
+        },
+        {
+          "label": "Stair treads (species, thickness, width) verified against approved selection and delivered undamaged; no cupping or splits exceeding 1/16 inch",
+          "photo_required": true
+        },
+        {
+          "label": "Stair risers, skirt boards, newel posts, balusters, and handrail stock all on-site and counted against stair drawings",
+          "photo_required": true
+        },
+        {
+          "label": "Craftsman or specialty millwork items (built-ins, wainscoting panels, coffered ceiling components) on-site and verified against shop drawings",
+          "photo_required": true
+        },
+        {
+          "label": "Fastener and adhesive supplies on-site: finish nailers loaded, construction adhesive, wood filler, and sandpaper stock confirmed",
+          "photo_required": false
+        }
       ]
     },
     {
       "name": "Pre-Install Verification",
       "items": [
-        "All rough openings for doors re-measured and confirmed within 1/4 inch of door unit dimensions before hanging",
-        "Wall plumb and flat tolerance verified at all trim locations \u2014 no deviation greater than 1/8 inch over 8 feet",
-        "Floor flatness verified at stair landing and base of stairs \u2014 no high spots exceeding 3/16 inch under a 10-foot straightedge",
-        "All blocking confirmed in walls at handrail mounting heights (34\u201338 inches AFF per IRC R311.7.8), stairwell, and built-in locations",
-        "HVAC registers, electrical boxes, and plumbing access panels located and marked so trim layout avoids conflicts",
-        "Subfloor at stair opening confirmed square and level; carriage attachment points inspected by superintendent"
+        {
+          "label": "All rough openings for doors re-measured and confirmed within 1/4 inch of door unit dimensions before hanging",
+          "photo_required": true
+        },
+        {
+          "label": "Wall plumb and flat tolerance verified at all trim locations — no deviation greater than 1/8 inch over 8 feet",
+          "photo_required": true
+        },
+        {
+          "label": "Floor flatness verified at stair landing and base of stairs — no high spots exceeding 3/16 inch under a 10-foot straightedge",
+          "photo_required": true
+        },
+        {
+          "label": "All blocking confirmed in walls at handrail mounting heights (34–38 inches AFF per IRC R311.7.8), stairwell, and built-in locations",
+          "photo_required": true
+        },
+        {
+          "label": "HVAC registers, electrical boxes, and plumbing access panels located and marked so trim layout avoids conflicts",
+          "photo_required": true
+        },
+        {
+          "label": "Subfloor at stair opening confirmed square and level; carriage attachment points inspected by superintendent",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Door Installation",
       "items": [
-        "All interior doors hung plumb and level; gap at head and strike jamb uniform, not to exceed 1/8 inch",
-        "Door bottoms set at correct clearance for flooring type per flooring schedule (tile vs. hardwood vs. carpet zones)",
-        "All doors operate without binding, racking, or spring-back; latch fully engages strike on first close",
-        "Door hardware prep (bore and latch holes) at correct backset per hardware selection; hardware not yet installed",
-        "Pocket door frames square and tracks aligned; doors slide full travel without deflection or floor drag",
-        "All bifold and barn door hardware tracks installed level and confirmed for door weight rating"
+        {
+          "label": "All interior doors hung plumb and level; gap at head and strike jamb uniform, not to exceed 1/8 inch",
+          "photo_required": true
+        },
+        {
+          "label": "Door bottoms set at correct clearance for flooring type per flooring schedule (tile vs. hardwood vs. carpet zones)",
+          "photo_required": true
+        },
+        {
+          "label": "All doors operate without binding, racking, or spring-back; latch fully engages strike on first close",
+          "photo_required": true
+        },
+        {
+          "label": "Door hardware prep (bore and latch holes) at correct backset per hardware selection; hardware not yet installed",
+          "photo_required": true
+        },
+        {
+          "label": "Pocket door frames square and tracks aligned; doors slide full travel without deflection or floor drag",
+          "photo_required": true
+        },
+        {
+          "label": "All bifold and barn door hardware tracks installed level and confirmed for door weight rating",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Trim & Millwork Installation",
       "items": [
-        "All window and door casing miters tight \u2014 no gap exceeding 1/32 inch at miter joint face",
-        "Base molding scribed or coped at inside corners; no butt joints visible at inside corners",
-        "Crown molding spring angle consistent throughout each room; ceiling and wall reveals uniform within 1/16 inch",
-        "Wainscoting or board-and-batten panels level, plumb, and evenly spaced per approved layout drawing",
-        "Coffered or beam ceiling components glued and nailed; no visible fastener heads without filler",
-        "All built-in shelving and cabinetry trim plumb, level, and scribed tight to wall with no gap exceeding 1/16 inch",
-        "All nail holes filled with non-shrink wood filler and sanded flush; no raw MDF edges visible on painted trim"
+        {
+          "label": "All window and door casing miters tight — no gap exceeding 1/32 inch at miter joint face",
+          "photo_required": true
+        },
+        {
+          "label": "Base molding scribed or coped at inside corners; no butt joints visible at inside corners",
+          "photo_required": true
+        },
+        {
+          "label": "Crown molding spring angle consistent throughout each room; ceiling and wall reveals uniform within 1/16 inch",
+          "photo_required": true
+        },
+        {
+          "label": "Wainscoting or board-and-batten panels level, plumb, and evenly spaced per approved layout drawing",
+          "photo_required": true
+        },
+        {
+          "label": "Coffered or beam ceiling components glued and nailed; no visible fastener heads without filler",
+          "photo_required": true
+        },
+        {
+          "label": "All built-in shelving and cabinetry trim plumb, level, and scribed tight to wall with no gap exceeding 1/16 inch",
+          "photo_required": true
+        },
+        {
+          "label": "All nail holes filled with non-shrink wood filler and sanded flush; no raw MDF edges visible on painted trim",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Stair Installation",
       "items": [
-        "Stair rise and run consistent throughout full run \u2014 no single riser varying more than 3/8 inch from any other riser per IRC R311.7.5",
-        "Tread nosing projection uniform at 3/4 inch to 1-1/4 inch per IRC R311.7.5.3",
-        "All treads and risers glued and fastened; no squeaks under 250-lb point load test by superintendent",
-        "Stair skirt boards scribed tight to treads and risers; no gap exceeding 1/16 inch at scribe",
-        "Newel posts anchored through tread or floor; no lateral movement under 200-lb lateral force at top of post",
-        "Handrail graspable profile confirmed (IRC R311.7.8.3 Type I or II); height 34\u201338 inches measured vertically from tread nosing",
-        "Baluster spacing confirmed at no greater than 4 inches clear per IRC R311.7.8.2; diagonal measurement at open triangle below rake rail also checked"
+        {
+          "label": "Stair rise and run consistent throughout full run — no single riser varying more than 3/8 inch from any other riser per IRC R311.7.5",
+          "photo_required": true
+        },
+        {
+          "label": "Tread nosing projection uniform at 3/4 inch to 1-1/4 inch per IRC R311.7.5.3",
+          "photo_required": true
+        },
+        {
+          "label": "All treads and risers glued and fastened; no squeaks under 250-lb point load test by superintendent",
+          "photo_required": true
+        },
+        {
+          "label": "Stair skirt boards scribed tight to treads and risers; no gap exceeding 1/16 inch at scribe",
+          "photo_required": true
+        },
+        {
+          "label": "Newel posts anchored through tread or floor; no lateral movement under 200-lb lateral force at top of post",
+          "photo_required": true
+        },
+        {
+          "label": "Handrail graspable profile confirmed (IRC R311.7.8.3 Type I or II); height 34–38 inches measured vertically from tread nosing",
+          "photo_required": true
+        },
+        {
+          "label": "Baluster spacing confirmed at no greater than 4 inches clear per IRC R311.7.8.2; diagonal measurement at open triangle below rake rail also checked",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Quality & Punch",
       "items": [
-        "Superintendent full walk of all trim with raking light inspection; snipe list generated and assigned to crew before phase closes",
-        "All trim joints re-checked after 48 hours for any shrinkage gaps exceeding 1/16 inch; re-glued and re-filled as needed",
-        "Stair handrail continuous from top to bottom landing with no interruption; terminations return to wall per code",
-        "All doors re-swung after trim install to confirm no rub on casing; striker plates shimmed if needed",
-        "No damaged or out-of-profile molding pieces accepted; any paint-grade trim with surface defects visible from 36 inches replaced",
-        "Job site broom-clean and all trim offcuts removed before painter mobilizes"
+        {
+          "label": "Superintendent full walk of all trim with raking light inspection; snipe list generated and assigned to crew before phase closes",
+          "photo_required": true
+        },
+        {
+          "label": "All trim joints re-checked after 48 hours for any shrinkage gaps exceeding 1/16 inch; re-glued and re-filled as needed",
+          "photo_required": true
+        },
+        {
+          "label": "Stair handrail continuous from top to bottom landing with no interruption; terminations return to wall per code",
+          "photo_required": true
+        },
+        {
+          "label": "All doors re-swung after trim install to confirm no rub on casing; striker plates shimmed if needed",
+          "photo_required": true
+        },
+        {
+          "label": "No damaged or out-of-profile molding pieces accepted; any paint-grade trim with surface defects visible from 36 inches replaced",
+          "photo_required": true
+        },
+        {
+          "label": "Job site broom-clean and all trim offcuts removed before painter mobilizes",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Inspections & Sign-Off",
       "items": [
-        "Baldwin County building inspector final stair inspection scheduled and passed (guardrail, baluster spacing, handrail height, rise/run conformance)",
-        "Superintendent signs phase completion form confirming all items closed",
-        "Client walkthrough of trim and stairs completed; client signs Trim & Stairs Acceptance form or punch items documented and assigned",
-        "Any open punch items from client walkthrough logged in Cost Tracker with assigned trade, dollar amount, and deadline before phase is marked closed"
+        {
+          "label": "Baldwin County building inspector final stair inspection scheduled and passed (guardrail, baluster spacing, handrail height, rise/run conformance)",
+          "photo_required": true
+        },
+        {
+          "label": "Superintendent signs phase completion form confirming all items closed",
+          "photo_required": false
+        },
+        {
+          "label": "Client walkthrough of trim and stairs completed; client signs Trim & Stairs Acceptance form or punch items documented and assigned",
+          "photo_required": true
+        },
+        {
+          "label": "Any open punch items from client walkthrough logged in Cost Tracker with assigned trade, dollar amount, and deadline before phase is marked closed",
+          "photo_required": false
+        }
       ]
     }
   ]

@@ -6,66 +6,171 @@
     {
       "name": "Pre-Paint Verification",
       "items": [
-        "Confirmed interior paint color schedule matches client-signed selection sheet (room-by-room, sheen by surface type)",
-        "Confirmed exterior paint and stain colors match client-signed selection sheet (body, trim, door, soffit)",
-        "All drywall punch items from Drywall phase are closed \u2014 no remaining nail pops, seam ridges, or voids visible under raking light",
-        "All trim carpentry complete and sanded \u2014 no paint crew asked to caulk over unset nail holes or unfinished joints",
-        "HVAC, plumbing, and electrical rough-in inspections passed; walls are closed and will not be re-opened after paint",
-        "All windows and doors protected with masking or film prior to painter mobilization",
-        "Superintendent confirmed humidity is below 60% and temperature is between 50\u00b0F and 90\u00b0F at time of application"
+        {
+          "label": "Confirmed interior paint color schedule matches client-signed selection sheet (room-by-room, sheen by surface type)",
+          "photo_required": false
+        },
+        {
+          "label": "Confirmed exterior paint and stain colors match client-signed selection sheet (body, trim, door, soffit)",
+          "photo_required": false
+        },
+        {
+          "label": "All drywall punch items from Drywall phase are closed — no remaining nail pops, seam ridges, or voids visible under raking light",
+          "photo_required": true
+        },
+        {
+          "label": "All trim carpentry complete and sanded — no paint crew asked to caulk over unset nail holes or unfinished joints",
+          "photo_required": true
+        },
+        {
+          "label": "HVAC, plumbing, and electrical rough-in inspections passed; walls are closed and will not be re-opened after paint",
+          "photo_required": true
+        },
+        {
+          "label": "All windows and doors protected with masking or film prior to painter mobilization",
+          "photo_required": true
+        },
+        {
+          "label": "Superintendent confirmed humidity is below 60% and temperature is between 50°F and 90°F at time of application",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Crew & Schedule",
       "items": [
-        "Painting sub crew size and lead confirmed, schedule locked against trim-out and cabinet install windows",
-        "Interior paint sequence scheduled: prime coat \u2192 finish coat by zone, sequenced to keep trades out of wet areas",
-        "Exterior paint sequence coordinated with weather forecast \u2014 no application within 24 hours of projected rain",
-        "Palmetto superintendent on-site for first day of both interior and exterior work to verify prep standards",
-        "Paint sub has confirmed responsibility for daily cleanup of drop cloths, masking debris, and overspray"
+        {
+          "label": "Painting sub crew size and lead confirmed, schedule locked against trim-out and cabinet install windows",
+          "photo_required": false
+        },
+        {
+          "label": "Interior paint sequence scheduled: prime coat → finish coat by zone, sequenced to keep trades out of wet areas",
+          "photo_required": false
+        },
+        {
+          "label": "Exterior paint sequence coordinated with weather forecast — no application within 24 hours of projected rain",
+          "photo_required": false
+        },
+        {
+          "label": "Palmetto superintendent on-site for first day of both interior and exterior work to verify prep standards",
+          "photo_required": true
+        },
+        {
+          "label": "Paint sub has confirmed responsibility for daily cleanup of drop cloths, masking debris, and overspray",
+          "photo_required": false
+        }
       ]
     },
     {
       "name": "Materials On-Site",
       "items": [
-        "All paint, primer, and stain products on-site match the approved spec (brand, product line, sheen, color code per room schedule)",
-        "Sufficient material on-site for full job plus minimum 10% overage; extra mixed gallons labeled and staged for touch-up",
-        "All caulk products on-site are paintable, interior-grade where required, and exterior-rated (siliconized or equivalent) where required",
-        "Wood stain and sealer products confirmed for any stained millwork, beams, or doors per selection sheet",
-        "All masking, plastic sheeting, and floor protection materials on-site before crew begins"
+        {
+          "label": "All paint, primer, and stain products on-site match the approved spec (brand, product line, sheen, color code per room schedule)",
+          "photo_required": true
+        },
+        {
+          "label": "Sufficient material on-site for full job plus minimum 10% overage; extra mixed gallons labeled and staged for touch-up",
+          "photo_required": true
+        },
+        {
+          "label": "All caulk products on-site are paintable, interior-grade where required, and exterior-rated (siliconized or equivalent) where required",
+          "photo_required": true
+        },
+        {
+          "label": "Wood stain and sealer products confirmed for any stained millwork, beams, or doors per selection sheet",
+          "photo_required": true
+        },
+        {
+          "label": "All masking, plastic sheeting, and floor protection materials on-site before crew begins",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Application Quality Checks",
       "items": [
-        "All surfaces primed with manufacturer-specified primer coat prior to finish coats; prime coat inspected and approved by superintendent before top coat begins",
-        "Minimum two finish coats applied to all walls and ceilings; three coats applied to all doors and trim per Palmetto quality standard",
-        "No holidays (missed spots), brush drag lines, lap marks, or roller texture inconsistencies visible under natural light inspection at 36-inch distance",
-        "All interior caulk lines are tight, uniform width, and fully tooled \u2014 no fish-eyes, voids, or pigment bleed at trim-to-wall joints",
-        "Exterior paint fully covers all trim end-grain, corner joints, and butt seams; no bare wood exposed",
-        "Paint edges at ceiling-to-wall transitions are cut within 1/16 inch, straight, and consistent throughout each room",
-        "All painted doors checked for even sheen, no runs or sags on stiles and rails, and hardware bore areas fully covered"
+        {
+          "label": "All surfaces primed with manufacturer-specified primer coat prior to finish coats; prime coat inspected and approved by superintendent before top coat begins",
+          "photo_required": true
+        },
+        {
+          "label": "Minimum two finish coats applied to all walls and ceilings; three coats applied to all doors and trim per Palmetto quality standard",
+          "photo_required": true
+        },
+        {
+          "label": "No holidays (missed spots), brush drag lines, lap marks, or roller texture inconsistencies visible under natural light inspection at 36-inch distance",
+          "photo_required": true
+        },
+        {
+          "label": "All interior caulk lines are tight, uniform width, and fully tooled — no fish-eyes, voids, or pigment bleed at trim-to-wall joints",
+          "photo_required": true
+        },
+        {
+          "label": "Exterior paint fully covers all trim end-grain, corner joints, and butt seams; no bare wood exposed",
+          "photo_required": true
+        },
+        {
+          "label": "Paint edges at ceiling-to-wall transitions are cut within 1/16 inch, straight, and consistent throughout each room",
+          "photo_required": true
+        },
+        {
+          "label": "All painted doors checked for even sheen, no runs or sags on stiles and rails, and hardware bore areas fully covered",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Protection & Turnover",
       "items": [
-        "All finish-painted surfaces in cabinet, hardware, and fixture zones covered with clean protective film before those trades mobilize",
-        "Painted floors (if any, e.g., garage or utility) allowed full cure time per manufacturer spec before traffic allowed",
-        "All interior window sills and door frames confirmed free of overspray before paint sub demobilizes",
-        "Painter has delivered all leftover labeled paint cans (minimum one quart per color) to Palmetto for client touch-up kit",
-        "All masking, tape, plastic, and drop cloths removed from site; no adhesive residue left on glass, hardware, or flooring"
+        {
+          "label": "All finish-painted surfaces in cabinet, hardware, and fixture zones covered with clean protective film before those trades mobilize",
+          "photo_required": true
+        },
+        {
+          "label": "Painted floors (if any, e.g., garage or utility) allowed full cure time per manufacturer spec before traffic allowed",
+          "photo_required": true
+        },
+        {
+          "label": "All interior window sills and door frames confirmed free of overspray before paint sub demobilizes",
+          "photo_required": true
+        },
+        {
+          "label": "Painter has delivered all leftover labeled paint cans (minimum one quart per color) to Palmetto for client touch-up kit",
+          "photo_required": true
+        },
+        {
+          "label": "All masking, tape, plastic, and drop cloths removed from site; no adhesive residue left on glass, hardware, or flooring",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Punch & Client Sign-Off",
       "items": [
-        "Superintendent performs full interior paint walk under raking light (flashlight at 45-degree angle to walls) and logs all deficiencies before client walk",
-        "Superintendent performs full exterior paint walk in direct daylight, checking all elevations for coverage, sheen consistency, and caulk integrity",
-        "All superintendent-identified paint deficiencies corrected and re-inspected before client walkthrough is scheduled",
-        "Client walkthrough completed with superintendent present; all client-noted paint items logged on punch list with room, surface, and description",
-        "All client punch items corrected, re-inspected by superintendent, and signed off by client before phase is closed",
-        "Paint phase completion confirmed in writing (email or Buildertrend sign-off) by client before cabinet, hardware, or fixture installation begins"
+        {
+          "label": "Superintendent performs full interior paint walk under raking light (flashlight at 45-degree angle to walls) and logs all deficiencies before client walk",
+          "photo_required": true
+        },
+        {
+          "label": "Superintendent performs full exterior paint walk in direct daylight, checking all elevations for coverage, sheen consistency, and caulk integrity",
+          "photo_required": true
+        },
+        {
+          "label": "All superintendent-identified paint deficiencies corrected and re-inspected before client walkthrough is scheduled",
+          "photo_required": true
+        },
+        {
+          "label": "Client walkthrough completed with superintendent present; all client-noted paint items logged on punch list with room, surface, and description",
+          "photo_required": true
+        },
+        {
+          "label": "All client punch items corrected, re-inspected by superintendent, and signed off by client before phase is closed",
+          "photo_required": true
+        },
+        {
+          "label": "Paint phase completion confirmed in writing (email or Buildertrend sign-off) by client before cabinet, hardware, or fixture installation begins",
+          "photo_required": false
+        }
       ]
     }
   ]

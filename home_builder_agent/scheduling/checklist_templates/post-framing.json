@@ -6,74 +6,188 @@
     {
       "name": "Framing Inspection & Approvals",
       "items": [
-        "Baldwin County framing inspection scheduled, passed, and inspection card signed and posted on-site",
-        "Superintendent walk performed before inspector arrival \u2014 all open items resolved",
-        "Structural engineer's site visit completed and written sign-off on file (beam pockets, header spans, LVL placement, hold-downs)",
-        "All required engineered lumber (LVL, PSL, I-joists) installed per stamped structural drawings \u2014 deviations documented and EOR-approved",
-        "Shear wall locations confirmed as-built against structural drawings, all required Simpson Strong-Wall or panel segments nailed per schedule"
+        {
+          "label": "Baldwin County framing inspection scheduled, passed, and inspection card signed and posted on-site",
+          "photo_required": true
+        },
+        {
+          "label": "Superintendent walk performed before inspector arrival — all open items resolved",
+          "photo_required": false
+        },
+        {
+          "label": "Structural engineer's site visit completed and written sign-off on file (beam pockets, header spans, LVL placement, hold-downs)",
+          "photo_required": true
+        },
+        {
+          "label": "All required engineered lumber (LVL, PSL, I-joists) installed per stamped structural drawings — deviations documented and EOR-approved",
+          "photo_required": true
+        },
+        {
+          "label": "Shear wall locations confirmed as-built against structural drawings, all required Simpson Strong-Wall or panel segments nailed per schedule",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Structural & Connection Quality",
       "items": [
-        "All headers, double top plates, and king/jack stud configurations verified per plan at every opening",
-        "Roof-to-wall connections confirmed: hurricane straps or clips (H2.5A or per wind-load schedule) installed at every rafter/truss bearing point per Baldwin County wind zone requirements",
-        "Floor system: rim joist blocking, joist hangers fully nailed (no missing or partially driven fasteners), blocking at bearing points per schedule",
-        "All hold-down hardware (HDU/PHD anchors) installed, snugged, and rod couplers accessible for MEP routing coordination",
-        "Stair framing: rise/run uniform within 3/8-inch total variation, stringers bearing minimum 3-1/2 inches on framing, blocking complete",
-        "Cantilevered elements and balcony framing confirmed as-built per engineer's detail \u2014 no unapproved field changes"
+        {
+          "label": "All headers, double top plates, and king/jack stud configurations verified per plan at every opening",
+          "photo_required": true
+        },
+        {
+          "label": "Roof-to-wall connections confirmed: hurricane straps or clips (H2.5A or per wind-load schedule) installed at every rafter/truss bearing point per Baldwin County wind zone requirements",
+          "photo_required": true
+        },
+        {
+          "label": "Floor system: rim joist blocking, joist hangers fully nailed (no missing or partially driven fasteners), blocking at bearing points per schedule",
+          "photo_required": true
+        },
+        {
+          "label": "All hold-down hardware (HDU/PHD anchors) installed, snugged, and rod couplers accessible for MEP routing coordination",
+          "photo_required": true
+        },
+        {
+          "label": "Stair framing: rise/run uniform within 3/8-inch total variation, stringers bearing minimum 3-1/2 inches on framing, blocking complete",
+          "photo_required": true
+        },
+        {
+          "label": "Cantilevered elements and balcony framing confirmed as-built per engineer's detail — no unapproved field changes",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Sheathing & Weather Barrier",
       "items": [
-        "All wall sheathing (typically 7/16\" or 15/32\" OSB/plywood) installed with correct nail pattern per shear schedule \u2014 6\" field, 3\" panel edges where required",
-        "Roof sheathing fully applied, H-clips in place at unsupported edges, no gaps exceeding 1/8\" at panel joints",
-        "House wrap (Tyvek or equal) fully installed, lapped correctly (horizontal seams lapped over lower course), taped at all seams and penetrations",
-        "Flashing installed at all window and door rough openings (sill pan flashing, head flashing) prior to window installation",
-        "All penetrations through sheathing (plumbing, HVAC, electrical stub-outs) temporarily sealed or flagged for sub-specific flashing during rough-in"
+        {
+          "label": "All wall sheathing (typically 7/16\" or 15/32\" OSB/plywood) installed with correct nail pattern per shear schedule — 6\" field, 3\" panel edges where required",
+          "photo_required": true
+        },
+        {
+          "label": "Roof sheathing fully applied, H-clips in place at unsupported edges, no gaps exceeding 1/8\" at panel joints",
+          "photo_required": true
+        },
+        {
+          "label": "House wrap (Tyvek or equal) fully installed, lapped correctly (horizontal seams lapped over lower course), taped at all seams and penetrations",
+          "photo_required": true
+        },
+        {
+          "label": "Flashing installed at all window and door rough openings (sill pan flashing, head flashing) prior to window installation",
+          "photo_required": true
+        },
+        {
+          "label": "All penetrations through sheathing (plumbing, HVAC, electrical stub-outs) temporarily sealed or flagged for sub-specific flashing during rough-in",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Rough Opening Verification",
       "items": [
-        "All window rough openings measured and confirmed against approved window schedule \u2014 width and height within +0\" / -1/4\" of scheduled R.O.",
-        "All exterior door rough openings confirmed against door schedule; sill heights at exterior doors verified for threshold and finish-floor elevation",
-        "Interior door rough openings sized per door schedule \u2014 width and height allowing for specified jamb and finish tolerances",
-        "Garage door rough openings (width, height, header bearing) confirmed against door manufacturer's installation requirements",
-        "All R.O.s confirmed plumb and square (diagonal measurement differential \u2264 1/8\" per 4-foot span)"
+        {
+          "label": "All window rough openings measured and confirmed against approved window schedule — width and height within +0\" / -1/4\" of scheduled R.O.",
+          "photo_required": true
+        },
+        {
+          "label": "All exterior door rough openings confirmed against door schedule; sill heights at exterior doors verified for threshold and finish-floor elevation",
+          "photo_required": true
+        },
+        {
+          "label": "Interior door rough openings sized per door schedule — width and height allowing for specified jamb and finish tolerances",
+          "photo_required": true
+        },
+        {
+          "label": "Garage door rough openings (width, height, header bearing) confirmed against door manufacturer's installation requirements",
+          "photo_required": true
+        },
+        {
+          "label": "All R.O.s confirmed plumb and square (diagonal measurement differential ≤ 1/8\" per 4-foot span)",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Blocking & Backing",
       "items": [
-        "Backing installed for all wall-mounted TV locations per client's AV layout \u2014 minimum 3/4\" plywood, 48\" \u00d7 32\" or per AV contractor's spec",
-        "Blocking installed for all grab bar locations (master bath, secondary baths) per client's accessibility requests and ADA-reference dimensions even if not code-required",
-        "Cabinet backing (3/4\" ply) installed at all upper cabinet walls in kitchen, butler's pantry, laundry, and mudroom per cabinet layout",
-        "Blocking installed for all ceiling fans, pendant locations, and heavy chandeliers exceeding 35 lbs \u2014 backer rated for fixture weight",
-        "Stair handrail and guardrail blocking installed per rail sub's requirements",
-        "Blocking for all wall-mounted plumbing fixtures (floating vanities, wall-hung toilets, body-spray valves) confirmed with plumber prior to inspection sign-off"
+        {
+          "label": "Backing installed for all wall-mounted TV locations per client's AV layout — minimum 3/4\" plywood, 48\" × 32\" or per AV contractor's spec",
+          "photo_required": true
+        },
+        {
+          "label": "Blocking installed for all grab bar locations (master bath, secondary baths) per client's accessibility requests and ADA-reference dimensions even if not code-required",
+          "photo_required": true
+        },
+        {
+          "label": "Cabinet backing (3/4\" ply) installed at all upper cabinet walls in kitchen, butler's pantry, laundry, and mudroom per cabinet layout",
+          "photo_required": true
+        },
+        {
+          "label": "Blocking installed for all ceiling fans, pendant locations, and heavy chandeliers exceeding 35 lbs — backer rated for fixture weight",
+          "photo_required": true
+        },
+        {
+          "label": "Stair handrail and guardrail blocking installed per rail sub's requirements",
+          "photo_required": true
+        },
+        {
+          "label": "Blocking for all wall-mounted plumbing fixtures (floating vanities, wall-hung toilets, body-spray valves) confirmed with plumber prior to inspection sign-off",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "MEP Pre-Rough-In Coordination",
       "items": [
-        "Superintendent walk with lead plumber, HVAC contractor, and electrician completed \u2014 chase locations, beam conflicts, and routing paths agreed before any cutting begins",
-        "Critical floor-joist boring and notching rules communicated to all MEP subs: notches in top/bottom 1/3 of joist prohibited, max bore 1/3 joist depth, per IRC R802/R502 and structural drawings",
-        "HVAC duct chase and air handler closet framed per mechanical layout \u2014 clearances confirmed sufficient for equipment access and filter pull",
-        "Attic access framed and sized per HVAC contractor requirements for equipment installation and future service (minimum 22\" \u00d7 30\" unless larger equipment requires it)",
-        "Electrical panel location framing confirmed: minimum 36\" clear working space in front, dedicated wall surface clear of plumbing penetrations",
-        "All subs have current as-built framing photos uploaded to project Drive folder before first crew returns"
+        {
+          "label": "Superintendent walk with lead plumber, HVAC contractor, and electrician completed — chase locations, beam conflicts, and routing paths agreed before any cutting begins",
+          "photo_required": false
+        },
+        {
+          "label": "Critical floor-joist boring and notching rules communicated to all MEP subs: notches in top/bottom 1/3 of joist prohibited, max bore 1/3 joist depth, per IRC R802/R502 and structural drawings",
+          "photo_required": false
+        },
+        {
+          "label": "HVAC duct chase and air handler closet framed per mechanical layout — clearances confirmed sufficient for equipment access and filter pull",
+          "photo_required": true
+        },
+        {
+          "label": "Attic access framed and sized per HVAC contractor requirements for equipment installation and future service (minimum 22\" × 30\" unless larger equipment requires it)",
+          "photo_required": true
+        },
+        {
+          "label": "Electrical panel location framing confirmed: minimum 36\" clear working space in front, dedicated wall surface clear of plumbing penetrations",
+          "photo_required": true
+        },
+        {
+          "label": "All subs have current as-built framing photos uploaded to project Drive folder before first crew returns",
+          "photo_required": false
+        }
       ]
     },
     {
       "name": "Plumb, Level & Tolerance Check",
       "items": [
-        "Exterior walls checked for plumb: tolerance \u2264 1/4\" in 8 feet on all walls to be tiled or receive large-format stone",
-        "All bearing walls and columns checked for plumb using 6-foot level or laser \u2014 out-of-plumb conditions > 1/4\" in 8' documented and corrected before MEP rough-in",
-        "Floor system checked for level across entire footprint: tolerance \u2264 3/16\" in 10 feet, \u2264 1/8\" in 6 feet in kitchen and master bath where large-format tile is specified",
-        "Ceiling joist/truss bottom chord level verified in great room, kitchen, and master suite \u2014 high/low points noted and sistered or shimmed as required",
-        "Superintendent final signature on framing punch list confirming all tolerance items resolved or formally accepted"
+        {
+          "label": "Exterior walls checked for plumb: tolerance ≤ 1/4\" in 8 feet on all walls to be tiled or receive large-format stone",
+          "photo_required": true
+        },
+        {
+          "label": "All bearing walls and columns checked for plumb using 6-foot level or laser — out-of-plumb conditions > 1/4\" in 8' documented and corrected before MEP rough-in",
+          "photo_required": true
+        },
+        {
+          "label": "Floor system checked for level across entire footprint: tolerance ≤ 3/16\" in 10 feet, ≤ 1/8\" in 6 feet in kitchen and master bath where large-format tile is specified",
+          "photo_required": true
+        },
+        {
+          "label": "Ceiling joist/truss bottom chord level verified in great room, kitchen, and master suite — high/low points noted and sistered or shimmed as required",
+          "photo_required": true
+        },
+        {
+          "label": "Superintendent final signature on framing punch list confirming all tolerance items resolved or formally accepted",
+          "photo_required": false
+        }
       ]
     }
   ]

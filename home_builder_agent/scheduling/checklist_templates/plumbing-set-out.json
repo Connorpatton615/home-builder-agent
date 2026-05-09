@@ -6,68 +6,179 @@
     {
       "name": "Plans & Layout Verification",
       "items": [
-        "Approved plumbing plan on-site and plumber working from current stamped set (not a prior revision)",
-        "All fixture locations field-verified against architectural plan \u2014 toilets, tubs, showers, sinks, laundry, hose bibbs, wet bar, outdoor kitchen",
-        "Drain and vent riser locations confirmed against framing \u2014 no conflicts with beams, headers, or engineered lumber",
-        "Water supply routing confirmed with HVAC and electrical subs to avoid crossing conflicts in same stud bay or joist cavity"
+        {
+          "label": "Approved plumbing plan on-site and plumber working from current stamped set (not a prior revision)",
+          "photo_required": true
+        },
+        {
+          "label": "All fixture locations field-verified against architectural plan — toilets, tubs, showers, sinks, laundry, hose bibbs, wet bar, outdoor kitchen",
+          "photo_required": true
+        },
+        {
+          "label": "Drain and vent riser locations confirmed against framing — no conflicts with beams, headers, or engineered lumber",
+          "photo_required": true
+        },
+        {
+          "label": "Water supply routing confirmed with HVAC and electrical subs to avoid crossing conflicts in same stud bay or joist cavity",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Below-Slab Rough-In",
       "items": [
-        "All below-slab drain lines installed to correct pipe size per IPC schedule \u2014 minimum 3-inch drain to water closets, 4-inch building drain to septic/sewer",
-        "Below-slab drain lines set to correct fall \u2014 minimum 1/4-inch per foot slope verified with level, no flat or back-pitched runs",
-        "All below-slab pipe bedded in clean sand per Baldwin County standard \u2014 minimum 4 inches below and to sides of pipe",
-        "Cleanout locations installed per IPC requirements \u2014 within 5 feet of building drain exit and at base of each stack",
-        "All penetrations through footings sleeved and sealed \u2014 no unsleeved pipe cast directly into concrete footer",
-        "Below-slab pressure test completed prior to pour \u2014 minimum 10 PSI air or hydrostatic, held 15 minutes, no drop",
-        "Baldwin County below-slab plumbing inspection passed and inspection card signed before concrete is poured"
+        {
+          "label": "All below-slab drain lines installed to correct pipe size per IPC schedule — minimum 3-inch drain to water closets, 4-inch building drain to septic/sewer",
+          "photo_required": true
+        },
+        {
+          "label": "Below-slab drain lines set to correct fall — minimum 1/4-inch per foot slope verified with level, no flat or back-pitched runs",
+          "photo_required": true
+        },
+        {
+          "label": "All below-slab pipe bedded in clean sand per Baldwin County standard — minimum 4 inches below and to sides of pipe",
+          "photo_required": true
+        },
+        {
+          "label": "Cleanout locations installed per IPC requirements — within 5 feet of building drain exit and at base of each stack",
+          "photo_required": true
+        },
+        {
+          "label": "All penetrations through footings sleeved and sealed — no unsleeved pipe cast directly into concrete footer",
+          "photo_required": true
+        },
+        {
+          "label": "Below-slab pressure test completed prior to pour — minimum 10 PSI air or hydrostatic, held 15 minutes, no drop",
+          "photo_required": true
+        },
+        {
+          "label": "Baldwin County below-slab plumbing inspection passed and inspection card signed before concrete is poured",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Drain, Waste & Vent Rough-In",
       "items": [
-        "All drain, waste, and vent pipe material confirmed correct per spec \u2014 schedule 40 PVC or cast iron per client/plan designation; no ABS unless explicitly approved",
-        "All water closet flanges set to correct rough-in dimension \u2014 12-inch from finished wall face (or 10-inch / 14-inch per fixture selection confirmed in Precon)",
-        "Tub and shower drain locations set per manufacturer rough-in sheet for the specific selected fixtures",
-        "All vent pipes continuous and connected to main vent stack \u2014 no orphaned drain lines without proper venting",
-        "Vent stack penetrations through roof decking sleeved, positioned minimum 10 feet from any operable window or HVAC intake per IRC",
-        "All horizontal drain lines supported at maximum 4-foot intervals; vertical stacks supported at each floor per IPC",
-        "No notches in load-bearing studs deeper than 25% of stud depth; all notched studs protected with 1/16-inch steel nail plate"
+        {
+          "label": "All drain, waste, and vent pipe material confirmed correct per spec — schedule 40 PVC or cast iron per client/plan designation; no ABS unless explicitly approved",
+          "photo_required": true
+        },
+        {
+          "label": "All water closet flanges set to correct rough-in dimension — 12-inch from finished wall face (or 10-inch / 14-inch per fixture selection confirmed in Precon)",
+          "photo_required": true
+        },
+        {
+          "label": "Tub and shower drain locations set per manufacturer rough-in sheet for the specific selected fixtures",
+          "photo_required": true
+        },
+        {
+          "label": "All vent pipes continuous and connected to main vent stack — no orphaned drain lines without proper venting",
+          "photo_required": true
+        },
+        {
+          "label": "Vent stack penetrations through roof decking sleeved, positioned minimum 10 feet from any operable window or HVAC intake per IRC",
+          "photo_required": true
+        },
+        {
+          "label": "All horizontal drain lines supported at maximum 4-foot intervals; vertical stacks supported at each floor per IPC",
+          "photo_required": true
+        },
+        {
+          "label": "No notches in load-bearing studs deeper than 25% of stud depth; all notched studs protected with 1/16-inch steel nail plate",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Water Supply Rough-In",
       "items": [
-        "All supply pipe material confirmed per spec \u2014 PEX-A, copper Type L, or CPVC per plan and client selection; no PEX-B substituted without superintendent approval",
-        "Manifold location installed per plan \u2014 accessible location, labeled per fixture, isolation valve on each leg",
-        "Hot and cold supply stubs set at correct height and spacing for each fixture \u2014 verify against manufacturer rough-in sheet for selected faucets, especially wall-mount and freestanding tub filler",
-        "All supply lines secured every 32 inches horizontally and 48 inches vertically; no unsupported spans that allow pipe movement or hammering",
-        "Water hammer arrestors installed at washing machine, dishwasher, and any quick-closing solenoid valve locations per ASSE 1010",
-        "All supply line penetrations through framing protected with nail plates \u2014 any pipe within 1.25 inches of face of stud or joist",
-        "Pressure test on supply system completed \u2014 minimum 80 PSI static, held 4 hours, verified by superintendent and documented with photo"
+        {
+          "label": "All supply pipe material confirmed per spec — PEX-A, copper Type L, or CPVC per plan and client selection; no PEX-B substituted without superintendent approval",
+          "photo_required": true
+        },
+        {
+          "label": "Manifold location installed per plan — accessible location, labeled per fixture, isolation valve on each leg",
+          "photo_required": true
+        },
+        {
+          "label": "Hot and cold supply stubs set at correct height and spacing for each fixture — verify against manufacturer rough-in sheet for selected faucets, especially wall-mount and freestanding tub filler",
+          "photo_required": true
+        },
+        {
+          "label": "All supply lines secured every 32 inches horizontally and 48 inches vertically; no unsupported spans that allow pipe movement or hammering",
+          "photo_required": true
+        },
+        {
+          "label": "Water hammer arrestors installed at washing machine, dishwasher, and any quick-closing solenoid valve locations per ASSE 1010",
+          "photo_required": true
+        },
+        {
+          "label": "All supply line penetrations through framing protected with nail plates — any pipe within 1.25 inches of face of stud or joist",
+          "photo_required": true
+        },
+        {
+          "label": "Pressure test on supply system completed — minimum 80 PSI static, held 4 hours, verified by superintendent and documented with photo",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Specialty & Mechanical Connections",
       "items": [
-        "Gas line rough-in (if natural gas or propane) stubbed to correct locations \u2014 range, tankless water heater, fireplace, outdoor kitchen, generator pad",
-        "Tankless or tank water heater location confirmed \u2014 verified adequate space for code-required service clearances and condensate drain (if applicable)",
-        "Recirculation loop installed if specified in plans \u2014 loop return stubbed at water heater and each fixture cluster per design",
-        "Exterior hose bibb locations confirmed and freeze-proof bibb model verified as specified \u2014 minimum two per plan, additional per client selection",
-        "Ice maker, pot filler, and steam unit supply lines stubbed to correct location per appliance rough-in sheets",
-        "Floor drain installed in mechanical room and any other location indicated on plan \u2014 trap primed or trap guard installed"
+        {
+          "label": "Gas line rough-in (if natural gas or propane) stubbed to correct locations — range, tankless water heater, fireplace, outdoor kitchen, generator pad",
+          "photo_required": true
+        },
+        {
+          "label": "Tankless or tank water heater location confirmed — verified adequate space for code-required service clearances and condensate drain (if applicable)",
+          "photo_required": true
+        },
+        {
+          "label": "Recirculation loop installed if specified in plans — loop return stubbed at water heater and each fixture cluster per design",
+          "photo_required": true
+        },
+        {
+          "label": "Exterior hose bibb locations confirmed and freeze-proof bibb model verified as specified — minimum two per plan, additional per client selection",
+          "photo_required": true
+        },
+        {
+          "label": "Ice maker, pot filler, and steam unit supply lines stubbed to correct location per appliance rough-in sheets",
+          "photo_required": true
+        },
+        {
+          "label": "Floor drain installed in mechanical room and any other location indicated on plan — trap primed or trap guard installed",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Inspection & Pre-Cover Sign-Off",
       "items": [
-        "Baldwin County rough plumbing inspection scheduled and passed \u2014 inspection card physically on-site and signed",
-        "Superintendent walked all rough-in with plumber before inspection call \u2014 all open pipe ends capped, no exposed debris inside lines",
-        "Photo documentation complete \u2014 above-slab rough-in photographed by zone and uploaded to project Drive folder before any wall cavities are closed",
-        "Framing superintendent confirmed no structural members were over-notched or drilled out of tolerance to accommodate plumbing routing",
-        "Plumber sign-off sheet signed and dated confirming system is ready for cover \u2014 on file in project binder",
-        "Superintendent final walk completed and any punch items from inspection or site walk resolved and re-verified before drywall phase is released to proceed"
+        {
+          "label": "Baldwin County rough plumbing inspection scheduled and passed — inspection card physically on-site and signed",
+          "photo_required": true
+        },
+        {
+          "label": "Superintendent walked all rough-in with plumber before inspection call — all open pipe ends capped, no exposed debris inside lines",
+          "photo_required": true
+        },
+        {
+          "label": "Photo documentation complete — above-slab rough-in photographed by zone and uploaded to project Drive folder before any wall cavities are closed",
+          "photo_required": true
+        },
+        {
+          "label": "Framing superintendent confirmed no structural members were over-notched or drilled out of tolerance to accommodate plumbing routing",
+          "photo_required": true
+        },
+        {
+          "label": "Plumber sign-off sheet signed and dated confirming system is ready for cover — on file in project binder",
+          "photo_required": false
+        },
+        {
+          "label": "Superintendent final walk completed and any punch items from inspection or site walk resolved and re-verified before drywall phase is released to proceed",
+          "photo_required": true
+        }
       ]
     }
   ]

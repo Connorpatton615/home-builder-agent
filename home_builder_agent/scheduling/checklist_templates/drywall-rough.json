@@ -6,59 +6,158 @@
     {
       "name": "Pre-Hang Verification",
       "items": [
-        "Baldwin County rough framing inspection passed and card posted on site before first board goes up",
-        "All MEP rough-in inspections passed (plumbing, HVAC, electrical) \u2014 zero open inspection items remain",
-        "Superintendent walk confirms all blocking and backing installed per blocking plan: grab bars, TV mounts, cabinet rails, heavy fixtures, handrails, and towel bars",
-        "All exterior walls confirmed insulated and inspected before drywall closes them (R-19 batts minimum or per energy compliance report)",
-        "Sound-attenuation insulation installed in all designated walls (home theater, primary suite, bathrooms per plan notes)",
-        "Attic and vaulted ceiling insulation complete and inspected prior to drywall on ceiling planes",
-        "All recessed can locations marked and trim rings or air-tight IC housings confirmed installed flush to future drywall plane",
-        "Fire blocking and draft stopping verified at all penetrations, stair stringers, and top-plate runs exceeding 10 feet per IRC 302.11"
+        {
+          "label": "Baldwin County rough framing inspection passed and card posted on site before first board goes up",
+          "photo_required": true
+        },
+        {
+          "label": "All MEP rough-in inspections passed (plumbing, HVAC, electrical) — zero open inspection items remain",
+          "photo_required": true
+        },
+        {
+          "label": "Superintendent walk confirms all blocking and backing installed per blocking plan: grab bars, TV mounts, cabinet rails, heavy fixtures, handrails, and towel bars",
+          "photo_required": true
+        },
+        {
+          "label": "All exterior walls confirmed insulated and inspected before drywall closes them (R-19 batts minimum or per energy compliance report)",
+          "photo_required": true
+        },
+        {
+          "label": "Sound-attenuation insulation installed in all designated walls (home theater, primary suite, bathrooms per plan notes)",
+          "photo_required": true
+        },
+        {
+          "label": "Attic and vaulted ceiling insulation complete and inspected prior to drywall on ceiling planes",
+          "photo_required": true
+        },
+        {
+          "label": "All recessed can locations marked and trim rings or air-tight IC housings confirmed installed flush to future drywall plane",
+          "photo_required": true
+        },
+        {
+          "label": "Fire blocking and draft stopping verified at all penetrations, stair stringers, and top-plate runs exceeding 10 feet per IRC 302.11",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Materials On-Site",
       "items": [
-        "Drywall board count and type verified against takeoff: 5/8\" Type X in garage, 1/2\" standard in living areas, 1/2\" moisture-resistant in all wet areas (bathrooms, laundry, mudroom)",
-        "Drywall stored flat, off slab on stickers, protected from moisture \u2014 no bowed, wet, or delaminated sheets accepted on site",
-        "Fastener type confirmed: coarse-thread drywall screws for wood framing, fine-thread for steel; no nails on ceiling planes",
-        "Corner bead, control-joint bead, and J-bead quantities on site and matching spec (metal bead required at all outside corners per Palmetto standard \u2014 no vinyl bead on $1M+ builds)",
-        "Drywall adhesive on hand for glue-and-screw application on all wall boards per superintendent directive",
-        "Lift/panel hoist on site and operational before ceiling hang begins"
+        {
+          "label": "Drywall board count and type verified against takeoff: 5/8\" Type X in garage, 1/2\" standard in living areas, 1/2\" moisture-resistant in all wet areas (bathrooms, laundry, mudroom)",
+          "photo_required": true
+        },
+        {
+          "label": "Drywall stored flat, off slab on stickers, protected from moisture — no bowed, wet, or delaminated sheets accepted on site",
+          "photo_required": true
+        },
+        {
+          "label": "Fastener type confirmed: coarse-thread drywall screws for wood framing, fine-thread for steel; no nails on ceiling planes",
+          "photo_required": false
+        },
+        {
+          "label": "Corner bead, control-joint bead, and J-bead quantities on site and matching spec (metal bead required at all outside corners per Palmetto standard — no vinyl bead on $1M+ builds)",
+          "photo_required": true
+        },
+        {
+          "label": "Drywall adhesive on hand for glue-and-screw application on all wall boards per superintendent directive",
+          "photo_required": true
+        },
+        {
+          "label": "Lift/panel hoist on site and operational before ceiling hang begins",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Hang Quality",
       "items": [
-        "Ceiling panels hung perpendicular to joists, glued and screwed at 12\" o.c. in field and 8\" o.c. at edges \u2014 no exceptions on vaulted or tray ceilings",
-        "Wall panels hung horizontally (tapered edge out), glued and screwed at 16\" o.c. field and 8\" o.c. edges; no panel breaks mid-opening on arched or radius walls",
-        "All screws driven to dimple \u2014 heads set 1/16\" below surface without breaking paper; superintendent spot-check minimum one full room per day",
-        "No butt joints over windows, door headers, or within 8\" of any opening corner \u2014 confirmed by superintendent before crew advances room to room",
-        "All cutouts (outlets, switches, recessed cans, HVAC registers, plumbing access) clean-cut, sized to box perimeter \u2014 no torn paper or blown-out edges",
-        "Radius walls, barrel ceilings, and coffered details hung with flex board or scored standard board per architect's detail drawings \u2014 no kinking or cracking",
-        "1/2\" clearance gap maintained at floor on all wall panels to prevent wicking; bottom edge does not contact slab or subfloor"
+        {
+          "label": "Ceiling panels hung perpendicular to joists, glued and screwed at 12\" o.c. in field and 8\" o.c. at edges — no exceptions on vaulted or tray ceilings",
+          "photo_required": true
+        },
+        {
+          "label": "Wall panels hung horizontally (tapered edge out), glued and screwed at 16\" o.c. field and 8\" o.c. edges; no panel breaks mid-opening on arched or radius walls",
+          "photo_required": true
+        },
+        {
+          "label": "All screws driven to dimple — heads set 1/16\" below surface without breaking paper; superintendent spot-check minimum one full room per day",
+          "photo_required": true
+        },
+        {
+          "label": "No butt joints over windows, door headers, or within 8\" of any opening corner — confirmed by superintendent before crew advances room to room",
+          "photo_required": true
+        },
+        {
+          "label": "All cutouts (outlets, switches, recessed cans, HVAC registers, plumbing access) clean-cut, sized to box perimeter — no torn paper or blown-out edges",
+          "photo_required": true
+        },
+        {
+          "label": "Radius walls, barrel ceilings, and coffered details hung with flex board or scored standard board per architect's detail drawings — no kinking or cracking",
+          "photo_required": true
+        },
+        {
+          "label": "1/2\" clearance gap maintained at floor on all wall panels to prevent wicking; bottom edge does not contact slab or subfloor",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Specialty & Code Details",
       "items": [
-        "Garage-to-living-space walls and ceiling fully hung with 5/8\" Type X drywall, all joints and penetrations sealed with fire-rated caulk per IRC 302.5.1",
-        "All mechanical room walls and ceilings confirmed with correct fire-rating assembly where required by plan",
-        "Shaft walls (HVAC chases, fireplace chases) framed and hung with correct assembly \u2014 double-layer or Type X per engineer's detail",
-        "Stair soffit and underside of stairs drywalled per plan; no exposed framing in finished areas",
-        "Attic access hatches framed square, trimmed with J-bead, and sized per plan (minimum 22\"x30\" per IRC 807.1)",
-        "All tub and shower surrounds behind tile substrate confirmed: cement board or glass-mat gypsum (no standard drywall within wet area boundary per IRC R702.4)"
+        {
+          "label": "Garage-to-living-space walls and ceiling fully hung with 5/8\" Type X drywall, all joints and penetrations sealed with fire-rated caulk per IRC 302.5.1",
+          "photo_required": true
+        },
+        {
+          "label": "All mechanical room walls and ceilings confirmed with correct fire-rating assembly where required by plan",
+          "photo_required": true
+        },
+        {
+          "label": "Shaft walls (HVAC chases, fireplace chases) framed and hung with correct assembly — double-layer or Type X per engineer's detail",
+          "photo_required": true
+        },
+        {
+          "label": "Stair soffit and underside of stairs drywalled per plan; no exposed framing in finished areas",
+          "photo_required": true
+        },
+        {
+          "label": "Attic access hatches framed square, trimmed with J-bead, and sized per plan (minimum 22\"x30\" per IRC 807.1)",
+          "photo_required": true
+        },
+        {
+          "label": "All tub and shower surrounds behind tile substrate confirmed: cement board or glass-mat gypsum (no standard drywall within wet area boundary per IRC R702.4)",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Inspections & Sign-Off",
       "items": [
-        "Baldwin County insulation inspection passed (if required as standalone inspection in jurisdiction) \u2014 card signed and on file",
-        "Superintendent final walk of all hung surfaces complete: flatness check with 8-foot straightedge, no deviation greater than 1/8\" over 8 feet on ceiling planes",
-        "Drywall sub foreman sign-off on hang completion form \u2014 date and room-by-room confirmation recorded in project log",
-        "Superintendent photographs all blocking and backing locations before tape begins (archived to project Drive folder for warranty reference)",
-        "Any damaged, wet, or out-of-plane panels flagged, listed on punch sheet, and replaced before tape crew mobilizes",
-        "PM or superintendent notifies tape crew and schedules start date \u2014 no tape crew on site until this phase checklist is fully closed"
+        {
+          "label": "Baldwin County insulation inspection passed (if required as standalone inspection in jurisdiction) — card signed and on file",
+          "photo_required": true
+        },
+        {
+          "label": "Superintendent final walk of all hung surfaces complete: flatness check with 8-foot straightedge, no deviation greater than 1/8\" over 8 feet on ceiling planes",
+          "photo_required": true
+        },
+        {
+          "label": "Drywall sub foreman sign-off on hang completion form — date and room-by-room confirmation recorded in project log",
+          "photo_required": false
+        },
+        {
+          "label": "Superintendent photographs all blocking and backing locations before tape begins (archived to project Drive folder for warranty reference)",
+          "photo_required": true
+        },
+        {
+          "label": "Any damaged, wet, or out-of-plane panels flagged, listed on punch sheet, and replaced before tape crew mobilizes",
+          "photo_required": true
+        },
+        {
+          "label": "PM or superintendent notifies tape crew and schedules start date — no tape crew on site until this phase checklist is fully closed",
+          "photo_required": false
+        }
       ]
     }
   ]

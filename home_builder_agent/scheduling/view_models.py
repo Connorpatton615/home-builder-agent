@@ -365,7 +365,12 @@ def _checklist_item_to_payload(item: ChecklistItem) -> ChecklistItemPayload:
         completed_by=item.completed_by,
         completed_at=item.completed_at,
         notes=item.notes,
+        photo_required=item.photo_required,
+        photos=list(item.photos),
         tap_action=f"checklist-item:{item.id}",
+        photo_upload_action=(
+            f"checklist-item-photo-upload:{item.id}" if item.photo_required else None
+        ),
     )
 
 

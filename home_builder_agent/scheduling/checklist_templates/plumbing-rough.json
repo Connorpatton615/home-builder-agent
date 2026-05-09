@@ -6,67 +6,175 @@
     {
       "name": "Plans & Pre-Work",
       "items": [
-        "Current stamped plumbing plans on-site and plumber has confirmed layout against framed conditions",
-        "Plumbing permit card posted at job site prior to first inspection",
-        "Fixture rough-in dimensions cross-checked against final fixture selections (toilets, freestanding tubs, custom showers) before lines are set",
-        "Coordination with HVAC and electrical subs complete \u2014 no conflicts at shared joist bays, chase walls, or beam pockets",
-        "All slab penetrations (if applicable) confirmed sealed and sleeved per plan before plumber begins above-slab rough"
+        {
+          "label": "Current stamped plumbing plans on-site and plumber has confirmed layout against framed conditions",
+          "photo_required": false
+        },
+        {
+          "label": "Plumbing permit card posted at job site prior to first inspection",
+          "photo_required": true
+        },
+        {
+          "label": "Fixture rough-in dimensions cross-checked against final fixture selections (toilets, freestanding tubs, custom showers) before lines are set",
+          "photo_required": false
+        },
+        {
+          "label": "Coordination with HVAC and electrical subs complete — no conflicts at shared joist bays, chase walls, or beam pockets",
+          "photo_required": false
+        },
+        {
+          "label": "All slab penetrations (if applicable) confirmed sealed and sleeved per plan before plumber begins above-slab rough",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Drain, Waste & Vent (DWV)",
       "items": [
-        "All drain lines sized per IRC Table 709.1 \u2014 confirm 3\" minimum on water closets, 2\" minimum on lavs and tubs",
-        "Drain slope verified at 1/4\" per foot for horizontal runs 3\" and under; 1/8\" per foot acceptable for 4\" and larger \u2014 superintendent spot-checked with level",
-        "All vent stacks continuous to roof penetration, flashed, and no vent termination within 10 feet horizontal of operable window or HVAC intake",
-        "Wet-venting and air-admittance valve (AAV) locations, if used, confirmed code-compliant and approved by Baldwin County inspector",
-        "P-traps installed at every fixture rough-in; no S-traps present",
-        "DWV system air-tested at 5 PSI for 15 minutes with no pressure drop before inspection is called",
-        "Clean-outs installed at base of all stacks and at every 100-foot horizontal run; locations accessible per plan"
+        {
+          "label": "All drain lines sized per IRC Table 709.1 — confirm 3\" minimum on water closets, 2\" minimum on lavs and tubs",
+          "photo_required": true
+        },
+        {
+          "label": "Drain slope verified at 1/4\" per foot for horizontal runs 3\" and under; 1/8\" per foot acceptable for 4\" and larger — superintendent spot-checked with level",
+          "photo_required": true
+        },
+        {
+          "label": "All vent stacks continuous to roof penetration, flashed, and no vent termination within 10 feet horizontal of operable window or HVAC intake",
+          "photo_required": true
+        },
+        {
+          "label": "Wet-venting and air-admittance valve (AAV) locations, if used, confirmed code-compliant and approved by Baldwin County inspector",
+          "photo_required": true
+        },
+        {
+          "label": "P-traps installed at every fixture rough-in; no S-traps present",
+          "photo_required": true
+        },
+        {
+          "label": "DWV system air-tested at 5 PSI for 15 minutes with no pressure drop before inspection is called",
+          "photo_required": true
+        },
+        {
+          "label": "Clean-outs installed at base of all stacks and at every 100-foot horizontal run; locations accessible per plan",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Supply Lines",
       "items": [
-        "Water service line sized and material confirmed (PEX-A, copper, or CPVC per spec) consistent with selections and Baldwin County water authority requirements",
-        "Hot and cold supply lines run to every fixture rough-in per plan; all lines labeled at manifold",
-        "PEX manifold (if home is home-run plumbed) secured, labeled by zone, and located in accessible mechanical space",
-        "Supply lines pressure-tested at 100 PSI for 30 minutes with no pressure drop before walls are closed",
-        "Minimum 1/2\" supply to all lavatories and water closets; 3/4\" maintained on trunk lines feeding multiple fixtures",
-        "All supply penetrations through top and bottom plates sleeved or grommeted to prevent abrasion; fire-blocking intact after penetration",
-        "Hose bib locations confirmed against exterior elevation plans; vacuum breakers specified for all exterior hose bibs"
+        {
+          "label": "Water service line sized and material confirmed (PEX-A, copper, or CPVC per spec) consistent with selections and Baldwin County water authority requirements",
+          "photo_required": true
+        },
+        {
+          "label": "Hot and cold supply lines run to every fixture rough-in per plan; all lines labeled at manifold",
+          "photo_required": true
+        },
+        {
+          "label": "PEX manifold (if home is home-run plumbed) secured, labeled by zone, and located in accessible mechanical space",
+          "photo_required": true
+        },
+        {
+          "label": "Supply lines pressure-tested at 100 PSI for 30 minutes with no pressure drop before walls are closed",
+          "photo_required": true
+        },
+        {
+          "label": "Minimum 1/2\" supply to all lavatories and water closets; 3/4\" maintained on trunk lines feeding multiple fixtures",
+          "photo_required": true
+        },
+        {
+          "label": "All supply penetrations through top and bottom plates sleeved or grommeted to prevent abrasion; fire-blocking intact after penetration",
+          "photo_required": true
+        },
+        {
+          "label": "Hose bib locations confirmed against exterior elevation plans; vacuum breakers specified for all exterior hose bibs",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Structural Protection",
       "items": [
-        "All pipes notched or bored through studs and joists within code limits \u2014 notches in non-load-bearing studs max 40% of width; bored holes no closer than 5/8\" to edge without a nail plate",
-        "Steel nail plates installed at every location where pipe is within 1-1/4\" of face of stud, joist, or plate \u2014 100% of locations verified by superintendent walk",
-        "No structural members cut or over-notched; any field modifications to engineered lumber (LVL, TJI) approved in writing by structural engineer before proceeding",
-        "Pipe hangers and supports installed per IRC 305 \u2014 PEX supported every 32\", copper every 6' horizontal and 10' vertical; no unsupported long runs",
-        "All floor joist bays penetrated by drain lines have blocking or approved backing reinstalled flush to maintain subfloor fastening schedule"
+        {
+          "label": "All pipes notched or bored through studs and joists within code limits — notches in non-load-bearing studs max 40% of width; bored holes no closer than 5/8\" to edge without a nail plate",
+          "photo_required": true
+        },
+        {
+          "label": "Steel nail plates installed at every location where pipe is within 1-1/4\" of face of stud, joist, or plate — 100% of locations verified by superintendent walk",
+          "photo_required": true
+        },
+        {
+          "label": "No structural members cut or over-notched; any field modifications to engineered lumber (LVL, TJI) approved in writing by structural engineer before proceeding",
+          "photo_required": true
+        },
+        {
+          "label": "Pipe hangers and supports installed per IRC 305 — PEX supported every 32\", copper every 6' horizontal and 10' vertical; no unsupported long runs",
+          "photo_required": true
+        },
+        {
+          "label": "All floor joist bays penetrated by drain lines have blocking or approved backing reinstalled flush to maintain subfloor fastening schedule",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Specialty & Luxury Rough-Ins",
       "items": [
-        "Freestanding tub drain and supply rough-in locations confirmed against tub manufacturer's spec sheet \u2014 floor flange centered within 1/4\" tolerance",
-        "Curbless shower linear drain rough-in confirmed with tile setter for final slope, drain brand, and flange height relative to finished floor elevation",
-        "Body spray, rain head, and handheld shower valve rough-ins confirmed against client's fixture selections and valve manufacturer's required rough-in depth",
-        "Pot-filler rough-in (if selected) located per kitchen cabinet elevation drawings \u2014 confirm height and horizontal offset with cabinet installer",
-        "Outdoor kitchen, pool bath, and/or irrigation rough-ins stubbed and capped at correct locations per site plan",
-        "Gas rough-in (if plumber is running gas) pressure-tested separately at 10 PSI for 15 minutes; all drops to appliance locations stubbed and capped"
+        {
+          "label": "Freestanding tub drain and supply rough-in locations confirmed against tub manufacturer's spec sheet — floor flange centered within 1/4\" tolerance",
+          "photo_required": true
+        },
+        {
+          "label": "Curbless shower linear drain rough-in confirmed with tile setter for final slope, drain brand, and flange height relative to finished floor elevation",
+          "photo_required": true
+        },
+        {
+          "label": "Body spray, rain head, and handheld shower valve rough-ins confirmed against client's fixture selections and valve manufacturer's required rough-in depth",
+          "photo_required": true
+        },
+        {
+          "label": "Pot-filler rough-in (if selected) located per kitchen cabinet elevation drawings — confirm height and horizontal offset with cabinet installer",
+          "photo_required": true
+        },
+        {
+          "label": "Outdoor kitchen, pool bath, and/or irrigation rough-ins stubbed and capped at correct locations per site plan",
+          "photo_required": true
+        },
+        {
+          "label": "Gas rough-in (if plumber is running gas) pressure-tested separately at 10 PSI for 15 minutes; all drops to appliance locations stubbed and capped",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Inspection & Pre-Cover Sign-Off",
       "items": [
-        "Baldwin County rough plumbing inspection scheduled \u2014 all DWV and supply lines visible and accessible at time of inspection",
-        "Baldwin County rough plumbing inspection passed \u2014 approved inspection card signed and on file before insulation or drywall is ordered",
-        "Superintendent walked entire rough-in with plumber after inspection: all caps tight, no open lines, no debris in open drain lines",
-        "Plumber's punch list from inspection (if any) completed and re-inspected before phase is closed",
-        "Photos taken of all wall and floor cavities showing pipe runs, nail plates, and support hangers \u2014 uploaded to project Drive folder before walls close",
-        "Superintendent and project manager sign off on Plumbing Rough phase in project management system; drywall sub cleared to schedule"
+        {
+          "label": "Baldwin County rough plumbing inspection scheduled — all DWV and supply lines visible and accessible at time of inspection",
+          "photo_required": false
+        },
+        {
+          "label": "Baldwin County rough plumbing inspection passed — approved inspection card signed and on file before insulation or drywall is ordered",
+          "photo_required": true
+        },
+        {
+          "label": "Superintendent walked entire rough-in with plumber after inspection: all caps tight, no open lines, no debris in open drain lines",
+          "photo_required": true
+        },
+        {
+          "label": "Plumber's punch list from inspection (if any) completed and re-inspected before phase is closed",
+          "photo_required": true
+        },
+        {
+          "label": "Photos taken of all wall and floor cavities showing pipe runs, nail plates, and support hangers — uploaded to project Drive folder before walls close",
+          "photo_required": true
+        },
+        {
+          "label": "Superintendent and project manager sign off on Plumbing Rough phase in project management system; drywall sub cleared to schedule",
+          "photo_required": false
+        }
       ]
     }
   ]

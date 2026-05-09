@@ -6,93 +6,219 @@
     {
       "name": "Client & Contract",
       "items": [
-        "Construction contract signed by client and Palmetto",
-        "Initial deposit received and deposited",
-        "Scope of work attached and initialed by both parties",
-        "Change-order policy reviewed with client (CO process, $ thresholds, sign-off authority)",
-        "Insurance certificates exchanged (Palmetto's GL + WC; client's builder's risk)"
+        {
+          "label": "Construction contract signed by client and Palmetto",
+          "photo_required": false
+        },
+        {
+          "label": "Initial deposit received and deposited",
+          "photo_required": false
+        },
+        {
+          "label": "Scope of work attached and initialed by both parties",
+          "photo_required": false
+        },
+        {
+          "label": "Change-order policy reviewed with client (CO process, $ thresholds, sign-off authority)",
+          "photo_required": false
+        },
+        {
+          "label": "Insurance certificates exchanged (Palmetto's GL + WC; client's builder's risk)",
+          "photo_required": false
+        }
       ]
     },
     {
       "name": "Plans & Engineering",
       "items": [
-        "Architectural plans final, stamped, dated",
-        "Structural engineering complete and stamped",
-        "Foundation engineering complete (footings, slab, anchor schedule)",
-        "MEP design complete (plumbing, HVAC, electrical layouts)",
-        "Plans uploaded to Drive and shared with subs"
+        {
+          "label": "Architectural plans final, stamped, dated",
+          "photo_required": false
+        },
+        {
+          "label": "Structural engineering complete and stamped",
+          "photo_required": false
+        },
+        {
+          "label": "Foundation engineering complete (footings, slab, anchor schedule)",
+          "photo_required": false
+        },
+        {
+          "label": "MEP design complete (plumbing, HVAC, electrical layouts)",
+          "photo_required": false
+        },
+        {
+          "label": "Plans uploaded to Drive and shared with subs",
+          "photo_required": false
+        }
       ]
     },
     {
       "name": "Selections",
       "items": [
-        "Kitchen cabinet selections finalized (cabinet line, door style, finish)",
-        "Countertop selections finalized (material, edge, color)",
-        "Flooring selections finalized (tile, hardwood by zone)",
-        "Plumbing fixture selections finalized (faucets, toilets, tubs, showers)",
-        "Lighting fixture selections finalized (interior, exterior, fans)",
-        "Exterior selections finalized (siding, roofing, trim, paint)",
-        "Interior paint colors selected per room",
-        "Hardware selections finalized (door, cabinet, bath)"
+        {
+          "label": "Kitchen cabinet selections finalized (cabinet line, door style, finish)",
+          "photo_required": false
+        },
+        {
+          "label": "Countertop selections finalized (material, edge, color)",
+          "photo_required": false
+        },
+        {
+          "label": "Flooring selections finalized (tile, hardwood by zone)",
+          "photo_required": false
+        },
+        {
+          "label": "Plumbing fixture selections finalized (faucets, toilets, tubs, showers)",
+          "photo_required": false
+        },
+        {
+          "label": "Lighting fixture selections finalized (interior, exterior, fans)",
+          "photo_required": false
+        },
+        {
+          "label": "Exterior selections finalized (siding, roofing, trim, paint)",
+          "photo_required": false
+        },
+        {
+          "label": "Interior paint colors selected per room",
+          "photo_required": false
+        },
+        {
+          "label": "Hardware selections finalized (door, cabinet, bath)",
+          "photo_required": false
+        }
       ]
     },
     {
       "name": "Permitting",
       "items": [
-        "Building permit submitted to Baldwin County",
-        "Septic / sewer permit submitted",
-        "Electrical permit submitted",
-        "Plumbing permit submitted"
+        {
+          "label": "Building permit submitted to Baldwin County",
+          "photo_required": false
+        },
+        {
+          "label": "Septic / sewer permit submitted",
+          "photo_required": false
+        },
+        {
+          "label": "Electrical permit submitted",
+          "photo_required": false
+        },
+        {
+          "label": "Plumbing permit submitted",
+          "photo_required": false
+        }
       ]
     },
     {
       "name": "Site Prep",
       "items": [
-        "Site survey complete and on file",
-        "Soil compaction / percolation test complete",
-        "House layout staked on lot, verified by client",
-        "Utility locates called in and marked"
+        {
+          "label": "Site survey complete and on file",
+          "photo_required": false
+        },
+        {
+          "label": "Soil compaction / percolation test complete",
+          "photo_required": false
+        },
+        {
+          "label": "House layout staked on lot, verified by client",
+          "photo_required": true
+        },
+        {
+          "label": "Utility locates called in and marked",
+          "photo_required": true
+        }
       ]
     },
     {
       "name": "Subcontractors",
       "items": [
-        "Framing crew confirmed and scheduled",
-        "MEP subs confirmed (plumber, HVAC, electrician)",
-        "Drywall sub confirmed",
-        "Painting sub confirmed",
-        "Trim carpenter confirmed"
+        {
+          "label": "Framing crew confirmed and scheduled",
+          "photo_required": false
+        },
+        {
+          "label": "MEP subs confirmed (plumber, HVAC, electrician)",
+          "photo_required": false
+        },
+        {
+          "label": "Drywall sub confirmed",
+          "photo_required": false
+        },
+        {
+          "label": "Painting sub confirmed",
+          "photo_required": false
+        },
+        {
+          "label": "Trim carpenter confirmed",
+          "photo_required": false
+        }
       ]
     },
     {
       "name": "Materials",
       "items": [
-        "Lumber package quoted and ordered",
-        "Windows ordered (drop-dead per lead time, typically 10–12 wk)",
-        "Exterior doors ordered",
-        "Roofing materials ordered"
+        {
+          "label": "Lumber package quoted and ordered",
+          "photo_required": false
+        },
+        {
+          "label": "Windows ordered (drop-dead per lead time, typically 10–12 wk)",
+          "photo_required": false
+        },
+        {
+          "label": "Exterior doors ordered",
+          "photo_required": false
+        },
+        {
+          "label": "Roofing materials ordered",
+          "photo_required": false
+        }
       ]
     },
     {
       "name": "Budget",
       "items": [
-        "Contingency line item set in Cost Tracker (typically 5–10%)",
-        "Allowance schedule reviewed with client and signed",
-        "Payment schedule (draws) agreed with client and lender"
+        {
+          "label": "Contingency line item set in Cost Tracker (typically 5–10%)",
+          "photo_required": false
+        },
+        {
+          "label": "Allowance schedule reviewed with client and signed",
+          "photo_required": false
+        },
+        {
+          "label": "Payment schedule (draws) agreed with client and lender",
+          "photo_required": false
+        }
       ]
     },
     {
       "name": "Schedule",
       "items": [
-        "Target completion date set and shared with client",
-        "Framing start date locked (anchors backwards-schedule)"
+        {
+          "label": "Target completion date set and shared with client",
+          "photo_required": false
+        },
+        {
+          "label": "Framing start date locked (anchors backwards-schedule)",
+          "photo_required": false
+        }
       ]
     },
     {
       "name": "Meetings",
       "items": [
-        "Pre-construction kickoff with client (review scope, schedule, communication cadence)",
-        "Pre-construction kickoff with subs (site walk, schedule sync, expectations)"
+        {
+          "label": "Pre-construction kickoff with client (review scope, schedule, communication cadence)",
+          "photo_required": false
+        },
+        {
+          "label": "Pre-construction kickoff with subs (site walk, schedule sync, expectations)",
+          "photo_required": true
+        }
       ]
     }
   ]

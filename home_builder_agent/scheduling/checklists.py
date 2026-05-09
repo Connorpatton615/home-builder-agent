@@ -10,21 +10,21 @@ Persistence to `home_builder.checklist` + `home_builder.checklist_item`
 is migration 005 (queued; see docs/specs/desktop-renderer.md § Phase 2).
 
 The 24 phase checklists per scheduling-engine.md § Checklist Library
-are listed in `phases.CHECKLIST_PHASE_NAMES`. V0 ships:
-- **Precon** — Chad's master template, 42 items / 10 categories. Authored
-  to industry standards + the 10 categories Chad explicitly named. Subject
-  to redline before pilot.
-- **All 23 others** — stub templates (zero items). A stub Checklist
-  auto-closes (`status == "closed"` when total_count is 0), which lets
-  phases pass-through the gate cleanly until Chad authors content for
-  each one. Authoring per phase is a follow-up sub-task — generation
-  from Chad's KB + industry standards, then his redline.
+are listed in `phases.CHECKLIST_PHASE_NAMES`. As of 2026-05-09:
+- **All 24 phases have substantive templates** — 923 items total, code-
+  tied (IRC R502.1, ACI 301, Baldwin County wind zone references, Alabama
+  Code citations where relevant). Items use the
+  `{label, photo_required}` shape; the loader also accepts plain-string
+  items for backwards compatibility. 735 of 923 items are flagged
+  photo_required (~80%) — Chad's flow of approval expects photo
+  evidence on physical-site-work items.
+- **Precon** is the gold standard, Chad-redlined.
+- **The other 23 are queued for Chad's redline** — packet at
+  docs/checklists/chad-redline-packet-2026-05-09.md.
 
-The empty-list-closes semantic is intentional: it keeps the gate
-mechanism live across all 24 phases from day one rather than waiting
-for every checklist to be authored. Phases with stubs currently behave
-identically to "no gate" — exactly the V0 fallback the canonical model
-calls for.
+The empty-list-closes semantic is preserved as a safety net: a phase
+without a template (e.g., a custom one Chad adds at runtime) still
+auto-closes its gate.
 """
 
 from __future__ import annotations
@@ -46,7 +46,19 @@ STUB_TEMPLATE_VERSION = "v0-stub"
 
 @dataclass
 class ChecklistItem:
-    """An individual check. Mirrors canonical-data-model.md § entity 7."""
+    """An individual check. Mirrors canonical-data-model.md § entity 7.
+
+    `photo_required` flags items where Chad's flow of approval expects
+    photo evidence (e.g., "vapor barrier installed and lapped") vs.
+    purely administrative items (e.g., "permit posted on-site"). The
+    renderer surfaces a photo-upload affordance on flagged items.
+
+    `photos` carries Drive references for any photos already uploaded
+    against this item — list of {drive_file_id, drive_url, uploaded_at,
+    uploaded_by} dicts. The Drive-side artifact lives at
+    `Site Logs/<Project>/Checklist Photos/<phase>/<item-slug>/`.
+    Schema column for persistence lands in migration 009 (queued).
+    """
 
     id: str
     category: str
@@ -55,6 +67,8 @@ class ChecklistItem:
     completed_by: str | None = None
     completed_at: date | None = None
     notes: str | None = None
+    photo_required: bool = False
+    photos: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -65,6 +79,8 @@ class ChecklistItem:
             "completed_by": self.completed_by,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "notes": self.notes,
+            "photo_required": self.photo_required,
+            "photos": list(self.photos),
         }
 
 
@@ -196,12 +212,24 @@ def instantiate_checklist(
     for cat in template.get("categories", []):
         cat_name = cat.get("name", "Uncategorized")
         cat_slug = _slugify(cat_name)
-        for idx, label in enumerate(cat.get("items", [])):
+        for idx, item_spec in enumerate(cat.get("items", [])):
+            # Items may be either a plain string (legacy V1 format) or
+            # an object with {label, photo_required} (current format,
+            # per Chad's flow-of-approval upgrade). Both supported.
+            if isinstance(item_spec, str):
+                label = item_spec
+                photo_required = False
+            elif isinstance(item_spec, dict):
+                label = item_spec.get("label", "")
+                photo_required = bool(item_spec.get("photo_required", False))
+            else:
+                continue
             items.append(
                 ChecklistItem(
                     id=f"{prefix}:{cat_slug}:{idx:02d}",
                     category=cat_name,
                     label=label,
+                    photo_required=photo_required,
                 )
             )
 
