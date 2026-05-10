@@ -56,6 +56,13 @@ class TestToolsRegistry:
         """ADR rationale: keeping create + clone separate means
         create_project must NOT accept a copy_from field — Claude routes
         clone-intent to clone_project, not create_project with a flag.
+
+        Anthropic's tool input_schema does NOT support top-level
+        anyOf / oneOf / allOf — including one returns a 400 on the
+        whole tools list. The "at least one date" constraint therefore
+        lives in the dispatch handler at runtime (see
+        _tool_create_project), not in the schema. Tested live on
+        2026-05-09; chad-iOS hit a 400 immediately on the first turn.
         """
         from home_builder_agent.agents.chad_agent import TOOLS
 
@@ -66,10 +73,13 @@ class TestToolsRegistry:
         assert "customer_name" in props
         assert "target_completion_date" in props
         assert "target_framing_start_date" in props
-        # anyOf at schema level: completion or framing-start required
-        assert "anyOf" in tool["input_schema"]
+        # Schema must NOT use top-level anyOf / oneOf / allOf —
+        # Anthropic 400's on the whole tools list if any tool does.
+        assert "anyOf" not in tool["input_schema"]
+        assert "oneOf" not in tool["input_schema"]
+        assert "allOf" not in tool["input_schema"]
         assert tool["input_schema"]["required"] == ["project_name"]
-        # Description must point Chad to clone_project for clone-intent
+        # Description must point Chad to clone_project for clone-intent.
         desc = tool["description"].lower()
         assert "clone_project" in desc
 

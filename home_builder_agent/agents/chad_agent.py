@@ -560,6 +560,12 @@ TOOLS = [
             "Returns a confirmation string."
         ),
         "input_schema": {
+            # NOTE: Anthropic's tool input_schema does NOT support
+            # top-level `anyOf` / `oneOf` / `allOf` constraints — they
+            # 400 the whole tools list. So the "at least one date"
+            # constraint lives in the dispatch handler at runtime, not
+            # in the schema. Description text + handler error make
+            # this clear to Claude on retry.
             "type": "object",
             "properties": {
                 "project_name": {
@@ -576,8 +582,9 @@ TOOLS = [
                 "target_completion_date": {
                     "type": "string",
                     "description": (
-                        "YYYY-MM-DD target completion date. Either this or "
-                        "target_framing_start_date is required."
+                        "YYYY-MM-DD target completion date. EITHER this OR "
+                        "target_framing_start_date is required (handler "
+                        "errors with a clear message if neither is provided)."
                     ),
                 },
                 "target_framing_start_date": {
@@ -589,10 +596,6 @@ TOOLS = [
                 },
             },
             "required": ["project_name"],
-            "anyOf": [
-                {"required": ["target_completion_date"]},
-                {"required": ["target_framing_start_date"]},
-            ],
         },
     },
     {
