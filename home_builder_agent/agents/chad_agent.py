@@ -2038,6 +2038,7 @@ def chad_turn_stream(
     images: list[ImageInput] | None = None,
     user_id: str | None = None,
     project_id: str | None = None,
+    dry_run: bool = False,
     verbose: bool = False,
 ) -> Iterator[tuple[int, str, dict]]:
     """Streaming version of chad_turn for the iOS Ask tab and other SSE surfaces.
