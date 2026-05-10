@@ -520,7 +520,17 @@ TOOLS = [
             "test project', 'we're done with that one', 'put the Wilson "
             "project to bed', 'shelve Pelican Point', 'mothball the "
             "Hartley build'. v1 is DB-only — does NOT rename Drive folders, "
-            "does NOT touch Tracker sheets. Returns a confirmation string."
+            "does NOT touch Tracker sheets. "
+            "TWO-STEP CONFIRMATION (mandatory): always call this tool FIRST "
+            "without confirm=true to get a preview of what would be archived "
+            "(project name, customer, target date, current phase). Surface "
+            "that preview to the user and ask them to explicitly confirm. "
+            "Only call again with confirm=true after the user says 'yes', "
+            "'confirmed', 'go ahead', or similar in the SAME conversation. "
+            "Don't assume the user's initial 'archive Whitfield' is a "
+            "confirmation — that's the request, not the approval. Returns "
+            "a preview string when confirm is omitted; returns a "
+            "completion confirmation string when confirm=true."
         ),
         "input_schema": {
             "type": "object",
@@ -538,6 +548,17 @@ TOOLS = [
                         "Short human-readable note recorded with the "
                         "archive (e.g., 'closeout complete', 'on hold "
                         "indefinitely'). Optional."
+                    ),
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": (
+                        "Set to true ONLY after the user has explicitly "
+                        "approved the archive in this conversation. "
+                        "Default false (preview-only). Setting this to "
+                        "true on the first call without user approval is "
+                        "a contract violation — Chad's projects are real "
+                        "data, not test fixtures."
                     ),
                 },
             },
@@ -1188,9 +1209,18 @@ def _tool_archive_project(
     project_name: str,
     *,
     reason: str | None = None,
+    confirm: bool = False,
     dry_run: bool = False,
 ) -> tuple[str, float]:
     """Archive a project — flip status to 'archived' via archive_project_in_db.
+
+    Two-step confirmation: when `confirm=False` (the default), this returns
+    a PREVIEW of what would be archived without touching the DB. Only when
+    `confirm=True` does the actual write happen. The system-prompt contract
+    instructs Claude to never set confirm=True without an explicit user
+    approval in the same conversation — Chad's projects are real data
+    and an accidental archive is a high-friction recovery (re-flip status,
+    explain to Chad, regain trust).
 
     Direct adapter call (NOT through hb-router) so the tool can return a
     structured confirmation string in one round-trip — same pattern
@@ -1232,6 +1262,31 @@ def _tool_archive_project(
         return (
             f"(dry-run) Would archive {proj['name']} "
             f"(id {proj['id'][:8]}…){suffix}.",
+            0.0,
+        )
+    # Two-step confirmation: preview first, execute on the second call.
+    if not confirm:
+        # Surface enough detail that Chad can decide. Use only fields
+        # known-present on the resolved project; degrade gracefully on
+        # missing optionals.
+        customer = proj.get("customer_name") or "unknown customer"
+        target = (
+            proj.get("target_completion_date")
+            or proj.get("target_framing_start_date")
+            or "no target date set"
+        )
+        reason_part = f" Reason given: {reason!r}." if reason else ""
+        return (
+            f"PREVIEW (no DB write yet): archive_project would "
+            f"soft-archive {proj['name']!r} (id {proj['id'][:8]}…, "
+            f"customer: {customer}, target: {target}). Phase / event / "
+            f"draft history would be preserved; the project would just "
+            f"disappear from active surfaces and morning view.{reason_part} "
+            "ASK THE USER TO EXPLICITLY CONFIRM (e.g. 'yes, archive it' / "
+            "'go ahead') BEFORE calling archive_project again with "
+            "confirm=true. Do not assume the user's original archive "
+            "request is itself the confirmation — that was the intent, "
+            "not the approval.",
             0.0,
         )
     try:
@@ -1781,14 +1836,21 @@ def chad_turn(
                 elif name == "system_status":
                     output, cost = _tool_system_status()
                 elif name == "archive_project":
+                    confirm_flag = bool(inputs.get("confirm", False))
                     output, cost = _tool_archive_project(
                         project_name=inputs.get("project_name", ""),
                         reason=inputs.get("reason"),
+                        confirm=confirm_flag,
                         dry_run=dry_run,
                     )
-                    actions_taken.append(
-                        f"archive project {inputs.get('project_name', '?')!r}"
-                    )
+                    # Only count as a taken action when the archive
+                    # actually executed (confirm=True). Previews are
+                    # read-only.
+                    if confirm_flag and not dry_run:
+                        actions_taken.append(
+                            f"archive project "
+                            f"{inputs.get('project_name', '?')!r}"
+                        )
                 elif name == "create_project":
                     output, cost = _tool_create_project(
                         project_name=inputs.get("project_name", ""),
@@ -2244,15 +2306,21 @@ def chad_turn_stream(
                     elif block.name == "system_status":
                         output, cost = _tool_system_status()
                     elif block.name == "archive_project":
+                        confirm_flag = bool(inputs.get("confirm", False))
                         output, cost = _tool_archive_project(
                             project_name=inputs.get("project_name", ""),
                             reason=inputs.get("reason"),
+                            confirm=confirm_flag,
                             dry_run=dry_run,
                         )
-                        actions_taken.append(
-                            f"archive project "
-                            f"{inputs.get('project_name', '?')!r}"
-                        )
+                        # Only count as a taken action when archive
+                        # actually executed (confirm=True). Previews
+                        # are read-only.
+                        if confirm_flag and not dry_run:
+                            actions_taken.append(
+                                f"archive project "
+                                f"{inputs.get('project_name', '?')!r}"
+                            )
                     elif block.name == "create_project":
                         output, cost = _tool_create_project(
                             project_name=inputs.get("project_name", ""),

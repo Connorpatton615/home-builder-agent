@@ -45,12 +45,19 @@ class TestToolsRegistry:
 
         tool = next(t for t in TOOLS if t["name"] == "archive_project")
         props = tool["input_schema"]["properties"]
-        assert set(props.keys()) == {"project_name", "reason"}
+        # archive_project gates real DB writes behind a confirm flag
+        # (added 2026-05-09 after live test). Schema must include it,
+        # default false, only project_name is structurally required.
+        assert set(props.keys()) == {"project_name", "reason", "confirm"}
+        assert props["confirm"]["type"] == "boolean"
         assert tool["input_schema"]["required"] == ["project_name"]
         # Description must enumerate trigger phrases
         desc = tool["description"].lower()
         assert "archive" in desc
         assert "kill" in desc
+        # And must explain the two-step confirmation contract
+        assert "confirm" in desc
+        assert "preview" in desc
 
     def test_create_project_schema_no_copy_from(self):
         """ADR rationale: keeping create + clone separate means
@@ -161,7 +168,39 @@ class TestArchiveProject:
         assert "Whitfield" in msg
         assert "closeout complete" in msg
 
-    def test_happy_path_calls_archive_adapter(self):
+    def test_no_confirm_returns_preview_no_adapter_call(self):
+        """First call (no confirm) MUST NOT touch the adapter — it returns
+        a PREVIEW string instructing Claude to ask the user first.
+        Regression for the 2026-05-09 'don't auto-archive Whitfield'
+        guard.
+        """
+        from home_builder_agent.agents.chad_agent import _tool_archive_project
+
+        proj = {
+            "id": "abc12345-aaaa-bbbb-cccc-ddddeeeeffff",
+            "name": "Whitfield",
+            "customer_name": "Hartley",
+            "target_completion_date": "2027-02-15",
+            "status": "active",
+        }
+        with patch(
+            "home_builder_agent.agents.project_agent._resolve_project",
+            return_value=proj,
+        ), patch(
+            "home_builder_agent.scheduling.store_postgres.archive_project_in_db",
+        ) as mock_adapter:
+            msg, cost = _tool_archive_project("Whitfield")
+        mock_adapter.assert_not_called()
+        assert "PREVIEW" in msg
+        assert "no DB write yet" in msg
+        assert "Whitfield" in msg
+        assert "confirm" in msg.lower()
+        # Preview should surface concrete details so Chad can decide
+        assert "Hartley" in msg
+        assert "2027-02-15" in msg
+        assert cost == 0.0
+
+    def test_confirm_true_calls_archive_adapter(self):
         from home_builder_agent.agents.chad_agent import _tool_archive_project
 
         proj = {
@@ -176,7 +215,9 @@ class TestArchiveProject:
             "home_builder_agent.scheduling.store_postgres.archive_project_in_db",
             return_value=True,
         ) as mock_adapter:
-            msg, cost = _tool_archive_project("Whitfield", reason="done")
+            msg, cost = _tool_archive_project(
+                "Whitfield", reason="done", confirm=True
+            )
         mock_adapter.assert_called_once_with(proj["id"], reason="done")
         assert "Archived Whitfield" in msg
         assert "abc12345" in msg
@@ -198,7 +239,7 @@ class TestArchiveProject:
             "home_builder_agent.scheduling.store_postgres.archive_project_in_db",
             return_value=False,
         ):
-            msg, cost = _tool_archive_project("Whitfield")
+            msg, cost = _tool_archive_project("Whitfield", confirm=True)
         assert "update returned False" in msg
         assert cost == 0.0
 
@@ -217,7 +258,7 @@ class TestArchiveProject:
             "home_builder_agent.scheduling.store_postgres.archive_project_in_db",
             side_effect=RuntimeError("connection refused"),
         ):
-            msg, cost = _tool_archive_project("Whitfield")
+            msg, cost = _tool_archive_project("Whitfield", confirm=True)
         assert "DB write failed" in msg
         assert "RuntimeError" in msg
         assert "connection refused" in msg
