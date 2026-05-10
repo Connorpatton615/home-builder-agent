@@ -4,7 +4,7 @@ Closes the gap surfaced by Chad's iOS Ask tab on 2026-05-09, where
 hb-chad correctly identified that archive_project / create_project /
 clone_project tools didn't exist. This is the engine-side primitive;
 hb-router exposes it as the `manage-project` command type;
-hb-chad's `manage_project` tool routes plain-English asks through it.
+hb-chad's `archive_project` / `create_project` / `clone_project` tools route plain-English asks through it (per ADR 2026-05-09 Q1 — three top-level tools, not one multi-action tool).
 
 CLI:
   hb-project list [--include-archived]

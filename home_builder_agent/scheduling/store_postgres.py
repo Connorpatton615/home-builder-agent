@@ -169,7 +169,10 @@ def load_project_by_name(name: str, conn: psycopg.Connection | None = None) -> d
 # the same shape) was missing from the tool surface. These adapter
 # functions are the engine-side primitives; project_agent.py wraps them
 # in `hb-project` CLI; hb-router exposes them as the manage-project
-# command type; hb-chad surfaces them via the manage_project tool.
+# command type; hb-chad surfaces them as three top-level tools —
+# archive_project, create_project, clone_project — per ADR 2026-05-09
+# Q1 (separate tools chosen over a single multi-action tool for
+# routing precision and schema-level validation).
 #
 # Audit trail: project lifecycle changes are NOT recorded in
 # engine_activity here — those rows come from hb-router when this agent
