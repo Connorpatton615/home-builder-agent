@@ -46,6 +46,7 @@ from home_builder_agent.core.claude_client import make_client, sonnet_cost
 from home_builder_agent.core.cost_guard import record_cost
 from home_builder_agent.core.heartbeat import beat_on_success
 from home_builder_agent.integrations import drive, sheets
+from home_builder_agent.observability.telemetry import emit_event
 from home_builder_agent.integrations import gmail as gmail_int
 from home_builder_agent.integrations.finance import get_aging_report
 from home_builder_agent.observability.json_log import configure_json_logging
@@ -519,6 +520,23 @@ def main():
     )
     print(f"  ✅  Sent — message ID: {sent.get('id', '?')}")
     print(f"  Cost: ${usd:.4f}")
+
+    # Telemetry — agent.morning_brief_sent (per ADR 2026-05-09).
+    emit_event(
+        event_type="agent.morning_brief_sent",
+        source="home-builder-agent.morning_brief",
+        subject_type="email",
+        subject_id=sent.get("id"),
+        metadata={
+            "recipient": args.to,
+            "subject": subject,
+            "project": project_name,
+            "cost_usd": round(usd, 4),
+            "weather_risks": len(weather_risks),
+            "invoices_due": len(due_invoices),
+            "overnight_alerts": len(overnight_alerts),
+        },
+    )
     logger.info(
         "pass_complete",
         extra={

@@ -58,14 +58,17 @@ from home_builder_agent.core.cost_guard import check_budget, record_cost
 # ---------------------------------------------------------------------------
 
 CHAD_MODEL = "claude-opus-4-7"
+CHAD_FALLBACK_MODEL = "claude-sonnet-4-6"   # fallback when Opus daily cap is hit
 CHAD_MAX_TOKENS = 4096
 MAX_TOOL_LOOP_ITERATIONS = 8  # safety guard
 
-# Pricing per 1M tokens for cost reporting (claude-opus-4-7).
+# Pricing per 1M tokens for cost reporting (claude-opus-4-7 + claude-sonnet-4-6).
 # Mirrors the constants in claude_client; duplicated here so a single import
 # lights up the cost line without pulling in the helper's full surface.
 OPUS_INPUT_PER_M = 15.00
 OPUS_OUTPUT_PER_M = 75.00
+SONNET_INPUT_PER_M = 3.00
+SONNET_OUTPUT_PER_M = 15.00
 
 
 # ---------------------------------------------------------------------------
@@ -100,6 +103,9 @@ Tool selection guide — pick the most specific tool, fall back to ask_chad:
   "what's left on Foundation?"       list_checklist_items_for_phase
   "log a site note: rain pushed…"    log_site_note  (verbatim — no rephrasing)
   "approve the Mason reply"          approve_draft_action  (after preview)
+  "is the system OK?"                system_status
+  "are you alive?"                   system_status
+  "how much have we spent today?"    system_status
   "log a $400 receipt for X"         dispatch_action
   "create a CO for cabinet upgrade"  dispatch_action
   "push framing two weeks"           dispatch_action
@@ -385,6 +391,23 @@ TOOLS = [
                 },
             },
             "required": ["draft_action_id"],
+        },
+    },
+    {
+        "name": "system_status",
+        "description": (
+            "Report current system health to Chad: which background jobs "
+            "are running, today's AI spend vs caps, queue depths, any "
+            "stale heartbeats, recent errors. Use whenever Chad asks "
+            "'is everything running?', 'are you alive?', 'what's going on "
+            "with the system?', 'how much have we spent today?', 'any "
+            "alerts I should know about?'. Returns a tight Chad-voice "
+            "summary. Costs nothing — pure filesystem + DB reads."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
         },
     },
 ]
@@ -832,6 +855,90 @@ def _tool_log_site_note(
     )
 
 
+def _tool_system_status() -> tuple[str, float]:
+    """Render a Chad-voice summary of system health from the same data
+    `hb-status` shows. Distills the snapshot into 6-10 lines of plain
+    English: jobs running, spend vs cap, queues, alerts. No raw JSON.
+    """
+    try:
+        from home_builder_agent.agents.status_agent import collect_snapshot
+        snapshot = collect_snapshot()
+    except Exception as e:
+        return f"system_status failed to collect: {type(e).__name__}: {e}", 0.0
+
+    lines: list[str] = []
+
+    # 1. Jobs
+    launchd = snapshot.get("launchd", {})
+    if "_error" in launchd:
+        lines.append(f"⚠️  launchd unreachable: {launchd['_error']}")
+    else:
+        n_jobs = len(launchd)
+        bad = [
+            label.replace("com.chadhomes.", "")
+            for label, info in launchd.items()
+            if info.get("last_exit_status") not in (0, "-", -1, None)
+        ]
+        if bad:
+            lines.append(f"Jobs: {n_jobs} loaded; {len(bad)} with non-zero exit: {', '.join(bad)}")
+        else:
+            lines.append(f"Jobs: all {n_jobs} loaded and last-run clean.")
+
+    # 2. Heartbeats — call out staleness specifically
+    heartbeats = snapshot.get("heartbeats", [])
+    stale = [hb["job"] for hb in heartbeats if hb.get("is_stale")]
+    if stale:
+        lines.append(f"⚠️  Stale heartbeats: {', '.join(stale)} — these jobs aren't beating on their schedule.")
+    elif heartbeats:
+        lines.append(f"Heartbeats: {len(heartbeats)} jobs all fresh.")
+
+    # 3. Cost
+    cost = snapshot.get("cost", {})
+    if cost.get("log_present") and "_error" not in cost:
+        opus_pct = cost.get("opus_pct", 0)
+        total = cost.get("total_usd", 0)
+        opus = cost.get("opus_usd", 0)
+        opus_cap = cost.get("opus_cap_usd", 5.0)
+        if opus_pct >= 80:
+            lines.append(
+                f"💸 Spend: ${total:.4f} today (${opus:.4f} Opus, "
+                f"{opus_pct}% of ${opus_cap:.0f}/day cap — close to cap)."
+            )
+        else:
+            lines.append(
+                f"Spend: ${total:.4f} today (${opus:.4f} Opus, "
+                f"{opus_pct}% of cap)."
+            )
+
+    # 4. Engine queues — surface actionable items only
+    q = snapshot.get("engine_queues", {})
+    if isinstance(q.get("pending_drafts"), int) and q["pending_drafts"] > 0:
+        lines.append(f"📨 {q['pending_drafts']} drafts pending your review.")
+    if isinstance(q.get("open_events_critical"), int) and q["open_events_critical"] > 0:
+        lines.append(
+            f"🚨 {q['open_events_critical']} critical events open "
+            "(probably overdue drop-deads — check list_drop_deads)."
+        )
+
+    # 5. Caches
+    caches = snapshot.get("morning_caches", [])
+    stale_caches = [c for c in caches if c.get("is_stale")]
+    if stale_caches:
+        lines.append(f"⚠️  Morning view cache stale on {len(stale_caches)} project(s).")
+
+    # 6. Recent errors
+    errs = snapshot.get("recent_errors", {})
+    if errs:
+        lines.append(f"🔥 Recent stderr noise on: {', '.join(errs.keys())}.")
+    elif heartbeats and not stale:
+        lines.append("✨ No recent errors across jobs.")
+
+    if not lines:
+        return "Nothing's reporting state right now. System might not be set up.", 0.0
+
+    return "\n".join(lines), 0.0
+
+
 def _tool_approve_draft_action(
     draft_action_id: str,
     decision_notes: str | None = None,
@@ -985,28 +1092,41 @@ def chad_turn(user_input: str, *, dry_run: bool = False, verbose: bool = False) 
         RateLimitError,
     )
 
-    # Daily-spend circuit breaker — refuse Opus turns when today's
-    # Opus spend has already hit the cap. Fail loudly to Chad rather
-    # than burn through the budget on a runaway loop.
-    allowed, reason = check_budget("opus")
-    if not allowed:
-        return {
-            "input": user_input,
-            "answer": (
-                f"I'm holding off this turn — {reason} Connor will see "
-                "this in the structured log and can raise the cap or "
-                "let it cool down until tomorrow."
-            ),
-            "error": {"type": "DailyBudgetExceeded", "message": reason},
-            "actions_taken": [],
-            "tool_log": [],
-            "model": CHAD_MODEL,
-            "cost_usd": 0.0,
-            "opus_cost_usd": 0.0,
-            "downstream_cost_usd": 0.0,
-            "duration_ms": int((time.time() - started_at) * 1000),
-            "iterations": 0,
-        }
+    # Daily-spend circuit breaker with TIER FALLBACK.
+    # If Opus cap is hit but the total cap isn't, fall back to Sonnet
+    # automatically — Chad still gets an answer, just on the cheaper
+    # tier. Only refuse the turn entirely if BOTH caps are hit.
+    active_model = CHAD_MODEL
+    fallback_used = False
+    fallback_reason = ""
+    allowed_opus, reason_opus = check_budget("opus")
+    if not allowed_opus:
+        # Opus cap hit. Check if the total cap allows a Sonnet turn.
+        allowed_total, reason_total = check_budget("sonnet")
+        if allowed_total:
+            active_model = CHAD_FALLBACK_MODEL
+            fallback_used = True
+            fallback_reason = reason_opus
+        else:
+            # Both caps hit. Refuse the turn entirely.
+            return {
+                "input": user_input,
+                "answer": (
+                    f"I'm holding off this turn — {reason_total} "
+                    "Both caps are tapped today. Connor will see this in "
+                    "the structured log and can raise the caps or let "
+                    "things cool down until tomorrow."
+                ),
+                "error": {"type": "DailyBudgetExceeded", "message": reason_total},
+                "actions_taken": [],
+                "tool_log": [],
+                "model": CHAD_MODEL,
+                "cost_usd": 0.0,
+                "opus_cost_usd": 0.0,
+                "downstream_cost_usd": 0.0,
+                "duration_ms": int((time.time() - started_at) * 1000),
+                "iterations": 0,
+            }
 
     try:
         client: Anthropic = make_client()
@@ -1045,10 +1165,10 @@ def chad_turn(user_input: str, *, dry_run: bool = False, verbose: bool = False) 
     try:
         for iteration in range(MAX_TOOL_LOOP_ITERATIONS):
             if verbose:
-                print(f"[iter {iteration + 1}] calling Opus...", file=sys.stderr)
+                print(f"[iter {iteration + 1}] calling {active_model}...", file=sys.stderr)
 
             response = client.messages.create(
-                model=CHAD_MODEL,
+                model=active_model,
                 max_tokens=CHAD_MAX_TOKENS,
                 system=system,
                 tools=TOOLS,
@@ -1136,6 +1256,8 @@ def chad_turn(user_input: str, *, dry_run: bool = False, verbose: bool = False) 
                         actions_taken.append(
                             f"approved draft {inputs.get('draft_action_id', '')[:8]}…"
                         )
+                elif name == "system_status":
+                    output, cost = _tool_system_status()
                 else:
                     output = f"Unknown tool: {name}"
                     cost = 0.0
@@ -1158,31 +1280,54 @@ def chad_turn(user_input: str, *, dry_run: bool = False, verbose: bool = False) 
 
             messages.append({"role": "user", "content": tool_results})
 
-        opus_cost = (
-            total_input_tokens * OPUS_INPUT_PER_M / 1_000_000
-            + total_output_tokens * OPUS_OUTPUT_PER_M / 1_000_000
-        )
+        # Compute the Opus-or-Sonnet cost based on which tier we actually used.
+        if active_model == CHAD_MODEL:
+            model_cost = (
+                total_input_tokens * OPUS_INPUT_PER_M / 1_000_000
+                + total_output_tokens * OPUS_OUTPUT_PER_M / 1_000_000
+            )
+        else:
+            model_cost = (
+                total_input_tokens * SONNET_INPUT_PER_M / 1_000_000
+                + total_output_tokens * SONNET_OUTPUT_PER_M / 1_000_000
+            )
         duration_ms = int((time.time() - started_at) * 1000)
 
         # Record per-turn cost to .cost_log.jsonl for circuit-breaker
-        # accounting + retrospective audit. Opus + downstream tracked
-        # separately so the daily cap on Opus is enforceable.
-        if opus_cost > 0:
+        # accounting + retrospective audit. Tier tracked separately so
+        # daily caps differentiate Opus vs Sonnet.
+        if model_cost > 0:
             record_cost(
                 agent="hb-chad",
-                model=CHAD_MODEL,
-                cost_usd=opus_cost,
-                note=f"chad_turn iter={iteration + 1}",
+                model=active_model,
+                cost_usd=model_cost,
+                note=(
+                    f"chad_turn iter={iteration + 1}"
+                    + (" (fallback to Sonnet — Opus cap hit)" if fallback_used else "")
+                ),
+            )
+
+        # If we fell back, prepend a one-line note so Chad knows the
+        # turn ran on the cheaper tier. Connor sees the same in
+        # structured logs via .cost_log.jsonl.
+        answer = final_text.strip()
+        if fallback_used and answer:
+            answer = (
+                "(running on Sonnet today — Opus cap reached. Same tools, "
+                "slightly less reasoning depth.)\n\n" + answer
             )
 
         return {
             "input": user_input,
-            "answer": final_text.strip(),
+            "answer": answer,
             "actions_taken": actions_taken,
             "tool_log": tool_log,
-            "model": CHAD_MODEL,
-            "cost_usd": round(opus_cost + downstream_cost, 4),
-            "opus_cost_usd": round(opus_cost, 4),
+            "model": active_model,
+            "model_fallback_used": fallback_used,
+            "fallback_reason": fallback_reason if fallback_used else None,
+            "cost_usd": round(model_cost + downstream_cost, 4),
+            "opus_cost_usd": round(model_cost, 4) if active_model == CHAD_MODEL else 0.0,
+            "sonnet_cost_usd": round(model_cost, 4) if active_model == CHAD_FALLBACK_MODEL else 0.0,
             "downstream_cost_usd": round(downstream_cost, 4),
             "duration_ms": duration_ms,
             "iterations": iteration + 1,
@@ -1192,10 +1337,16 @@ def chad_turn(user_input: str, *, dry_run: bool = False, verbose: bool = False) 
         # Anthropic API errors mid-loop — return graceful error dict.
         # iOS Ask tab uses chad_turn_stream() which has its own SSE error
         # path; this is for the synchronous CLI + future direct callers.
-        opus_cost = (
-            total_input_tokens * OPUS_INPUT_PER_M / 1_000_000
-            + total_output_tokens * OPUS_OUTPUT_PER_M / 1_000_000
-        )
+        if active_model == CHAD_MODEL:
+            model_cost = (
+                total_input_tokens * OPUS_INPUT_PER_M / 1_000_000
+                + total_output_tokens * OPUS_OUTPUT_PER_M / 1_000_000
+            )
+        else:
+            model_cost = (
+                total_input_tokens * SONNET_INPUT_PER_M / 1_000_000
+                + total_output_tokens * SONNET_OUTPUT_PER_M / 1_000_000
+            )
         return {
             "input": user_input,
             "answer": (
@@ -1207,9 +1358,12 @@ def chad_turn(user_input: str, *, dry_run: bool = False, verbose: bool = False) 
             "error": {"type": type(e).__name__, "message": str(e)[:500]},
             "actions_taken": actions_taken,
             "tool_log": tool_log,
-            "model": CHAD_MODEL,
-            "cost_usd": round(opus_cost + downstream_cost, 4),
-            "opus_cost_usd": round(opus_cost, 4),
+            "model": active_model,
+            "model_fallback_used": fallback_used,
+            "fallback_reason": fallback_reason if fallback_used else None,
+            "cost_usd": round(model_cost + downstream_cost, 4),
+            "opus_cost_usd": round(model_cost, 4) if active_model == CHAD_MODEL else 0.0,
+            "sonnet_cost_usd": round(model_cost, 4) if active_model == CHAD_FALLBACK_MODEL else 0.0,
             "downstream_cost_usd": round(downstream_cost, 4),
             "duration_ms": int((time.time() - started_at) * 1000),
             "iterations": iteration + 1,
@@ -1440,6 +1594,8 @@ def chad_turn_stream(
                         actions_taken.append(
                             f"approved draft {inputs.get('draft_action_id', '')[:8]}…"
                         )
+                    elif block.name == "system_status":
+                        output, cost = _tool_system_status()
                     else:
                         output = f"Unknown tool: {block.name}"
                         cost = 0.0

@@ -23,6 +23,7 @@ import time
 from datetime import datetime, timezone
 
 from home_builder_agent.core.heartbeat import HEARTBEAT_DIR, is_stale, read_all
+from home_builder_agent.observability.telemetry import emit_event
 
 ALERT_LOG = os.path.abspath(".heartbeat_alerts.log")
 
@@ -86,6 +87,25 @@ def main() -> None:
         title=f"Patton AI: {len(stale)} stale heartbeat(s)",
         body=summary[:200],
     )
+
+    # Telemetry — one agent.alert_paged per stale job (per ADR 2026-05-09).
+    # The macOS notification consolidates them, but the canonical event
+    # log gets one row per affected job so analytics can attribute.
+    for r in stale:
+        emit_event(
+            event_type="agent.alert_paged",
+            source="home-builder-agent.watchdog",
+            subject_type="launchd_job",
+            subject_id=r.get("job"),
+            metadata={
+                "channel": "macos_notification",
+                "alert_kind": "stale_heartbeat",
+                "age_seconds": int(now - r.get("ts_unix", 0)),
+                "threshold_seconds": r.get("stale_after_seconds", 0),
+                "last_ts": r.get("ts"),
+            },
+        )
+
     sys.exit(0)
 
 

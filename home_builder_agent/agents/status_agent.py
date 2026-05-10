@@ -396,6 +396,28 @@ def collect_snapshot() -> dict:
     }
 
 
+def _watch_loop(interval_sec: int = 5) -> None:
+    """htop-style refresh loop. ANSI clear-screen between draws.
+
+    Exits cleanly on Ctrl-C. Doesn't try to be a real TUI (no curses);
+    just clears the screen + redraws every interval. Plenty for an
+    overnight monitoring window left open in a Terminal tab.
+    """
+    import time
+    try:
+        while True:
+            # Clear-screen + cursor home (ANSI). Works on any modern Terminal.
+            sys.stdout.write("\x1b[2J\x1b[H")
+            sys.stdout.flush()
+            snapshot = collect_snapshot()
+            _print_pretty(snapshot)
+            print(f"  Refreshing every {interval_sec}s — Ctrl-C to exit.\n")
+            time.sleep(interval_sec)
+    except KeyboardInterrupt:
+        print("\n  Exited watch mode.\n")
+        sys.exit(0)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="One-shot health check for the home-builder system."
@@ -404,7 +426,22 @@ def main():
         "--json", action="store_true",
         help="Emit JSON instead of pretty terminal output.",
     )
+    parser.add_argument(
+        "--watch", action="store_true",
+        help=(
+            "Refresh-and-redraw every --interval seconds (default 5). "
+            "htop-style — leave open in a Terminal tab for live monitoring."
+        ),
+    )
+    parser.add_argument(
+        "--interval", type=int, default=5,
+        help="Refresh interval in seconds for --watch mode (default 5, min 2).",
+    )
     args = parser.parse_args()
+
+    if args.watch:
+        _watch_loop(interval_sec=max(2, args.interval))
+        return
 
     snapshot = collect_snapshot()
 

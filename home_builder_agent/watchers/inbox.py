@@ -52,6 +52,7 @@ from home_builder_agent.core.claude_client import make_client, sonnet_cost
 from home_builder_agent.core.cost_guard import check_budget, record_cost
 from home_builder_agent.core.heartbeat import beat_on_success
 from home_builder_agent.observability.json_log import configure_json_logging
+from home_builder_agent.observability.telemetry import emit_event
 
 logger = logging.getLogger(__name__)
 from home_builder_agent.integrations import gmail as gmail_int
@@ -396,6 +397,24 @@ def _handle_possible_high_urgency_draft(
                 f"| gmail={gmail_draft_id[:10]} draft={da.id[:8]} "
                 f"cost=${cost_usd:.4f}"
             )
+            # Telemetry — agent.inbox_reply_drafted (per ADR 2026-05-09).
+            emit_event(
+                event_type="agent.inbox_reply_drafted",
+                source="home-builder-agent.inbox_watcher",
+                subject_type="thread",
+                subject_id=summary.get("thread_id"),
+                metadata={
+                    "draft_action_id": da.id,
+                    "gmail_draft_id": gmail_draft_id,
+                    "from_email": summary.get("from_email"),
+                    "from_name": summary.get("from_name"),
+                    "subject": (summary.get("subject") or "")[:200],
+                    "urgency": classification.get("urgency"),
+                    "reason": (classification.get("reason") or "")[:200],
+                    "cost_usd": round(cost_usd, 4),
+                    "kind": "gmail-reply-draft",
+                },
+            )
         except Exception as e:
             msg = str(e).lower()
             if "does not exist" in msg and "draft_action" in msg:
@@ -560,6 +579,19 @@ def main():
                 notify_macos(
                     "Chad Inbox: HIGH",
                     f"{summary['from_name']}: {summary['subject']}",
+                )
+                # Telemetry — agent.alert_paged on macOS notification fire.
+                emit_event(
+                    event_type="agent.alert_paged",
+                    source="home-builder-agent.inbox_watcher",
+                    subject_type="thread",
+                    subject_id=summary.get("thread_id"),
+                    metadata={
+                        "channel": "macos_notification",
+                        "alert_kind": "high_urgency_inbox",
+                        "from_name": summary.get("from_name"),
+                        "subject": (summary.get("subject") or "")[:200],
+                    },
                 )
             # Auto-draft a reply in Chad's voice for HIGH-urgency threads
             # where Chad wasn't last sender. Lands in Gmail Drafts +
