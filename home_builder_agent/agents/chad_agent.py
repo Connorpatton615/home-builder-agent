@@ -36,14 +36,17 @@ own cost on top.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import sys
 import time
+from dataclasses import dataclass
 from datetime import date
 from typing import Iterator
 
 from anthropic import Anthropic
 
+from home_builder_agent.agents import conversation_store
 from home_builder_agent.core.chad_context import get_chad_context
 from home_builder_agent.core.chad_voice import (
     CUSTOMER_NAME,
@@ -51,6 +54,98 @@ from home_builder_agent.core.chad_voice import (
 )
 from home_builder_agent.core.claude_client import make_client
 from home_builder_agent.core.cost_guard import check_budget, record_cost
+
+
+# ---------------------------------------------------------------------------
+# Image attachments (vision)
+# ---------------------------------------------------------------------------
+
+# Allowlist mirrors the route-level validation in patton-ai-ios's
+# turtle_ask_stream POST handler. Defense-in-depth: even if the route
+# accidentally lets something else through, the engine refuses.
+_ALLOWED_IMAGE_MEDIA_TYPES = {"image/jpeg", "image/png"}
+
+
+@dataclass(frozen=True)
+class ImageInput:
+    """A single image attachment headed for Claude vision.
+
+    The route validates magic numbers + size limits before constructing
+    one of these. The engine trusts the media_type but still asserts
+    membership in the allowlist as a sanity check.
+    """
+
+    media_type: str
+    data: bytes
+
+
+def _build_user_content(
+    user_input: str,
+    images: list[ImageInput] | None,
+) -> str | list[dict]:
+    """Assemble the first ``messages[0]`` user content.
+
+    With no images: returns a bare string (preserves the historical
+    shape, keeps the existing tool-loop wire format unchanged for
+    text-only turns).
+
+    With images: returns a list of content blocks — text first, then
+    one base64 ``image`` block per attachment. Order follows Anthropic's
+    vision examples (text followed by images works, but images-first
+    can confuse some prompt patterns).
+    """
+    if not images:
+        return user_input
+    content: list[dict] = [{"type": "text", "text": user_input}]
+    for img in images:
+        if img.media_type not in _ALLOWED_IMAGE_MEDIA_TYPES:
+            raise ValueError(
+                f"Unsupported image media_type: {img.media_type!r}. "
+                f"Allowed: {sorted(_ALLOWED_IMAGE_MEDIA_TYPES)}"
+            )
+        content.append(
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": img.media_type,
+                    "data": base64.b64encode(img.data).decode("ascii"),
+                },
+            }
+        )
+    return content
+
+
+def _prior_turns_as_messages(turns: list[dict]) -> list[dict]:
+    """Convert conversation_store rows into Anthropic messages.
+
+    Strips any structured tool/action metadata — the model only needs
+    the rendered text per role. Tool-use round-trip details from
+    earlier turns are NOT replayed; the model sees only the assistant's
+    final answer text. This keeps prior-turn payload predictable + cheap
+    and avoids replaying tool_use/tool_result blocks whose tool_use_ids
+    no longer match anything in the current request.
+    """
+    out: list[dict] = []
+    for t in turns:
+        role = t.get("role")
+        content = (t.get("content") or "").strip()
+        if not role or not content:
+            continue
+        if role not in ("user", "assistant"):
+            continue
+        out.append({"role": role, "content": content})
+    return out
+
+
+def _system_with_summary(base_system: str, rolling_summary: str | None) -> str:
+    """Prefix the system prompt with the rolling summary if any."""
+    if not rolling_summary:
+        return base_system
+    return (
+        f"Earlier conversation context (one-line summary): {rolling_summary}\n\n"
+        f"{base_system}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1046,7 +1141,16 @@ def _tool_approve_draft_action(
 # The agent loop
 # ---------------------------------------------------------------------------
 
-def chad_turn(user_input: str, *, dry_run: bool = False, verbose: bool = False) -> dict:
+def chad_turn(
+    user_input: str,
+    *,
+    conversation_id: str | None = None,
+    images: list[ImageInput] | None = None,
+    user_id: str | None = None,
+    project_id: str | None = None,
+    dry_run: bool = False,
+    verbose: bool = False,
+) -> dict:
     """Run one Chad-agent turn. Returns a dict shaped for CLI / API use.
 
     Shape on success:
@@ -1059,6 +1163,15 @@ def chad_turn(user_input: str, *, dry_run: bool = False, verbose: bool = False) 
         "cost_usd":      0.123,           # opus turns + downstream specialists
         "duration_ms":   2345,
       }
+
+    When ``conversation_id`` is supplied, prior turns + a rolling summary
+    are loaded from SQLite and injected into the prompt. After a
+    successful (or graceful-error) turn, the user input and the
+    assistant's final answer are persisted via ``conversation_store``.
+    Pruning runs on write; see ``conversation_store.prune``.
+
+    When ``images`` are supplied, each is attached to the new user
+    message as a Claude vision content block.
 
     Shape on Anthropic API failure (auth / rate-limit / connection) — the
     function does NOT raise; it returns a structured error dict so any
@@ -1153,7 +1266,34 @@ def chad_turn(user_input: str, *, dry_run: bool = False, verbose: bool = False) 
     ctx = get_chad_context().to_prompt_block()
     system = f"{voice}\n\n{ctx}\n{PERSONA_SUFFIX}\nTODAY: {date.today().strftime('%A, %B %-d, %Y')}"
 
-    messages: list[dict] = [{"role": "user", "content": user_input}]
+    # ─── Memory injection (conversation_id) ────────────────────────────────
+    # Load prior turns + rolling summary from SQLite if a conversation_id
+    # was supplied. The route forwards this from iOS; the engine treats
+    # it as a soft hint — no error if it's missing or unknown.
+    prior_messages: list[dict] = []
+    if conversation_id:
+        try:
+            conversation_store.get_or_create(
+                conversation_id, user_id=user_id, project_id=project_id
+            )
+            recent = conversation_store.load_recent_turns(conversation_id, n=8)
+            prior_messages = _prior_turns_as_messages(recent)
+            summary = conversation_store.get_summary(conversation_id)
+            system = _system_with_summary(system, summary)
+        except Exception as e:
+            # Memory load is best-effort. If SQLite is unavailable we
+            # continue with a stateless turn and warn loudly.
+            print(
+                f"[chad_turn] memory load failed for {conversation_id}: "
+                f"{type(e).__name__}: {e}",
+                file=sys.stderr,
+            )
+
+    new_user_content = _build_user_content(user_input, images)
+    messages: list[dict] = [
+        *prior_messages,
+        {"role": "user", "content": new_user_content},
+    ]
     final_text = ""
     tool_log: list[dict] = []
     actions_taken: list[str] = []
@@ -1317,6 +1457,34 @@ def chad_turn(user_input: str, *, dry_run: bool = False, verbose: bool = False) 
                 "slightly less reasoning depth.)\n\n" + answer
             )
 
+        total_cost = round(model_cost + downstream_cost, 4)
+
+        # ─── Memory write-back ────────────────────────────────────────────
+        # Persist BOTH user + assistant on a successful turn so the next
+        # request sees the full prior exchange. Pruning runs inside
+        # append_message — no extra call needed here.
+        if conversation_id:
+            try:
+                conversation_store.append_message(
+                    conversation_id, "user", user_input,
+                    user_id=user_id, project_id=project_id,
+                )
+                conversation_store.append_message(
+                    conversation_id, "assistant", answer,
+                    tool_log=tool_log,
+                    actions_taken=actions_taken,
+                    cost_usd=total_cost,
+                    user_id=user_id, project_id=project_id,
+                )
+            except Exception as e:
+                # Memory write is best-effort — never block the response
+                # to the caller on a SQLite write failure. Log and move on.
+                print(
+                    f"[chad_turn] memory write failed for {conversation_id}: "
+                    f"{type(e).__name__}: {e}",
+                    file=sys.stderr,
+                )
+
         return {
             "input": user_input,
             "answer": answer,
@@ -1325,7 +1493,7 @@ def chad_turn(user_input: str, *, dry_run: bool = False, verbose: bool = False) 
             "model": active_model,
             "model_fallback_used": fallback_used,
             "fallback_reason": fallback_reason if fallback_used else None,
-            "cost_usd": round(model_cost + downstream_cost, 4),
+            "cost_usd": total_cost,
             "opus_cost_usd": round(model_cost, 4) if active_model == CHAD_MODEL else 0.0,
             "sonnet_cost_usd": round(model_cost, 4) if active_model == CHAD_FALLBACK_MODEL else 0.0,
             "downstream_cost_usd": round(downstream_cost, 4),
@@ -1391,6 +1559,10 @@ def chad_turn(user_input: str, *, dry_run: bool = False, verbose: bool = False) 
 def chad_turn_stream(
     user_input: str,
     *,
+    conversation_id: str | None = None,
+    images: list[ImageInput] | None = None,
+    user_id: str | None = None,
+    project_id: str | None = None,
     verbose: bool = False,
 ) -> Iterator[tuple[int, str, dict]]:
     """Streaming version of chad_turn for the iOS Ask tab and other SSE surfaces.
@@ -1402,6 +1574,16 @@ def chad_turn_stream(
 
     Wire-compatible with ask_question_stream: the iOS backend can call
     either and the same SSE event handler works.
+
+    When ``conversation_id`` is supplied, the last 8 turns + a rolling
+    summary are loaded from SQLite and prepended to the request. After
+    a successful ``message_complete``, both the user input and the
+    assistant answer are written back to the store; pruning runs on
+    write per the 2026-05-09 ADR (token-bloat ceiling).
+
+    When ``images`` are supplied (validated upstream by the route — JPEG/
+    PNG only, size + count caps enforced there), each is attached to
+    ``messages[0]`` as a Claude vision content block.
 
     Note: the underlying ask_chad tool currently calls ask_question (the
     non-streaming variant). Citations land in a single batch when ask_chad
@@ -1434,7 +1616,31 @@ def chad_turn_stream(
         })
         return
 
-    messages: list[dict] = [{"role": "user", "content": user_input}]
+    # ─── Memory injection (conversation_id) ────────────────────────────────
+    # Mirrors chad_turn(); see that function for context. Best-effort
+    # load — if SQLite is unhappy we run stateless and warn.
+    prior_messages: list[dict] = []
+    if conversation_id:
+        try:
+            conversation_store.get_or_create(
+                conversation_id, user_id=user_id, project_id=project_id
+            )
+            recent = conversation_store.load_recent_turns(conversation_id, n=8)
+            prior_messages = _prior_turns_as_messages(recent)
+            summary = conversation_store.get_summary(conversation_id)
+            system = _system_with_summary(system, summary)
+        except Exception as e:
+            print(
+                f"[chad_turn_stream] memory load failed for {conversation_id}: "
+                f"{type(e).__name__}: {e}",
+                file=sys.stderr,
+            )
+
+    new_user_content = _build_user_content(user_input, images)
+    messages: list[dict] = [
+        *prior_messages,
+        {"role": "user", "content": new_user_content},
+    ]
     tool_log: list[dict] = []
     citations: list[dict] = []
     seen_citation_ids: set[str] = set()
@@ -1474,14 +1680,42 @@ def chad_turn_stream(
                     total_input_tokens * OPUS_INPUT_PER_M / 1_000_000
                     + total_output_tokens * OPUS_OUTPUT_PER_M / 1_000_000
                 )
+                final_answer = final_text.strip() or "(no answer produced)"
+                total_cost = round(opus_cost + downstream_cost, 4)
+
+                # ─── Memory write-back ────────────────────────────────────
+                # Persist BOTH user + assistant before yielding
+                # message_complete so the next turn over the same
+                # conversation_id sees this exchange. Pruning runs inside
+                # append_message; failures are logged but never block the
+                # SSE response.
+                if conversation_id:
+                    try:
+                        conversation_store.append_message(
+                            conversation_id, "user", user_input,
+                            user_id=user_id, project_id=project_id,
+                        )
+                        conversation_store.append_message(
+                            conversation_id, "assistant", final_answer,
+                            tool_log=tool_log,
+                            actions_taken=actions_taken,
+                            cost_usd=total_cost,
+                            user_id=user_id, project_id=project_id,
+                        )
+                    except Exception as e:
+                        print(
+                            f"[chad_turn_stream] memory write failed for "
+                            f"{conversation_id}: {type(e).__name__}: {e}",
+                            file=sys.stderr,
+                        )
 
                 yield emit("message_complete", {
-                    "answer": final_text.strip() or "(no answer produced)",
+                    "answer": final_answer,
                     "citations": citations,
                     "tools_called": tool_log,
                     "actions_taken": actions_taken,
                     "model": CHAD_MODEL,
-                    "cost_usd": round(opus_cost + downstream_cost, 4),
+                    "cost_usd": total_cost,
                     "opus_cost_usd": round(opus_cost, 4),
                     "downstream_cost_usd": round(downstream_cost, 4),
                     "duration_ms": int((time.time() - started_at) * 1000),

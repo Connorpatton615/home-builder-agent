@@ -49,6 +49,12 @@ watcher.log
 # Morning view-model launchd cache — written every 6:05 AM by hb-morning
 .morning_cache/
 
+# Ask-tab conversation memory SQLite — per-Mac-Mini state, not version-controlled
+.ask_conversations.db
+.ask_conversations.db-journal
+.ask_conversations.db-wal
+.ask_conversations.db-shm
+
 # Claude Code worktrees — managed by Claude Code, not part of repo
 .claude/worktrees/
 
