@@ -215,6 +215,73 @@ COMMAND_REGISTRY: dict[str, dict[str, Any]] = {
             "required": [],
         },
     },
+    "manage-project": {
+        "agent": "hb-project",
+        "description": (
+            "Project lifecycle: archive a finished/cancelled project, create "
+            "a new empty project, or clone an existing project's shape "
+            "(phases + milestones, fresh status). Use when Chad says things "
+            "like 'archive Whitfield', 'start a new project called Maple "
+            "Ridge', 'create Pelican Point copying Whitfield's template', "
+            "'kill that test project'. Does NOT touch Drive folders or "
+            "Tracker sheets in v1 — DB-only flip suffices to remove a "
+            "project from active surfaces, and clone copies the schedule "
+            "template into a fresh row."
+        ),
+        "parameter_schema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["archive", "create", "clone"],
+                    "description": (
+                        "Which lifecycle operation to perform. 'archive' "
+                        "flips status to archived. 'create' makes a fresh "
+                        "empty shell (requires target_completion_date or "
+                        "target_framing_start_date). 'clone' copies a source "
+                        "project's phases + milestones with fresh status "
+                        "(requires copy_from)."
+                    ),
+                },
+                "project_name": {
+                    "type": "string",
+                    "description": (
+                        "For archive: name (substring OK) or UUID of the "
+                        "project to archive. For create/clone: the NEW "
+                        "project's name."
+                    ),
+                },
+                "copy_from": {
+                    "type": "string",
+                    "description": (
+                        "Clone-only: source project name (substring OK) or "
+                        "UUID to copy phase/milestone shape from."
+                    ),
+                },
+                "customer_name": {
+                    "type": "string",
+                    "description": "Create/clone: homeowner / customer name.",
+                },
+                "address": {
+                    "type": "string",
+                    "description": "Create/clone: project address.",
+                },
+                "target_completion_date": {
+                    "type": "string",
+                    "description": "Create/clone: YYYY-MM-DD target completion date.",
+                },
+                "target_framing_start_date": {
+                    "type": "string",
+                    "description": "Create/clone: YYYY-MM-DD target framing-start date.",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Archive-only: optional human-readable reason.",
+                },
+            },
+            "required": ["action", "project_name"],
+        },
+    },
     "unknown": {
         "agent": None,
         "description": (
@@ -438,6 +505,46 @@ def _build_agent_args(agent_cmd: str, parameters: dict) -> list[str] | None:
         return args
     if agent_cmd == "hb-client-update":
         return [agent_cmd, "--from-tracker"]  # default = draft mode (no --send)
+    if agent_cmd == "hb-project":
+        action = (parameters.get("action") or "").lower()
+        project_name = parameters.get("project_name") or ""
+        if action == "archive":
+            args = [agent_cmd, "archive", project_name, "--yes"]
+            if parameters.get("reason"):
+                args.extend(["--reason", parameters["reason"]])
+            return args
+        if action == "create":
+            args = [agent_cmd, "create", "--name", project_name]
+            if parameters.get("copy_from"):
+                args.extend(["--copy-from", parameters["copy_from"]])
+            if parameters.get("customer_name"):
+                args.extend(["--customer-name", parameters["customer_name"]])
+            if parameters.get("address"):
+                args.extend(["--address", parameters["address"]])
+            if parameters.get("target_completion_date"):
+                args.extend(["--target-completion", parameters["target_completion_date"]])
+            if parameters.get("target_framing_start_date"):
+                args.extend(["--target-framing-start", parameters["target_framing_start_date"]])
+            return args
+        if action == "clone":
+            # 'clone' is just create with --copy-from required
+            if not parameters.get("copy_from"):
+                return None
+            args = [
+                agent_cmd, "create",
+                "--name", project_name,
+                "--copy-from", parameters["copy_from"],
+            ]
+            if parameters.get("customer_name"):
+                args.extend(["--customer-name", parameters["customer_name"]])
+            if parameters.get("address"):
+                args.extend(["--address", parameters["address"]])
+            if parameters.get("target_completion_date"):
+                args.extend(["--target-completion", parameters["target_completion_date"]])
+            if parameters.get("target_framing_start_date"):
+                args.extend(["--target-framing-start", parameters["target_framing_start_date"]])
+            return args
+        return None
     return None
 
 

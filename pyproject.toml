@@ -60,6 +60,7 @@ hb-chad = "home_builder_agent.agents.chad_agent:main"
 hb-triggers = "home_builder_agent.agents.triggers_agent:main"
 hb-checklist-seed = "home_builder_agent.agents.checklist_seed_agent:main"
 hb-status = "home_builder_agent.agents.status_agent:main"
+hb-project = "home_builder_agent.agents.project_agent:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

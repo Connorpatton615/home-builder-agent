@@ -41,7 +41,7 @@ import json
 import sys
 import time
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Iterator
 
 from anthropic import Anthropic
@@ -201,6 +201,10 @@ Tool selection guide — pick the most specific tool, fall back to ask_chad:
   "is the system OK?"                system_status
   "are you alive?"                   system_status
   "how much have we spent today?"    system_status
+  "archive Whitfield"                manage_project (action=archive)
+  "kill that test project"           manage_project (action=archive)
+  "start a new project Maple Ridge"  manage_project (action=create)
+  "clone Whitfield as Pelican Pt"    manage_project (action=clone)
   "log a $400 receipt for X"         dispatch_action
   "create a CO for cabinet upgrade"  dispatch_action
   "push framing two weeks"           dispatch_action
@@ -503,6 +507,83 @@ TOOLS = [
             "type": "object",
             "properties": {},
             "required": [],
+        },
+    },
+    {
+        "name": "manage_project",
+        "description": (
+            "Project lifecycle operations on home_builder.project: archive, "
+            "create, or clone. Use when Chad says things like 'archive "
+            "Whitfield', 'kill that test project', 'start a new project "
+            "called Maple Ridge', 'create Pelican Point cloned from "
+            "Whitfield's template', 'spin up a fresh test project from the "
+            "Whitfield shape'. v1 is DB-only — does NOT rename Drive "
+            "folders, does NOT clone Tracker sheets — but it does flip "
+            "active vs archived status (which is what the iOS / view-model "
+            "surfaces filter on) and copies phases + milestones for clones. "
+            "Returns a confirmation string."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["archive", "create", "clone"],
+                    "description": (
+                        "'archive' flips status to archived. 'create' makes "
+                        "a fresh empty project (requires "
+                        "target_completion_date or "
+                        "target_framing_start_date so the schedule can be "
+                        "seeded later). 'clone' copies a source project's "
+                        "shape (phases + milestones) with fresh status / "
+                        "null actuals (requires copy_from)."
+                    ),
+                },
+                "project_name": {
+                    "type": "string",
+                    "description": (
+                        "For action='archive': name (substring OK) or UUID "
+                        "of the project to archive. For action='create' or "
+                        "'clone': the NEW project's name."
+                    ),
+                },
+                "copy_from": {
+                    "type": "string",
+                    "description": (
+                        "Required for action='clone' (and optional for "
+                        "'create'): source project name (substring OK) or "
+                        "UUID to copy phase/milestone shape from."
+                    ),
+                },
+                "customer_name": {
+                    "type": "string",
+                    "description": "Create/clone: homeowner / customer name. Optional.",
+                },
+                "address": {
+                    "type": "string",
+                    "description": "Create/clone: project address. Optional.",
+                },
+                "target_completion_date": {
+                    "type": "string",
+                    "description": (
+                        "Create/clone: YYYY-MM-DD target completion date. "
+                        "Either this or target_framing_start_date is required "
+                        "for fresh creates."
+                    ),
+                },
+                "target_framing_start_date": {
+                    "type": "string",
+                    "description": (
+                        "Create/clone: YYYY-MM-DD target framing-start date. "
+                        "Alternative to target_completion_date."
+                    ),
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Archive-only: optional human-readable reason.",
+                },
+            },
+            "required": ["action", "project_name"],
         },
     },
 ]
@@ -1034,6 +1115,226 @@ def _tool_system_status() -> tuple[str, float]:
     return "\n".join(lines), 0.0
 
 
+def _tool_manage_project(
+    action: str,
+    project_name: str,
+    *,
+    copy_from: str | None = None,
+    customer_name: str | None = None,
+    address: str | None = None,
+    target_completion_date: str | None = None,
+    target_framing_start_date: str | None = None,
+    reason: str | None = None,
+    dry_run: bool = False,
+) -> tuple[str, float]:
+    """Project lifecycle: archive / create / clone via the hb-project adapters.
+
+    Direct adapter call (NOT through hb-router) so the tool can return a
+    structured confirmation string in one round-trip — same pattern
+    `approve_draft_action` uses. Engine_activity audit happens at the
+    chad_turn level via the persona-agent invocation log; the per-action
+    DB writes carry their own updated_at trigger trail (migration 007a).
+
+    Args mirror the input_schema in the TOOLS table verbatim. Returns
+    (human_readable_message, cost_usd_=0).
+    """
+    action = (action or "").strip().lower()
+    if action not in ("archive", "create", "clone"):
+        return (
+            f"manage_project: unknown action {action!r}. "
+            "Use one of: archive, create, clone.",
+            0.0,
+        )
+    if not project_name or not project_name.strip():
+        return "manage_project: project_name is required.", 0.0
+
+    # Lazy imports — keep cold-start path fast.
+    try:
+        from home_builder_agent.agents.project_agent import _resolve_project
+        from home_builder_agent.scheduling.store_postgres import (
+            archive_project_in_db,
+            create_project_in_db,
+            clone_project_in_db,
+        )
+    except Exception as e:
+        return (
+            f"manage_project: import failed — {type(e).__name__}: {e}",
+            0.0,
+        )
+
+    # Parse YYYY-MM-DD dates into date objects (the adapters take date | None).
+    def _parse_date(s: str | None):
+        if not s:
+            return None
+        try:
+            return datetime.strptime(s.strip(), "%Y-%m-%d").date()
+        except ValueError:
+            return None
+
+    target_completion = _parse_date(target_completion_date)
+    target_framing = _parse_date(target_framing_start_date)
+    if target_completion_date and not target_completion:
+        return (
+            f"manage_project: target_completion_date {target_completion_date!r} "
+            "is not a valid YYYY-MM-DD.",
+            0.0,
+        )
+    if target_framing_start_date and not target_framing:
+        return (
+            f"manage_project: target_framing_start_date "
+            f"{target_framing_start_date!r} is not a valid YYYY-MM-DD.",
+            0.0,
+        )
+
+    # ---- ARCHIVE ----------------------------------------------------------
+    if action == "archive":
+        proj = _resolve_project(project_name)
+        if not proj:
+            return (
+                f"manage_project archive: no project matched {project_name!r}. "
+                "Try the full name or list active projects first.",
+                0.0,
+            )
+        if proj.get("status") == "archived":
+            return (
+                f"{proj['name']} is already archived. No-op.",
+                0.0,
+            )
+        if dry_run:
+            suffix = f" (reason: {reason})" if reason else ""
+            return (
+                f"(dry-run) Would archive {proj['name']} "
+                f"(id {proj['id'][:8]}…){suffix}.",
+                0.0,
+            )
+        try:
+            ok = archive_project_in_db(proj["id"], reason=reason)
+        except Exception as e:
+            return (
+                f"manage_project archive: DB write failed — "
+                f"{type(e).__name__}: {e}",
+                0.0,
+            )
+        if not ok:
+            return (
+                f"manage_project archive: update returned False for "
+                f"{proj['name']} (race? already archived?).",
+                0.0,
+            )
+        suffix = f" Reason: {reason}." if reason else ""
+        return (
+            f"Archived {proj['name']} (id {proj['id'][:8]}…). "
+            f"Phase / event / draft history preserved; active surfaces no "
+            f"longer show this project.{suffix}",
+            0.0,
+        )
+
+    # ---- CLONE -----------------------------------------------------------
+    if action == "clone":
+        if not copy_from:
+            return (
+                "manage_project clone: copy_from is required (the source "
+                "project name or UUID to copy phases + milestones from).",
+                0.0,
+            )
+        source = _resolve_project(copy_from)
+        if not source:
+            return (
+                f"manage_project clone: no source project matched "
+                f"{copy_from!r}.",
+                0.0,
+            )
+        if dry_run:
+            return (
+                f"(dry-run) Would clone {source['name']} → "
+                f"new project {project_name!r}, "
+                f"copying phases + milestones with fresh status.",
+                0.0,
+            )
+        try:
+            new_id = clone_project_in_db(
+                source["id"],
+                new_name=project_name,
+                customer_name=customer_name,
+                address=address,
+                target_completion_date=target_completion,
+                target_framing_start_date=target_framing,
+            )
+        except Exception as e:
+            return (
+                f"manage_project clone: DB write failed — "
+                f"{type(e).__name__}: {e}",
+                0.0,
+            )
+        next_step = ""
+        if not (target_completion or target_framing):
+            next_step = (
+                f" Phases copied with original dates; run hb-schedule "
+                f"\"{project_name}\" --target-completion <YYYY-MM-DD> "
+                "--seed-postgres to re-seed planned dates if you want a fresh schedule."
+            )
+        return (
+            f"Cloned {source['name']} → {project_name} "
+            f"(id {new_id[:8]}…). Phases + milestones copied "
+            f"(status=not-started, NULL actuals).{next_step}",
+            0.0,
+        )
+
+    # ---- CREATE (fresh) --------------------------------------------------
+    # action == "create"
+    if copy_from:
+        # Caller passed copy_from with action='create'; treat as clone.
+        # (hb-router maps 'clone' → create --copy-from already; this just
+        # mirrors that for direct tool calls.)
+        return _tool_manage_project(
+            action="clone",
+            project_name=project_name,
+            copy_from=copy_from,
+            customer_name=customer_name,
+            address=address,
+            target_completion_date=target_completion_date,
+            target_framing_start_date=target_framing_start_date,
+            dry_run=dry_run,
+        )
+
+    if not (target_completion or target_framing):
+        return (
+            "manage_project create: requires target_completion_date or "
+            "target_framing_start_date so the schedule can be seeded later. "
+            "(Or pass copy_from to clone an existing project's shape.)",
+            0.0,
+        )
+    if dry_run:
+        return (
+            f"(dry-run) Would create empty project {project_name!r} "
+            f"(target_completion={target_completion_date}, "
+            f"target_framing_start={target_framing_start_date}).",
+            0.0,
+        )
+    try:
+        new_id = create_project_in_db(
+            name=project_name,
+            customer_name=customer_name or "TBD",
+            address=address,
+            target_completion_date=target_completion,
+            target_framing_start_date=target_framing,
+        )
+    except Exception as e:
+        return (
+            f"manage_project create: DB write failed — "
+            f"{type(e).__name__}: {e}",
+            0.0,
+        )
+    seed_target = target_completion_date or target_framing_start_date
+    return (
+        f"Created empty project {project_name} (id {new_id[:8]}…). "
+        f"No phases yet — run hb-schedule \"{project_name}\" "
+        f"--target-completion {seed_target} --seed-postgres to instantiate "
+        "the 13-phase template.",
+        0.0,
+    )
+
+
 def _tool_approve_draft_action(
     draft_action_id: str,
     decision_notes: str | None = None,
@@ -1398,6 +1699,22 @@ def chad_turn(
                         )
                 elif name == "system_status":
                     output, cost = _tool_system_status()
+                elif name == "manage_project":
+                    output, cost = _tool_manage_project(
+                        action=inputs.get("action", ""),
+                        project_name=inputs.get("project_name", ""),
+                        copy_from=inputs.get("copy_from"),
+                        customer_name=inputs.get("customer_name"),
+                        address=inputs.get("address"),
+                        target_completion_date=inputs.get("target_completion_date"),
+                        target_framing_start_date=inputs.get("target_framing_start_date"),
+                        reason=inputs.get("reason"),
+                        dry_run=dry_run,
+                    )
+                    actions_taken.append(
+                        f"{inputs.get('action', '?')} project "
+                        f"{inputs.get('project_name', '?')!r}"
+                    )
                 else:
                     output = f"Unknown tool: {name}"
                     cost = 0.0
@@ -1830,6 +2147,22 @@ def chad_turn_stream(
                         )
                     elif block.name == "system_status":
                         output, cost = _tool_system_status()
+                    elif block.name == "manage_project":
+                        output, cost = _tool_manage_project(
+                            action=inputs.get("action", ""),
+                            project_name=inputs.get("project_name", ""),
+                            copy_from=inputs.get("copy_from"),
+                            customer_name=inputs.get("customer_name"),
+                            address=inputs.get("address"),
+                            target_completion_date=inputs.get("target_completion_date"),
+                            target_framing_start_date=inputs.get("target_framing_start_date"),
+                            reason=inputs.get("reason"),
+                            dry_run=dry_run,
+                        )
+                        actions_taken.append(
+                            f"{inputs.get('action', '?')} project "
+                            f"{inputs.get('project_name', '?')!r}"
+                        )
                     else:
                         output = f"Unknown tool: {block.name}"
                         cost = 0.0

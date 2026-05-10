@@ -162,6 +162,249 @@ def load_project_by_name(name: str, conn: psycopg.Connection | None = None) -> d
 
 
 # ---------------------------------------------------------------------------
+# Project lifecycle write paths (archive / create / clone)
+# ---------------------------------------------------------------------------
+# Per Chad's iOS feedback 2026-05-09: hb-chad correctly identified that
+# project lifecycle (archive existing project, spin up a fresh one with
+# the same shape) was missing from the tool surface. These adapter
+# functions are the engine-side primitives; project_agent.py wraps them
+# in `hb-project` CLI; hb-router exposes them as the manage-project
+# command type; hb-chad surfaces them via the manage_project tool.
+#
+# Audit trail: project lifecycle changes are NOT recorded in
+# engine_activity here — those rows come from hb-router when this agent
+# is invoked through it (Rule 3, only writer to engine_activity is
+# hb-router). Direct CLI use of `hb-project` skips the audit row by
+# design (matches the Connor-direct-CLI pattern for the other agents).
+
+
+def archive_project_in_db(
+    project_id: str,
+    *,
+    reason: str | None = None,
+    conn: psycopg.Connection | None = None,
+) -> bool:
+    """Flip a project's status to 'archived'. Returns True if a row was
+    updated, False if the project doesn't exist or was already archived.
+
+    Phase + milestone + event + draft_action rows are PRESERVED — the
+    project + its history stays queryable for audit. Active-project
+    queries (load_active_projects, load_project_by_name) filter
+    `status != 'archived'` so the archived project drops out of the
+    daily/weekly/morning surfaces automatically.
+
+    Idempotent — re-archiving an already-archived project returns False
+    without error.
+
+    The `reason` is currently logged but not persisted to the row
+    (project schema has no archived_reason column today). Caller
+    should additionally `hb-log` the reason as a verbatim site log
+    entry on the project before archival if persistence is needed.
+    Migration 011 will add archived_at / archived_reason if/when the
+    audit-trail use case justifies it; today the updated_at trigger
+    (migration 007a) gives us the "when" for free.
+    """
+    sql = """
+        UPDATE home_builder.project
+        SET status = 'archived'
+        WHERE id = %s::uuid
+          AND status != 'archived'
+    """
+    params = (project_id,)
+    if conn is not None:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            return cur.rowcount > 0
+    with connection(application_name="hb-engine-archive-project") as c:
+        with c.cursor() as cur:
+            cur.execute(sql, params)
+            return cur.rowcount > 0
+
+
+def create_project_in_db(
+    *,
+    name: str,
+    customer_name: str = "TBD",
+    address: str | None = None,
+    target_completion_date: date | None = None,
+    target_framing_start_date: date | None = None,
+    drive_folder_id: str | None = None,
+    drive_folder_path: str | None = None,
+    tenant_id: str | None = None,
+    conn: psycopg.Connection | None = None,
+) -> str:
+    """Insert a NEW Project row (no phases yet). Returns the new
+    project_id (UUID).
+
+    Phases are NOT instantiated here — the caller computes them (via
+    schedule_from_target_completion / schedule_from_target_framing_start)
+    and seeds them via seed_schedule_to_db, OR clones from another
+    project via clone_project_in_db.
+    """
+    sql = """
+        INSERT INTO home_builder.project (
+            name, customer_name, address,
+            target_completion_date, target_framing_start_date,
+            drive_folder_id, drive_folder_path,
+            tenant_id, status
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s::uuid, 'active')
+        RETURNING id::text AS id
+    """
+    params = (
+        name, customer_name, address,
+        target_completion_date, target_framing_start_date,
+        drive_folder_id, drive_folder_path,
+        tenant_id,
+    )
+    if conn is not None:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            return cur.fetchone()["id"]
+    with connection(application_name="hb-engine-create-project") as c:
+        with c.cursor() as cur:
+            cur.execute(sql, params)
+            return cur.fetchone()["id"]
+
+
+def clone_project_in_db(
+    source_project_id: str,
+    *,
+    new_name: str,
+    customer_name: str | None = None,
+    address: str | None = None,
+    target_completion_date: date | None = None,
+    target_framing_start_date: date | None = None,
+    conn: psycopg.Connection | None = None,
+) -> str:
+    """Create a new project copying SHAPE from source — same phases by
+    sequence_index + duration, fresh dates. Returns new project_id.
+
+    What's copied (template):
+      - Phase set (name, sequence_index, default_duration_days,
+        project_override_duration_days)
+      - Milestone names + their phase anchors
+
+    What's reset (fresh):
+      - Phase status: all 'not-started'
+      - Phase actual_start_date / actual_end_date: NULL
+      - Phase planned_start_date / planned_end_date: recomputed from
+        new target dates (or copied verbatim if no new dates given)
+      - Milestone status: 'pending', actual_date NULL
+
+    What's NOT copied:
+      - Drafts, events, inspections, deliveries, receipts, change
+        orders — those are project-instance state, not template
+      - Drive folder — caller passes drive_folder_id if they have one
+        (e.g. after cloning the Tracker sheet); else NULL
+
+    target dates default to the source's; pass override kwargs to
+    rebase dates (caller typically wants to push the new project to
+    a new completion date).
+    """
+    own_conn = conn is None
+    if own_conn:
+        from home_builder_agent.integrations.postgres import connection as _conn_factory
+        conn_ctx = _conn_factory(application_name="hb-engine-clone-project")
+        conn = conn_ctx.__enter__()
+
+    try:
+        with conn.cursor() as cur:
+            # 1. Read source project shape.
+            cur.execute(
+                """
+                SELECT customer_name, address,
+                       target_completion_date, target_framing_start_date,
+                       tenant_id
+                FROM home_builder.project
+                WHERE id = %s::uuid
+                """,
+                (source_project_id,),
+            )
+            src = cur.fetchone()
+            if not src:
+                raise ValueError(f"Source project not found: {source_project_id}")
+
+            # 2. Insert new project.
+            cur.execute(
+                """
+                INSERT INTO home_builder.project (
+                    name, customer_name, address,
+                    target_completion_date, target_framing_start_date,
+                    tenant_id, status
+                ) VALUES (%s, %s, %s, %s, %s, %s::uuid, 'active')
+                RETURNING id::text AS id
+                """,
+                (
+                    new_name,
+                    customer_name or src["customer_name"],
+                    address if address is not None else src["address"],
+                    target_completion_date or src["target_completion_date"],
+                    target_framing_start_date or src["target_framing_start_date"],
+                    src["tenant_id"],
+                ),
+            )
+            new_uuid = cur.fetchone()["id"]
+
+            # 3. Copy phases — fresh status, NULL actuals, copied
+            #    planned dates (caller can run hb-update / hb-schedule
+            #    to recompute against new target dates if they passed
+            #    override kwargs).
+            cur.execute(
+                """
+                INSERT INTO home_builder.phase (
+                    project_id, phase_template_id, name, sequence_index,
+                    status, planned_start_date, planned_end_date,
+                    default_duration_days, project_override_duration_days,
+                    actual_start_date, actual_end_date
+                )
+                SELECT %s::uuid, phase_template_id, name, sequence_index,
+                       'not-started', planned_start_date, planned_end_date,
+                       default_duration_days, project_override_duration_days,
+                       NULL, NULL
+                FROM home_builder.phase
+                WHERE project_id = %s::uuid
+                ORDER BY sequence_index
+                """,
+                (new_uuid, source_project_id),
+            )
+
+            # 4. Copy milestones — pending status, NULL actual_date.
+            #    Phase IDs map by sequence_index since we just copied
+            #    them in order.
+            cur.execute(
+                """
+                INSERT INTO home_builder.milestone (
+                    project_id, phase_id, name, planned_date, status
+                )
+                SELECT
+                    %s::uuid,
+                    new_phase.id,
+                    src_m.name,
+                    src_m.planned_date,
+                    'pending'
+                FROM home_builder.milestone src_m
+                LEFT JOIN home_builder.phase src_phase
+                       ON src_m.phase_id = src_phase.id
+                LEFT JOIN home_builder.phase new_phase
+                       ON new_phase.project_id = %s::uuid
+                      AND new_phase.sequence_index = src_phase.sequence_index
+                WHERE src_m.project_id = %s::uuid
+                """,
+                (new_uuid, new_uuid, source_project_id),
+            )
+
+            if own_conn:
+                conn.commit()
+            return new_uuid
+    finally:
+        if own_conn:
+            try:
+                conn_ctx.__exit__(None, None, None)
+            except Exception:
+                pass
+
+
+# ---------------------------------------------------------------------------
 # Phase read paths
 # ---------------------------------------------------------------------------
 
