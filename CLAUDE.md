@@ -148,6 +148,7 @@ The Phase 2 layer that turned the toolkit into a system. All on `main`, all in p
 | Heartbeat watchdog | `hb-watchdog` | Reads `.heartbeats/*.json` every 10 min; alerts on staleness via macOS notification + `.heartbeat_alerts.log`. Each launchd job beats on success via `core.heartbeat.beat_on_success` decorator; per-job thresholds = ~5x cadence + grace. ($0/run) |
 | Notification triggers | `hb-triggers [--project NAME] [--force]` | Engine-side automatic Event emitter (per scheduling-engine.md § Notification Triggers). V1 ships selection-deadline: scans every active project's drop-dead order dates, emits `selection-deadline` Events into `home_builder.event` for any in OVERDUE / ORDER NOW / THIS WEEK / UPCOMING bands. Idempotent — dedupes by (project, category) over 30-day lookback. Severity = critical/critical/warning/info per band. Runs daily 7:05 AM via `com.chadhomes.notification-triggers` launchd. ($0/run) |
 | Morning view-model | `hb-morning <project> [--no-synth] [--json]` | End-to-end CLI for the morning surface (per [`morning-view-model.md`](docs/specs/morning-view-model.md)) — Chad's "morning coffee work station" landing. Loads schedule + drop-deads + overnight events + pending drafts, fetches weather, synthesizes voice_brief + 1-5 action items via `chad_voice("narrator")` in one Sonnet call, prints terminal-pretty or `--json`. The HTTP route `/v1/turtles/home-builder/views/morning/{project_id}` (platform-thread) wraps this same orchestration. Graceful when `home_builder.draft_action` (migration 007) isn't yet applied — judgment_queue stays empty. (~$0.02/run; $0 with `--no-synth`) |
+| System status | `hb-status [--json]` | One-shot health check. Aggregates launchd job state + heartbeat freshness + today's spend (Opus / total caps from `core/cost_guard.py`) + morning view cache age + engine queue depths (`pending_drafts`, `open_events`, `unprocessed_user_actions`) + recent stderr errors per launchd job. Pretty terminal output with progress bars on cost caps; `--json` for ops dashboards. Exit codes: `0` healthy, `1` heartbeat stale, `2` critical events open. Use as `hb-status && echo OK`. ($0/run) |
 
 Active background processes:
 - **Dashboard watcher** (`watchers/dashboard.py`) — runs every 60s via launchd. Polls GENERATED TIMELINES for modified Tracker sheets, refreshes their Dashboard tab. State in `.watcher_state.json`. Logs to `watcher.log`. Plist: `~/Library/LaunchAgents/com.chadhomes.dashboard-watcher.plist`.
@@ -292,6 +293,28 @@ git status
 git log --oneline -10
 git diff HEAD
 ```
+
+## Multi-tenant telemetry (binding — see patton-os ADR 2026-05-09)
+
+This repo's worker agents (`inbox_watcher`, morning brief, watchers) run on
+the same Mac Mini as the iOS-facing backend and share the same Supabase
+project. Per *Multi-Tenant Telemetry Architecture* in
+`~/Projects/patton-os/data/decisions.md`:
+
+- **Single canonical event log:** `platform.event` table.
+- **tenant_id** for this worker's events: `chad_homes` (set via
+  `PATTON_TENANT_ID` env var in launchd plists or shell).
+- **Phase 3 instrumentation TODO:** `inbox_watcher` should emit
+  `agent.inbox_reply_drafted` and `agent.inbox_reply_sent`; the morning
+  brief job should emit `agent.morning_brief_sent`; the watchdog should
+  emit `agent.alert_paged`. Helper pattern mirrors
+  `~/Projects/patton-ai-ios/backend/app/services/telemetry.py`.
+- **The `home_builder.user_action` table is the historical source.** The
+  iOS backend emits `client.submitted_quick_action` events into
+  `platform.event` going forward; the existing `user_action` table is
+  preserved as the engine's polymorphic action queue (different concern).
+- **To check telemetry of this client:**
+  `patton-coo client-usage chad_homes --days 7`
 
 ## Open questions for future sessions
 

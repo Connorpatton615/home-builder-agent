@@ -122,6 +122,35 @@ hb-bridge "Whitfield" --dry-run
 # does NOT actually write yet (--dry-run).
 ```
 
+### Project Info tab — populate before launchd jobs go live (load-bearing)
+
+**Discovered 2026-05-09 production audit:** Chad's Tracker has a
+"Project Info" tab that the weekly client-update launchd job
+(`com.chadhomes.client-update`, Mondays at 7 AM) reads to find the
+homeowner's name + email. If the tab is empty, the job fails loudly
+with a clear error and Chad's homeowner does NOT get the weekly
+update that Monday.
+
+Fields required (Tracker → Project Info tab → column B):
+
+  - **Customer Name:** the homeowner's name (e.g., "John & Mary Smith")
+  - **Customer Email:** the homeowner's email
+  - **Project Address:** site address (also used for NOAA weather lat/lng)
+  - **(Optional) Customer Phone:** if Chad wants it on the email
+
+**Pre-flight check:**
+
+```bash
+hb-client-update --from-tracker --dry-run
+# Expected on success: composes a draft, prints "To: <email>",
+#   prints subject + first ~3000 chars of HTML body, exits 0
+# Expected on missing fields: clear error message:
+#   "Project Info tab is missing Customer Name and/or Customer Email."
+```
+
+If the dry-run errors, populate the missing fields in the Tracker's
+Project Info tab and re-run before proceeding to Step 2.
+
 ---
 
 ## Step 2 — Re-auth: regenerate credentials.json + token.json (30 min)
