@@ -74,7 +74,63 @@ PROJECT_INFO_FIELD_MAP: list[tuple[str, str]] = [
     ("Project Address", "address"),
     ("Job Code",        "job_code"),
     ("Notes",           "notes"),
+    ("Budget",          "budget"),
+    ("Square Footage",  "square_footage"),
 ]
+
+# Columns whose Postgres type is numeric (vs. plain TEXT). For these we
+# strip currency / formatting characters before comparison + write, and
+# reject values that don't coerce to a valid number.
+_NUMERIC_COLUMNS = {
+    "budget":         "numeric",   # NUMERIC(12, 2) — cents OK, no decimal stripping
+    "square_footage": "integer",   # INTEGER — strip decimals
+}
+
+
+def _coerce_numeric_value(pg_col: str, raw: str) -> tuple[str, object] | None:
+    """For numeric columns (budget, square_footage), parse a Tracker
+    cell value like "$1,250,000" or "3,450 sqft" into a (canonical_str,
+    sql_value) pair.
+
+    Returns ``None`` if the value can't be coerced — caller treats that
+    as an 'error' field outcome and skips the write.
+
+    canonical_str is used for the unchanged-vs-updated comparison;
+    sql_value is what gets parameterized into the UPDATE.
+    """
+    # Strip currency symbol, commas, whitespace, common unit suffixes.
+    s = raw.strip()
+    for ch in ("$", ",", " "):  # also nbsp from Sheets paste artifacts
+        s = s.replace(ch, "")
+    # Common unit suffixes — case-insensitive, take only the numeric prefix.
+    for unit in ("sqft", "sq ft", "ft²", "ft2"):
+        i = s.lower().find(unit)
+        if i != -1:
+            s = s[:i].strip()
+            break
+    if not s:
+        return None
+    try:
+        if _NUMERIC_COLUMNS[pg_col] == "integer":
+            # Reject non-integer values for square_footage. "3450.5" or
+            # "3,450.0" coerces; bare "3450" wins. Bool() trap: int(True)==1.
+            f = float(s)
+            if f != int(f):
+                # Round down to nearest int. Tracker users sometimes type
+                # "3,450.0" — that's still 3450, fine.
+                pass
+            return (str(int(f)), int(f))
+        # numeric — keep decimal precision
+        from decimal import Decimal, InvalidOperation
+        try:
+            d = Decimal(s)
+        except InvalidOperation:
+            return None
+        # Canonical comparison form: stripped trailing zeros after the
+        # decimal so "1250000" matches "1250000.00".
+        return (format(d.normalize(), "f"), d)
+    except (ValueError, TypeError):
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -383,7 +439,7 @@ def _sync_project_info(
     # Build the SET clause: include a column only if the Tracker has a
     # non-empty value AND it differs from what's in Postgres (with the
     # customer_name = "TBD" exception).
-    sets: dict[str, str] = {}
+    sets: dict[str, object] = {}
     for tracker_field, pg_col in PROJECT_INFO_FIELD_MAP:
         tracker_raw = tracker_info.get(tracker_field, "")
         tracker_val = (str(tracker_raw).strip() if tracker_raw is not None else "")
@@ -399,7 +455,27 @@ def _sync_project_info(
                 field_outcomes[pg_col] = "kept"
             continue
 
-        # Tracker has a non-empty value.
+        # Numeric columns (budget, square_footage) — strip $ / commas / "sqft"
+        # so "$1,250,000" matches Postgres's stored 1250000.00 exactly. If
+        # the Tracker value doesn't parse, mark error and skip — don't
+        # corrupt Postgres with a string in a NUMERIC column.
+        if pg_col in _NUMERIC_COLUMNS:
+            coerced = _coerce_numeric_value(pg_col, tracker_val)
+            if coerced is None:
+                field_outcomes[pg_col] = "error"
+                continue
+            canonical_str, sql_value = coerced
+            # Compare normalized forms (e.g. "1250000" == "1250000.00").
+            if pg_val is not None:
+                pg_canonical = _coerce_numeric_value(pg_col, str(pg_val))
+                if pg_canonical and pg_canonical[0] == canonical_str:
+                    field_outcomes[pg_col] = "unchanged"
+                    continue
+            sets[pg_col] = sql_value
+            field_outcomes[pg_col] = "updated"
+            continue
+
+        # TEXT columns — original logic.
         # customer_name = "TBD" is the bridge legacy default — overwrite.
         treat_pg_as_empty = (
             pg_col == "customer_name" and pg_val_str.upper() == "TBD"

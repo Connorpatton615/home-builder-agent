@@ -1558,6 +1558,8 @@ PROJECT_INFO_FIELDS = [
     ("Project Address", ""),
     ("Job Code", ""),
     ("Builder", "Palmetto Custom Homes"),
+    ("Budget", ""),
+    ("Square Footage", ""),
     ("Notes", ""),
 ]
 

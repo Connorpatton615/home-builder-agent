@@ -1063,6 +1063,24 @@ TOOLS = [
                         "(those go through log_site_note)."
                     ),
                 },
+                "budget": {
+                    "type": "number",
+                    "description": (
+                        "Total contract value with the homeowner, USD. "
+                        "Single number — not split target-vs-actual. "
+                        "Pass numeric (e.g. 1250000 or 1250000.00), not a "
+                        "formatted string like '$1.25M' — Sheets will "
+                        "render the formatting on its end."
+                    ),
+                },
+                "square_footage": {
+                    "type": "integer",
+                    "description": (
+                        "Heated square footage. Single integer — does not "
+                        "include porches, garages, or under-roof-but-"
+                        "unheated areas. Pass plain integer (e.g. 3450)."
+                    ),
+                },
             },
             "required": ["project_id"],
         },
@@ -2035,6 +2053,8 @@ _CUSTOMER_INFO_FIELDS: tuple[str, ...] = (
     "address",
     "job_code",
     "notes",
+    "budget",
+    "square_footage",
 )
 
 
@@ -2049,6 +2069,8 @@ _CUSTOMER_INFO_TO_TRACKER_FIELD: dict[str, str] = {
     "address":        "Project Address",
     "job_code":       "Job Code",
     "notes":          "Notes",
+    "budget":         "Budget",
+    "square_footage": "Square Footage",
 }
 
 
@@ -2321,6 +2343,8 @@ def _tool_update_customer_info(
     address: str | None = None,
     job_code: str | None = None,
     notes: str | None = None,
+    budget: float | int | str | None = None,
+    square_footage: int | str | None = None,
     dry_run: bool = False,
 ) -> tuple[str, float]:
     """Update customer-info fields on home_builder.project.
@@ -2349,6 +2373,8 @@ def _tool_update_customer_info(
         "address": address,
         "job_code": job_code,
         "notes": notes,
+        "budget": budget,
+        "square_footage": square_footage,
     }
     for fname, val in raw_inputs.items():
         if val is None:
@@ -2364,10 +2390,50 @@ def _tool_update_customer_info(
     if not provided:
         return (
             "update_customer_info: at least one of customer_name, "
-            "customer_email, customer_phone, address, job_code, or notes "
-            "must be provided.",
+            "customer_email, customer_phone, address, job_code, notes, "
+            "budget, or square_footage must be provided.",
             0.0,
         )
+
+    # Numeric coercion + validation for the two number fields. Reject
+    # strings like '$1.25M' loudly — Opus should pass plain numerics
+    # (the schema says so) but we defend against drift.
+    if "budget" in provided:
+        v = provided["budget"]
+        try:
+            budget_val = float(v) if not isinstance(v, (int, float)) else float(v)
+        except (TypeError, ValueError):
+            return (
+                f"update_customer_info: budget {v!r} isn't a number. "
+                "Pass a plain numeric like 1250000 or 1250000.00, not a "
+                "formatted string.",
+                0.0,
+            )
+        if budget_val < 0:
+            return (
+                "update_customer_info: budget must be ≥ 0 (got "
+                f"{budget_val}).",
+                0.0,
+            )
+        provided["budget"] = budget_val
+
+    if "square_footage" in provided:
+        v = provided["square_footage"]
+        try:
+            sf_val = int(v) if not isinstance(v, int) else v
+        except (TypeError, ValueError):
+            return (
+                f"update_customer_info: square_footage {v!r} isn't an "
+                "integer. Pass a plain int like 3450.",
+                0.0,
+            )
+        if sf_val < 0:
+            return (
+                "update_customer_info: square_footage must be ≥ 0 (got "
+                f"{sf_val}).",
+                0.0,
+            )
+        provided["square_footage"] = sf_val
 
     # Validation.
     if "customer_email" in provided:
@@ -2476,6 +2542,8 @@ def _tool_update_customer_info(
         "address": "address",
         "job_code": "job code",
         "notes": "notes",
+        "budget": "budget",
+        "square_footage": "square footage",
     }
     label_list = [pretty[f] for f in in_order]
     if len(label_list) == 1:
@@ -3986,6 +4054,8 @@ def chad_turn(
                         address=inputs.get("address"),
                         job_code=inputs.get("job_code"),
                         notes=inputs.get("notes"),
+                        budget=inputs.get("budget"),
+                        square_footage=inputs.get("square_footage"),
                         dry_run=dry_run,
                     )
                     if not dry_run:
@@ -4620,6 +4690,8 @@ def chad_turn_stream(
                             address=inputs.get("address"),
                             job_code=inputs.get("job_code"),
                             notes=inputs.get("notes"),
+                            budget=inputs.get("budget"),
+                            square_footage=inputs.get("square_footage"),
                             dry_run=dry_run,
                         )
                         if not dry_run:

@@ -81,6 +81,8 @@ class TestSyncProjectInfoFieldDecisions:
                 "address": None,
                 "job_code": None,
                 "notes": None,
+                "budget": None,
+                "square_footage": None,
             },
         ])
         conn = _mock_connection_with_cursor(cursor)
@@ -93,6 +95,8 @@ class TestSyncProjectInfoFieldDecisions:
             "Job Code": "",
             "Builder": "Palmetto Custom Homes",
             "Notes": "",
+            "Budget": "",
+            "Square Footage": "",
         }
 
         outcome, field_outcomes = _sync_project_info(
@@ -108,6 +112,8 @@ class TestSyncProjectInfoFieldDecisions:
             "address": "unchanged",
             "job_code": "unchanged",
             "notes": "unchanged",
+            "budget": "unchanged",
+            "square_footage": "unchanged",
         }
         # Exactly one cursor.execute call — the SELECT. No UPDATE.
         assert cursor.execute.call_count == 1
@@ -226,6 +232,8 @@ class TestSyncProjectInfoFieldDecisions:
                 "address": "123 Pelican Way",
                 "job_code": "WHIT-2026",
                 "notes": "VIP — owner architect",
+                "budget": 1250000,
+                "square_footage": 3450,
             },
         ])
         conn = _mock_connection_with_cursor(cursor)
@@ -240,6 +248,8 @@ class TestSyncProjectInfoFieldDecisions:
             "Job Code": "",
             "Builder": "Palmetto Custom Homes",
             "Notes": "",
+            "Budget": "",
+            "Square Footage": "",
         }
 
         outcome, field_outcomes = _sync_project_info(
@@ -255,6 +265,8 @@ class TestSyncProjectInfoFieldDecisions:
             "address": "kept",
             "job_code": "kept",
             "notes": "kept",
+            "budget": "kept",
+            "square_footage": "kept",
         }
         # NO UPDATE issued — only the initial SELECT.
         assert cursor.execute.call_count == 1
@@ -469,6 +481,9 @@ def test_project_info_field_map_matches_spec():
         ("Project Address", "address"),
         ("Job Code", "job_code"),
         ("Notes", "notes"),
+        # Migration 013 (v1.3 — Dashboard Project Overview card) added:
+        ("Budget", "budget"),
+        ("Square Footage", "square_footage"),
     ]
     # Builder NEVER appears — it's a constant, not a stored column
     assert all(t[0] != "Builder" for t in PROJECT_INFO_FIELD_MAP)
