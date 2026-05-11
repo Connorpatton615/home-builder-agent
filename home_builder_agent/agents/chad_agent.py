@@ -2038,6 +2038,280 @@ _CUSTOMER_INFO_FIELDS: tuple[str, ...] = (
 )
 
 
+# Maps Postgres column → Tracker Project Info field name. Used by the
+# dual-write mirror so Connor + Chad see updates in the Tracker
+# immediately rather than waiting up to 5 min for the bridge sync.
+# Spec: ADR 2026-05-11 v1.2.
+_CUSTOMER_INFO_TO_TRACKER_FIELD: dict[str, str] = {
+    "customer_name":  "Customer Name",
+    "customer_email": "Customer Email",
+    "customer_phone": "Customer Phone",
+    "address":        "Project Address",
+    "job_code":       "Job Code",
+    "notes":          "Notes",
+}
+
+
+# Marker used by the three Tracker-canonicalization tools so the
+# caller can distinguish "Sheets-side failure → DB rolled back" from a
+# generic DB exception. The connection() context manager rolls back on
+# ANY exception, but this lets us pick out a Chad-voice message
+# specific to "Tracker write failed".
+class _DualWriteSheetsFailure(RuntimeError):
+    pass
+
+
+def _open_sheets_service_for_tool(tool_name):
+    """Open an authenticated Google Sheets service. Lazy + fault-tolerant.
+
+    All three Tracker-canonicalization tools share the same shape: they
+    open Google creds → build a Sheets service → look up the project's
+    Tracker via Drive → write specific cells. Auth failures surface as
+    ``_DualWriteSheetsFailure`` so the caller's transaction rolls back
+    and the user-facing message stays Chad-voice.
+    """
+    try:
+        from home_builder_agent.core.auth import get_credentials
+        from home_builder_agent.integrations import sheets as _sheets
+        from home_builder_agent.integrations.drive import drive_service
+    except Exception as e:
+        raise _DualWriteSheetsFailure(
+            f"Google integration unavailable ({type(e).__name__}: {e})"
+        ) from e
+    try:
+        creds = get_credentials()
+        return creds, _sheets.sheets_service(creds), drive_service(creds)
+    except Exception as e:
+        raise _DualWriteSheetsFailure(
+            f"Google auth failed ({type(e).__name__}: {e})"
+        ) from e
+
+
+def _resolve_project_for_dual_write(cur, project_id, tool_name):
+    """SELECT (name, drive_folder_id) for project_id; raise loudly if either
+    is missing.
+
+    Centralizes the safety check from CTO scope 2026-05-11 v1.2 — refuse
+    to dual-write if the project has no drive_folder_id. A silent
+    Postgres-only fallback would create Sheets/Postgres divergence with
+    no alert, then the next bridge sync would either overwrite our
+    Postgres edit (if the Tracker has stale data) or silently preserve
+    the divergence. Either outcome is bad and expensive to debug later.
+    Loud error → Postgres rollback → user sees a clear actionable message
+    is the right tradeoff.
+
+    Returns ``(project_name, drive_folder_id)``. Raises
+    ``_DualWriteSheetsFailure`` (which triggers transaction rollback in
+    the calling context) on any missing data.
+    """
+    cur.execute(
+        "SELECT name, drive_folder_id "
+        "FROM home_builder.project WHERE id = %s::uuid",
+        (project_id,),
+    )
+    proj_row = cur.fetchone()
+    project_name = (proj_row or {}).get("name") or ""
+    drive_folder_id = (proj_row or {}).get("drive_folder_id") or ""
+    if not project_name:
+        raise _DualWriteSheetsFailure(
+            f"project name not found for id {project_id[:8]}…; "
+            f"cannot dual-write {tool_name} to Tracker"
+        )
+    if not drive_folder_id:
+        raise _DualWriteSheetsFailure(
+            f"project {project_name!r} has no drive_folder_id set in "
+            f"Postgres — cannot dual-write {tool_name} to Tracker. Run "
+            "`hb-bridge` to discover + attach the Tracker, or set "
+            "drive_folder_id manually on the home_builder.project row."
+        )
+    return project_name, drive_folder_id
+
+
+def _find_tracker_id_for_project(drive_svc, project_name):
+    """Look up the Tracker spreadsheet id for ``project_name`` via Drive.
+
+    Wraps drive.find_tracker_by_project with a Chad-voice failure mode
+    so the dual-write path can surface "Tracker not found" without
+    leaking integration-layer details.
+    """
+    from home_builder_agent.config import DRIVE_FOLDER_PATH
+    from home_builder_agent.integrations import drive as _drive
+    try:
+        tracker = _drive.find_tracker_by_project(
+            drive_svc, DRIVE_FOLDER_PATH, project_name
+        )
+    except Exception as e:
+        raise _DualWriteSheetsFailure(
+            f"couldn't reach Drive ({type(e).__name__}: {e})"
+        ) from e
+    if not tracker:
+        raise _DualWriteSheetsFailure(
+            f"no Tracker found for project {project_name!r}"
+        )
+    return tracker["id"]
+
+
+def _dual_write_customer_info_to_sheets(cur, project_id, provided):
+    """Mirror an update_customer_info write into the project's Tracker.
+
+    Called from inside the postgres.connection() transaction. The ``cur``
+    parameter is the open cursor that just issued the Postgres UPDATE —
+    we reuse it to look up the project's name (so we don't open a
+    second connection mid-transaction). Raises ``_DualWriteSheetsFailure``
+    on any Sheets-side error so the Postgres transaction rolls back
+    atomically.
+    """
+    from home_builder_agent.integrations import sheets as _sheets
+
+    project_name, _drive_folder_id = _resolve_project_for_dual_write(
+        cur, project_id, "update_customer_info"
+    )
+
+    _, sheets_svc, drive_svc = _open_sheets_service_for_tool(
+        "update_customer_info"
+    )
+    tracker_id = _find_tracker_id_for_project(drive_svc, project_name)
+
+    for col, value in provided.items():
+        tracker_field = _CUSTOMER_INFO_TO_TRACKER_FIELD.get(col)
+        if not tracker_field:
+            # Defensive — shouldn't happen since `provided` is whitelisted.
+            continue
+        try:
+            _sheets.update_project_info_field(
+                sheets_svc, tracker_id, tracker_field, value
+            )
+        except _sheets.SheetsWriteError as e:
+            raise _DualWriteSheetsFailure(str(e)) from e
+
+
+def _format_tracker_date(d):
+    """Format a date/datetime/string as the Tracker's display style.
+
+    Tracker phase rows display dates as "Apr 28, 2026" (Sheets default
+    short-month-name format). bridge.py's _parse_iso_date already
+    accepts this form, so writing in the same shape keeps the
+    Sheets → Postgres sync idempotent for the same value.
+
+    Accepts ``date``, ``datetime``, or an ISO-formatted string; falls
+    back to ``str(d)`` if the format is unrecognized.
+    """
+    if d is None:
+        return ""
+    try:
+        if isinstance(d, datetime):
+            return d.strftime("%b %d, %Y")
+        if isinstance(d, date):
+            return d.strftime("%b %d, %Y")
+        # str path — parse YYYY-MM-DD first
+        return datetime.strptime(str(d).strip(), "%Y-%m-%d").strftime(
+            "%b %d, %Y"
+        )
+    except (ValueError, TypeError):
+        return str(d)
+
+
+def _dual_write_schedule_date_to_sheets(
+    cur, project_id, sequence_index, new_start, new_end
+):
+    """Mirror an update_schedule_date write into the Tracker's Master Schedule.
+
+    Writes "Start" and/or "End" columns on the row whose # column ==
+    sequence_index. Only writes fields actually updated (``new_start``
+    or ``new_end`` not None). Raises ``_DualWriteSheetsFailure`` on
+    any Sheets-side error. ``cur`` is the open cursor that just
+    issued the Postgres UPDATE; we reuse it to look up the project's
+    name.
+    """
+    from home_builder_agent.integrations import sheets as _sheets
+
+    project_name, _drive_folder_id = _resolve_project_for_dual_write(
+        cur, project_id, "update_schedule_date"
+    )
+
+    _, sheets_svc, drive_svc = _open_sheets_service_for_tool(
+        "update_schedule_date"
+    )
+    tracker_id = _find_tracker_id_for_project(drive_svc, project_name)
+
+    if new_start is not None:
+        try:
+            _sheets.update_master_schedule_cell(
+                sheets_svc,
+                tracker_id,
+                sequence_index,
+                "Start",
+                _format_tracker_date(new_start),
+            )
+        except _sheets.SheetsWriteError as e:
+            raise _DualWriteSheetsFailure(str(e)) from e
+
+    if new_end is not None:
+        try:
+            _sheets.update_master_schedule_cell(
+                sheets_svc,
+                tracker_id,
+                sequence_index,
+                "End",
+                _format_tracker_date(new_end),
+            )
+        except _sheets.SheetsWriteError as e:
+            raise _DualWriteSheetsFailure(str(e)) from e
+
+
+def _dual_write_reorder_phase_for_tool(
+    cur, project_id, old_position, new_position
+):
+    """Mirror a reorder_phase result into the Tracker's Master Schedule.
+
+    Reads the post-update (name, sequence_index) of every affected phase
+    from Postgres via ``cur``, looks up the project's name, then issues
+    one batchUpdate against the Tracker's # column. Raises
+    ``_DualWriteSheetsFailure`` on any Sheets-side error so the caller's
+    transaction rolls back atomically.
+
+    The row order in Sheets is NOT changed — only the # cell values
+    shift. The bridge sync orders phases by sequence_index, so the
+    Tracker view remains consistent with Postgres.
+    """
+    from home_builder_agent.integrations import sheets as _sheets
+
+    # Affected phases: any row whose post-update sequence_index falls
+    # between min(old, new) and max(old, new). That set is exactly
+    # {moving_phase} ∪ {phases shifted ±1} — the # cells we need to
+    # rewrite in the Tracker.
+    low_seq = min(old_position, new_position)
+    high_seq = max(old_position, new_position)
+    cur.execute(
+        """
+        SELECT name, sequence_index
+        FROM home_builder.phase
+        WHERE project_id = %s::uuid
+          AND sequence_index BETWEEN %s AND %s
+        """,
+        (project_id, low_seq, high_seq),
+    )
+    affected_rows = list(cur.fetchall())
+    phase_name_to_new_seq = {
+        r["name"]: r["sequence_index"] for r in affected_rows
+    }
+
+    project_name, _drive_folder_id = _resolve_project_for_dual_write(
+        cur, project_id, "reorder_phase"
+    )
+
+    _, sheets_svc, drive_svc = _open_sheets_service_for_tool(
+        "reorder_phase"
+    )
+    tracker_id = _find_tracker_id_for_project(drive_svc, project_name)
+    try:
+        _sheets.update_master_schedule_sequence_indices(
+            sheets_svc, tracker_id, phase_name_to_new_seq
+        )
+    except _sheets.SheetsWriteError as e:
+        raise _DualWriteSheetsFailure(str(e)) from e
+
+
 def _tool_update_customer_info(
     project_id: str,
     *,
@@ -2141,6 +2415,11 @@ def _tool_update_customer_info(
     params: list = list(provided.values())
     params.append(project_id)
 
+    # ADR 2026-05-11 v1.2 — dual-write: Postgres UPDATE inside the
+    # transaction, then mirror to the Tracker's Project Info tab.
+    # connection() autocommits on clean exit; if the Sheets write raises,
+    # the with-block propagates the exception and the connection rolls
+    # back. Result: both succeed or neither happens.
     try:
         with connection(application_name="hb-chad-update-customer-info") as conn:
             with conn.cursor() as cur:
@@ -2161,6 +2440,25 @@ def _tool_update_customer_info(
                         0.0,
                     )
                 project_name_db = row["name"]
+
+                # Sheets mirror: find the project's Tracker, then write each
+                # updated field to its Project Info row. Sheets failure
+                # propagates out — the `with conn` block above rolls back
+                # the Postgres UPDATE so the two stores can't diverge.
+                # Helper re-looks-up project_name via `cur` so existing
+                # postgres-mocked tests don't need an extra side_effect entry.
+                _dual_write_customer_info_to_sheets(
+                    cur, project_id, provided
+                )
+    except _DualWriteSheetsFailure as e:
+        # Sheets-side failure — Postgres was rolled back by the
+        # connection() context manager. Surface the cause to Chad in
+        # plain language; no internal-service names.
+        return (
+            f"update_customer_info: couldn't update the Tracker — "
+            f"{e}. Nothing was changed.",
+            0.0,
+        )
     except Exception as e:
         return (
             f"update_customer_info: DB write failed — "
@@ -2422,6 +2720,26 @@ def _tool_update_schedule_date(
                     """,
                     tuple(params),
                 )
+
+                # ADR 2026-05-11 v1.2 — dual-write. The mirror helper
+                # looks up the project's name via `cur` so this site
+                # stays unchanged when the helper is mocked away. On
+                # any Sheets failure, _DualWriteSheetsFailure propagates
+                # and the connection() context rolls back the UPDATE
+                # above.
+                _dual_write_schedule_date_to_sheets(
+                    cur,
+                    project_id,
+                    row["sequence_index"],
+                    new_start,
+                    new_end,
+                )
+    except _DualWriteSheetsFailure as e:
+        return (
+            f"update_schedule_date: couldn't update the Tracker — "
+            f"{e}. Nothing was changed.",
+            0.0,
+        )
     except Exception as e:
         return (
             f"update_schedule_date: DB write failed — "
@@ -2644,6 +2962,23 @@ def _tool_reorder_phase(
                     """,
                     (new_position, moving_id),
                 )
+
+                # ADR 2026-05-11 v1.2 — dual-write the new # values into
+                # the Tracker's Master Schedule. The helper is split out
+                # so it can be mocked in unit tests; in production it
+                # opens the Tracker via Drive and issues one batchUpdate
+                # for every affected phase's # cell. On any Sheets
+                # failure, _DualWriteSheetsFailure propagates →
+                # connection() rolls back the park/shift/land SETs above.
+                _dual_write_reorder_phase_for_tool(
+                    cur, project_id, old_position, new_position
+                )
+    except _DualWriteSheetsFailure as e:
+        return (
+            f"reorder_phase: couldn't update the Tracker — "
+            f"{e}. Nothing was changed.",
+            0.0,
+        )
     except Exception as e:
         return (
             f"reorder_phase: DB write failed — {type(e).__name__}: {e}",

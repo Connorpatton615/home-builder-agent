@@ -34,6 +34,43 @@ import pytest
 
 
 # ---------------------------------------------------------------------------
+# Autouse fixture — neutralize the dual-write Sheets mirror (v1.2)
+# ---------------------------------------------------------------------------
+#
+# Per ADR 2026-05-11 v1.2, the three input tools dual-write to Postgres
+# + Sheets in one atomic transaction. The tests in this file mock the
+# Postgres side at `postgres.connection()` and assert on the SQL the
+# tool emitted; they don't try to exercise Drive/Sheets. To keep them
+# focused on Postgres behavior, this autouse fixture replaces each
+# dual-write helper with a no-op for every test in this module.
+# A separate file (`test_chad_input_tools_dual_write.py`) covers the
+# atomicity / Sheets-failure / Sheets-write-shape paths explicitly.
+
+@pytest.fixture(autouse=True)
+def _no_op_dual_write_mirrors(monkeypatch):
+    """Patch the three Sheets-mirror helpers to be no-ops so existing
+    Postgres-mock tests don't try to reach real Google APIs.
+
+    Importantly, this preserves the atomicity contract for these tests:
+    if the Postgres write fails the tool still returns the DB error; if
+    the Postgres write succeeds the tool returns its Chad-voice
+    confirmation. Sheets-side success/failure is exercised by the
+    dedicated dual-write test file.
+    """
+    import home_builder_agent.agents.chad_agent as chad
+
+    monkeypatch.setattr(
+        chad, "_dual_write_customer_info_to_sheets", lambda *a, **kw: None
+    )
+    monkeypatch.setattr(
+        chad, "_dual_write_schedule_date_to_sheets", lambda *a, **kw: None
+    )
+    monkeypatch.setattr(
+        chad, "_dual_write_reorder_phase_for_tool", lambda *a, **kw: None
+    )
+
+
+# ---------------------------------------------------------------------------
 # Helpers — mock the postgres.connection() context manager
 # ---------------------------------------------------------------------------
 

@@ -1685,3 +1685,284 @@ def read_project_info(sheets_svc, sheet_id: str) -> dict:
         if field:
             info[field] = value
     return info
+
+
+# ---------------------------------------------------------------------------
+# Tracker write helpers — used by hb-chad input tools (dual-write, v1.2)
+# ---------------------------------------------------------------------------
+#
+# Per ADR 2026-05-11 v1.2 ("Google Sheets canonical, Postgres query store"):
+# hb-chad's three input tools (update_customer_info, update_schedule_date,
+# reorder_phase) dual-write — Postgres + Sheets in one atomic transaction.
+# Sheets is canonical; the bridge sync would overwrite Postgres-only writes
+# within 5 minutes.
+#
+# Atomicity pattern (in the caller):
+#   with connection() as conn:           # autocommit=False
+#       with conn.cursor() as cur:
+#           cur.execute("UPDATE ...")     # uncommitted
+#           sheets.update_*(svc, ...)     # raises SheetsWriteError on failure
+#   # On clean exit, Postgres COMMITs. On any exception (including
+#   # SheetsWriteError), connection() rolls back.
+#
+# These helpers raise SheetsWriteError (a RuntimeError subclass) so callers
+# can catch them specifically while letting the rollback fire.
+
+class SheetsWriteError(RuntimeError):
+    """Raised by the Tracker write helpers when a Sheets write can't
+    complete (field/header/row not found, API error). Subclass of
+    RuntimeError so callers that catch a broad Exception still see it;
+    subclasses get caught specifically when the caller wants to
+    distinguish "Sheets failed" from "Postgres failed".
+    """
+
+
+def update_project_info_field(sheets_svc, sheet_id, field_name, value):
+    """Write a single Project Info value, addressed by its field-name row.
+
+    The Project Info tab is a 2-column key/value table — column A holds
+    field names (e.g. "Customer Email"), column B holds values. This
+    helper looks up the row where A == ``field_name`` and writes
+    ``value`` into B on that row.
+
+    Idempotent: re-running with the same value is a no-op on Sheets
+    side (the API call still fires but writes the same cell value).
+
+    Raises:
+        SheetsWriteError: if the Project Info tab is missing, empty,
+                          or doesn't contain a row whose column A
+                          matches ``field_name``.
+    """
+    try:
+        result = sheets_svc.spreadsheets().values().get(
+            spreadsheetId=sheet_id,
+            range=f"{PROJECT_INFO_TAB}!A1:B100",
+        ).execute()
+    except Exception as e:  # API failure — propagate as SheetsWriteError
+        raise SheetsWriteError(
+            f"failed to read {PROJECT_INFO_TAB} tab: "
+            f"{type(e).__name__}: {e}"
+        ) from e
+
+    rows = result.get("values", [])
+    if not rows:
+        raise SheetsWriteError(
+            f"{PROJECT_INFO_TAB} tab is empty — cannot write {field_name!r}."
+        )
+
+    # Find the row whose column A matches field_name (case-sensitive —
+    # the tab is seeded from PROJECT_INFO_FIELDS so the canonical
+    # capitalization is known). Skip the header row.
+    target_row_idx = None  # 1-indexed row number in Sheets
+    for i, row in enumerate(rows[1:], start=2):
+        if not row:
+            continue
+        col_a = row[0].strip() if len(row) > 0 else ""
+        if col_a == field_name:
+            target_row_idx = i
+            break
+
+    if target_row_idx is None:
+        raise SheetsWriteError(
+            f"field {field_name!r} not found in column A of "
+            f"{PROJECT_INFO_TAB} tab."
+        )
+
+    try:
+        sheets_svc.spreadsheets().values().update(
+            spreadsheetId=sheet_id,
+            range=f"{PROJECT_INFO_TAB}!B{target_row_idx}",
+            valueInputOption="USER_ENTERED",
+            body={"values": [[value if value is not None else ""]]},
+        ).execute()
+    except Exception as e:
+        raise SheetsWriteError(
+            f"failed to write {field_name!r} = {value!r} to "
+            f"{PROJECT_INFO_TAB}!B{target_row_idx}: "
+            f"{type(e).__name__}: {e}"
+        ) from e
+
+
+def update_master_schedule_cell(
+    sheets_svc, sheet_id, sequence_index, column_header, value
+):
+    """Write a single cell on Master Schedule, addressed by row's "#" + column header.
+
+    The Master Schedule tab uses column A as a numeric "#" (sequence
+    index) and row 1 as the header row. This helper locates the row
+    whose A column equals ``sequence_index`` and the column whose
+    header text matches ``column_header`` (e.g. "Start", "End",
+    "Status", "Phase"), and writes ``value`` to that cell.
+
+    Raises:
+        SheetsWriteError: if the row, column, or tab can't be found.
+    """
+    try:
+        result = sheets_svc.spreadsheets().values().get(
+            spreadsheetId=sheet_id,
+            range="Master Schedule!A1:Z200",
+        ).execute()
+    except Exception as e:
+        raise SheetsWriteError(
+            f"failed to read Master Schedule tab: "
+            f"{type(e).__name__}: {e}"
+        ) from e
+
+    rows = result.get("values", [])
+    if not rows or len(rows) < 2:
+        raise SheetsWriteError(
+            "Master Schedule tab is empty or has no data rows — cannot "
+            f"write sequence_index={sequence_index}, "
+            f"column={column_header!r}."
+        )
+
+    headers = rows[0]
+    # Find the column index whose header text matches column_header.
+    col_idx = None
+    for i, h in enumerate(headers):
+        if (h or "").strip() == column_header:
+            col_idx = i
+            break
+    if col_idx is None:
+        raise SheetsWriteError(
+            f"column {column_header!r} not found in Master Schedule "
+            f"header row. Got: {headers}."
+        )
+
+    # Find the row whose column A == sequence_index (compared as strings
+    # because Sheets returns "3", not 3).
+    target = str(sequence_index)
+    target_row_idx = None  # 1-indexed Sheets row number
+    for i, row in enumerate(rows[1:], start=2):
+        if not row:
+            continue
+        a = (row[0] or "").strip() if len(row) > 0 else ""
+        if a == target:
+            target_row_idx = i
+            break
+
+    if target_row_idx is None:
+        raise SheetsWriteError(
+            f"no row with #={sequence_index} found in Master Schedule "
+            f"column A."
+        )
+
+    col_letter = _column_index_to_letter(col_idx)
+    cell_range = f"Master Schedule!{col_letter}{target_row_idx}"
+    try:
+        sheets_svc.spreadsheets().values().update(
+            spreadsheetId=sheet_id,
+            range=cell_range,
+            valueInputOption="USER_ENTERED",
+            body={"values": [[value if value is not None else ""]]},
+        ).execute()
+    except Exception as e:
+        raise SheetsWriteError(
+            f"failed to write {value!r} to {cell_range}: "
+            f"{type(e).__name__}: {e}"
+        ) from e
+
+
+def update_master_schedule_sequence_indices(
+    sheets_svc, sheet_id, phase_name_to_new_seq
+):
+    """Bulk-update the "#" column for multiple Master Schedule rows.
+
+    Each row is located by its current phase name (column B); we
+    rewrite its column A "#" value. Uses ``values.batchUpdate`` so the
+    whole multi-row write hits Sheets in one HTTP call — partial
+    progress on the wire is not possible.
+
+    Args:
+        sheets_svc: authenticated Sheets v4 service
+        sheet_id:   target Tracker spreadsheet id
+        phase_name_to_new_seq: ``{phase_name: new_sequence_index}``
+            dict — exact match on column B (case-sensitive, stripped).
+
+    Raises:
+        SheetsWriteError: if any ``phase_name`` in the input dict
+                          isn't found in Master Schedule column B,
+                          or if the batchUpdate API call fails.
+                          (Atomicity: no partial writes — we resolve
+                          all rows up front, then issue ONE batch call.)
+    """
+    if not phase_name_to_new_seq:
+        return  # no-op — nothing to write
+
+    try:
+        result = sheets_svc.spreadsheets().values().get(
+            spreadsheetId=sheet_id,
+            range="Master Schedule!A1:G200",
+        ).execute()
+    except Exception as e:
+        raise SheetsWriteError(
+            f"failed to read Master Schedule tab: "
+            f"{type(e).__name__}: {e}"
+        ) from e
+
+    rows = result.get("values", [])
+    if not rows or len(rows) < 2:
+        raise SheetsWriteError(
+            "Master Schedule tab is empty or has no data rows — cannot "
+            "rewrite sequence indices."
+        )
+
+    # Build a {phase_name: row_index} map for every row currently in
+    # the sheet, then validate every requested phase_name resolves.
+    name_to_row: dict[str, int] = {}
+    for i, row in enumerate(rows[1:], start=2):
+        if not row or len(row) < 2:
+            continue
+        name = (row[1] or "").strip()
+        if name:
+            name_to_row[name] = i
+
+    # Resolve all requested phase names BEFORE we issue any write. If
+    # any is missing, raise — no partial-write window.
+    resolved: list[tuple[int, int]] = []  # (row_idx, new_seq)
+    for phase_name, new_seq in phase_name_to_new_seq.items():
+        row_idx = name_to_row.get(phase_name)
+        if row_idx is None:
+            raise SheetsWriteError(
+                f"phase {phase_name!r} not found in Master Schedule "
+                f"column B — refusing to write a partial reorder."
+            )
+        resolved.append((row_idx, new_seq))
+
+    # Single batchUpdate — one HTTP round-trip, all writes or none.
+    data = [
+        {
+            "range": f"Master Schedule!A{row_idx}",
+            "values": [[new_seq]],
+        }
+        for row_idx, new_seq in resolved
+    ]
+    try:
+        sheets_svc.spreadsheets().values().batchUpdate(
+            spreadsheetId=sheet_id,
+            body={"valueInputOption": "USER_ENTERED", "data": data},
+        ).execute()
+    except Exception as e:
+        raise SheetsWriteError(
+            f"failed to batch-update Master Schedule # column: "
+            f"{type(e).__name__}: {e}"
+        ) from e
+
+
+def _column_index_to_letter(idx):
+    """Convert a 0-indexed column number to an A1-style letter.
+
+    0 → A, 1 → B, ..., 25 → Z, 26 → AA, 27 → AB, ...
+    Used internally by ``update_master_schedule_cell`` to build
+    A1-notation ranges like 'Master Schedule!D5'.
+    """
+    if idx < 0:
+        raise ValueError(f"column index must be ≥ 0 (got {idx})")
+    letters = ""
+    n = idx
+    while True:
+        letters = chr(ord("A") + (n % 26)) + letters
+        n = n // 26 - 1
+        if n < 0:
+            break
+    return letters
