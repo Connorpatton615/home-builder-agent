@@ -209,6 +209,9 @@ Tool selection guide — pick the most specific tool, fall back to ask_chad:
   "log a $400 receipt for X"         dispatch_action
   "create a CO for cabinet upgrade"  dispatch_action
   "push framing two weeks"           dispatch_action
+  "save this chat to project folder" write_to_drive
+  "export this conversation to .md"  write_to_drive
+  "put that spec in Whitfield's"     write_to_drive
   "what was framing's cost?"         ask_chad  (cross-cutting RAG)
   "find emails about windows"        ask_chad
 
@@ -657,6 +660,61 @@ TOOLS = [
                 },
             },
             "required": ["copy_from", "new_name"],
+        },
+    },
+    {
+        "name": "write_to_drive",
+        "description": (
+            "Save a file to a Google Drive folder. Use when Chad says "
+            "'save this to the project folder', 'export this chat', "
+            "'put that in Drive', 'write this spec to Whitfield's folder', "
+            "or when the iOS app's 'save chat to project folder' flow "
+            "invokes you. Creates a NEW file — never overwrites or "
+            "deletes existing ones. Returns the Drive web URL so Chad "
+            "can open it. If you don't know the folder_id, look it up "
+            "first via ask_chad (e.g., 'what's the drive_folder_id for "
+            "Whitfield?') or read_morning_view (which exposes it on the "
+            "project record)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "folder_id": {
+                    "type": "string",
+                    "description": (
+                        "Google Drive folder ID where the file should be "
+                        "created. For a project's chat export, use the "
+                        "project's drive_folder_id from the project "
+                        "record. Required."
+                    ),
+                },
+                "file_name": {
+                    "type": "string",
+                    "description": (
+                        "File name including extension. Examples: "
+                        "'Chad chat 2026-05-10.md', 'Whitfield spec.md', "
+                        "'Site notes — week of 2026-05-10.md'. Required."
+                    ),
+                },
+                "content": {
+                    "type": "string",
+                    "description": (
+                        "Full file body, as a string. For chat exports, "
+                        "this is the markdown-formatted transcript. "
+                        "Required."
+                    ),
+                },
+                "mime_type": {
+                    "type": "string",
+                    "description": (
+                        "MIME type. Defaults to 'text/markdown' for .md "
+                        "files. Use 'text/plain' for .txt, 'text/html' "
+                        "for raw HTML. Drive stores the file as-is — no "
+                        "auto-conversion to Google Doc format. Optional."
+                    ),
+                },
+            },
+            "required": ["folder_id", "file_name", "content"],
         },
     },
 ]
@@ -1471,6 +1529,95 @@ def _tool_clone_project(
     )
 
 
+def _tool_write_to_drive(
+    folder_id: str,
+    file_name: str,
+    content: str,
+    mime_type: str = "text/markdown",
+    *,
+    dry_run: bool = False,
+) -> tuple[str, float]:
+    """Write a new file to a Google Drive folder.
+
+    Wraps integrations.drive.upload_binary_file with input validation
+    and a Chad-voice confirmation. Creates a new file every time —
+    never overwrites or deletes. If the folder already contains a file
+    with the same name, Drive will create a second one (Drive itself
+    allows name collisions; the file_id is what's unique).
+
+    Returns (confirmation_text, cost_usd_=0). cost is 0 because this
+    is a direct Drive API call, not a Claude API call.
+    """
+    # ---- validation -------------------------------------------------
+    if not folder_id or not folder_id.strip():
+        return "write_to_drive: folder_id is required.", 0.0
+    if not file_name or not file_name.strip():
+        return "write_to_drive: file_name is required.", 0.0
+    if content is None or content == "":
+        return (
+            "write_to_drive: content is empty — refusing to write a "
+            "zero-byte file. If you intended an empty file, pass a "
+            "single space.",
+            0.0,
+        )
+    if not mime_type:
+        mime_type = "text/markdown"
+
+    if dry_run:
+        size_kb = len(content.encode("utf-8")) / 1024
+        return (
+            f"(dry-run) Would write {file_name!r} ({size_kb:.1f} KB, "
+            f"{mime_type}) to Drive folder {folder_id[:12]}…",
+            0.0,
+        )
+
+    # ---- imports + auth (lazy) --------------------------------------
+    try:
+        from home_builder_agent.core.auth import get_credentials
+        from home_builder_agent.integrations.drive import (
+            drive_service,
+            upload_binary_file,
+        )
+    except Exception as e:
+        return (
+            f"write_to_drive: import failed — {type(e).__name__}: {e}",
+            0.0,
+        )
+
+    try:
+        creds = get_credentials()
+        svc = drive_service(creds)
+    except Exception as e:
+        return (
+            f"write_to_drive: Google auth failed — {type(e).__name__}: "
+            f"{e}. Check credentials.json + token.json on the Mac Mini.",
+            0.0,
+        )
+
+    # ---- write ------------------------------------------------------
+    try:
+        result = upload_binary_file(
+            svc,
+            file_bytes=content.encode("utf-8"),
+            file_name=file_name,
+            mime_type=mime_type,
+            parent_folder_id=folder_id,
+        )
+    except Exception as e:
+        return (
+            f"write_to_drive: upload failed — {type(e).__name__}: {e}",
+            0.0,
+        )
+
+    size_kb = len(content.encode("utf-8")) / 1024
+    url = result.get("webViewLink", "(no URL returned)")
+    return (
+        f"Saved {file_name!r} ({size_kb:.1f} KB) to Drive.\n"
+        f"URL: {url}",
+        0.0,
+    )
+
+
 def _tool_approve_draft_action(
     draft_action_id: str,
     decision_notes: str | None = None,
@@ -1873,6 +2020,18 @@ def chad_turn(
                         f"clone project {inputs.get('copy_from', '?')!r} → "
                         f"{inputs.get('new_name', '?')!r}"
                     )
+                elif name == "write_to_drive":
+                    output, cost = _tool_write_to_drive(
+                        folder_id=inputs.get("folder_id", ""),
+                        file_name=inputs.get("file_name", ""),
+                        content=inputs.get("content", ""),
+                        mime_type=inputs.get("mime_type") or "text/markdown",
+                        dry_run=dry_run,
+                    )
+                    if not dry_run:
+                        actions_taken.append(
+                            f"wrote {inputs.get('file_name', '?')!r} to Drive"
+                        )
                 else:
                     output = f"Unknown tool: {name}"
                     cost = 0.0
@@ -2344,6 +2503,18 @@ def chad_turn_stream(
                         actions_taken.append(
                             f"clone project {inputs.get('copy_from', '?')!r} "
                             f"→ {inputs.get('new_name', '?')!r}"
+                        )
+                    elif block.name == "write_to_drive":
+                        # Streaming surface is real iOS user — never dry-run.
+                        output, cost = _tool_write_to_drive(
+                            folder_id=inputs.get("folder_id", ""),
+                            file_name=inputs.get("file_name", ""),
+                            content=inputs.get("content", ""),
+                            mime_type=inputs.get("mime_type") or "text/markdown",
+                            dry_run=False,
+                        )
+                        actions_taken.append(
+                            f"wrote {inputs.get('file_name', '?')!r} to Drive"
                         )
                     else:
                         output = f"Unknown tool: {block.name}"
