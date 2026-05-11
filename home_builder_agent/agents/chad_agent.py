@@ -215,6 +215,8 @@ Tool selection guide — pick the most specific tool, fall back to ask_chad:
   "look up that FEMA panel"          web_fetch
   "what does this URL say?"          web_fetch
   "read this code section for me"    web_fetch
+  "draft an email to the homeowner"  create_email_draft  (NEVER sends)
+  "send a note to my framer"         create_email_draft  (NEVER sends)
   "what was framing's cost?"         ask_chad  (cross-cutting RAG)
   "find emails about windows"        ask_chad
 
@@ -744,6 +746,54 @@ TOOLS = [
                 },
             },
             "required": ["url"],
+        },
+    },
+    {
+        "name": "create_email_draft",
+        "description": (
+            "Create a Gmail draft from Chad's account. Does NOT send — "
+            "the draft lands in Chad's Drafts folder, he opens it, "
+            "reviews, edits, and hits Send himself. Use when Chad says "
+            "'draft an email to the homeowner about X', 'put together a "
+            "note to my framer about the schedule slip', 'draft a "
+            "response to that supplier RFQ'. Returns the draft URL so "
+            "Chad can jump straight to it. Always prefer drafts over "
+            "sends — per Patton AI's outbound-comms rule, outbound "
+            "communications stay drafted-only until Chad explicitly "
+            "approves them."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "to": {
+                    "type": "string",
+                    "description": (
+                        "Primary recipient email address. Must contain "
+                        "'@'. Required."
+                    ),
+                },
+                "subject": {
+                    "type": "string",
+                    "description": "Email subject line. Required.",
+                },
+                "body": {
+                    "type": "string",
+                    "description": (
+                        "Email body. Plain text or HTML (auto-detected — "
+                        "if the body contains <p>/<br>/<div>/<html> tags "
+                        "it's treated as HTML, otherwise plain text). "
+                        "Required."
+                    ),
+                },
+                "cc": {
+                    "type": "string",
+                    "description": (
+                        "Optional CC recipient. Single email address. "
+                        "Must contain '@' if provided."
+                    ),
+                },
+            },
+            "required": ["to", "subject", "body"],
         },
     },
 ]
@@ -1809,6 +1859,122 @@ def _tool_web_fetch(url: str) -> tuple[str, float]:
     return (text + note_line, 0.0)
 
 
+def _tool_create_email_draft(
+    to: str,
+    subject: str,
+    body: str,
+    cc: str | None = None,
+) -> tuple[str, float]:
+    """Create a Gmail draft (does not send).
+
+    Wraps the existing Gmail integration and adds optional CC support.
+    Uses the existing gmail.compose OAuth scope already granted in
+    config.GOOGLE_SCOPES — does NOT request new scopes.
+
+    Per Patton AI's outbound-comms rule (CLAUDE.md): drafts only.
+    Sending requires explicit Chad action in Gmail itself.
+
+    Returns (confirmation_text_with_url, cost_usd_=0).
+    """
+    # ---- validation -------------------------------------------------
+    if not to or "@" not in (to or ""):
+        return (
+            f"create_email_draft: 'to' must be a valid email address. "
+            f"Got {to!r}.",
+            0.0,
+        )
+    if not subject or not subject.strip():
+        return "create_email_draft: subject is required.", 0.0
+    if not body or not body.strip():
+        return "create_email_draft: body is required.", 0.0
+    if cc is not None and cc.strip() and "@" not in cc:
+        return (
+            f"create_email_draft: 'cc' must be a valid email address "
+            f"or omitted. Got {cc!r}.",
+            0.0,
+        )
+
+    # ---- imports + auth (lazy) --------------------------------------
+    try:
+        from home_builder_agent.core.auth import get_credentials
+        from home_builder_agent.integrations.gmail import gmail_service
+    except Exception as e:
+        return (
+            f"create_email_draft: import failed — {type(e).__name__}: {e}",
+            0.0,
+        )
+
+    try:
+        creds = get_credentials()
+        svc = gmail_service(creds)
+    except Exception as e:
+        return (
+            f"create_email_draft: Google auth failed — "
+            f"{type(e).__name__}: {e}. Check credentials.json + "
+            f"token.json on the Mac Mini.",
+            0.0,
+        )
+
+    # ---- build MIME message inline (the existing gmail.create_draft
+    # ---- helper doesn't expose a cc parameter; we attach it here) --
+    import base64
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
+    # If body looks like HTML, send as HTML; otherwise as plain text.
+    is_html = "<" in body and ">" in body and (
+        "<p" in body.lower() or "<br" in body.lower()
+        or "<div" in body.lower() or "<html" in body.lower()
+    )
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["To"] = to
+    if cc and cc.strip():
+        msg["Cc"] = cc.strip()
+
+    if is_html:
+        # Plain-text fallback derived from HTML
+        import re as _re
+        text_fallback = _re.sub(r"<[^>]+>", "", body)
+        text_fallback = _re.sub(r"\n{3,}", "\n\n", text_fallback).strip()
+        msg.attach(MIMEText(text_fallback, "plain", "utf-8"))
+        msg.attach(MIMEText(body, "html", "utf-8"))
+    else:
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+
+    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+
+    try:
+        draft = svc.users().drafts().create(
+            userId="me", body={"message": {"raw": raw}}
+        ).execute()
+    except Exception as e:
+        return (
+            f"create_email_draft: Gmail API call failed — "
+            f"{type(e).__name__}: {e}",
+            0.0,
+        )
+
+    message_id = (draft.get("message") or {}).get("id", "")
+    # Gmail draft URL format — opens directly in the compose view.
+    draft_url = (
+        f"https://mail.google.com/mail/u/0/#drafts/{message_id}"
+        if message_id else
+        f"https://mail.google.com/mail/u/0/#drafts"
+    )
+
+    cc_line = f"\nCC:      {cc.strip()}" if cc and cc.strip() else ""
+    return (
+        f"Draft created (not sent).\n"
+        f"To:      {to}{cc_line}\n"
+        f"Subject: {subject}\n"
+        f"Open in Gmail: {draft_url}\n"
+        f"(Review and click Send in Gmail when ready.)",
+        0.0,
+    )
+
+
 def _tool_approve_draft_action(
     draft_action_id: str,
     decision_notes: str | None = None,
@@ -2051,7 +2217,7 @@ def chad_turn(
             conversation_store.get_or_create(
                 conversation_id, user_id=user_id, project_id=project_id
             )
-            recent = conversation_store.load_recent_turns(conversation_id, n=8)
+            recent = conversation_store.load_recent_turns(conversation_id, n=16)
             prior_messages = _prior_turns_as_messages(recent)
             summary = conversation_store.get_summary(conversation_id)
             system = _system_with_summary(system, summary)
@@ -2225,6 +2391,16 @@ def chad_turn(
                         )
                 elif name == "web_fetch":
                     output, cost = _tool_web_fetch(inputs.get("url", ""))
+                elif name == "create_email_draft":
+                    output, cost = _tool_create_email_draft(
+                        to=inputs.get("to", ""),
+                        subject=inputs.get("subject", ""),
+                        body=inputs.get("body", ""),
+                        cc=inputs.get("cc"),
+                    )
+                    actions_taken.append(
+                        f"drafted email to {inputs.get('to', '?')}"
+                    )
                 else:
                     output = f"Unknown tool: {name}"
                     cost = 0.0
@@ -2453,7 +2629,7 @@ def chad_turn_stream(
             conversation_store.get_or_create(
                 conversation_id, user_id=user_id, project_id=project_id
             )
-            recent = conversation_store.load_recent_turns(conversation_id, n=8)
+            recent = conversation_store.load_recent_turns(conversation_id, n=16)
             prior_messages = _prior_turns_as_messages(recent)
             summary = conversation_store.get_summary(conversation_id)
             system = _system_with_summary(system, summary)
@@ -2711,6 +2887,16 @@ def chad_turn_stream(
                         )
                     elif block.name == "web_fetch":
                         output, cost = _tool_web_fetch(inputs.get("url", ""))
+                    elif block.name == "create_email_draft":
+                        output, cost = _tool_create_email_draft(
+                            to=inputs.get("to", ""),
+                            subject=inputs.get("subject", ""),
+                            body=inputs.get("body", ""),
+                            cc=inputs.get("cc"),
+                        )
+                        actions_taken.append(
+                            f"drafted email to {inputs.get('to', '?')}"
+                        )
                     else:
                         output = f"Unknown tool: {block.name}"
                         cost = 0.0
