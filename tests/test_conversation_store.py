@@ -201,27 +201,38 @@ def test_prune_no_op_below_threshold(store):
 
 def test_prune_summarizes_and_deletes_when_over_threshold(store):
     """Beyond PRUNE_THRESHOLD, prune evicts rows older than KEEP_RECENT
-    and folds them into the rolling summary."""
+    and folds them into the rolling summary.
+
+    Assertions are written in terms of the module constants so they
+    stay correct if PRUNE_THRESHOLD / KEEP_RECENT get retuned (they
+    were bumped 20→30 / 8→16 in commit 0dc09d9 to enlarge the memory
+    retention window).
+    """
+    total_to_seed = store.PRUNE_THRESHOLD + 5
+
     # Disable the auto-prune triggered by append_message so we can drive
     # prune() explicitly (and not pay a Sonnet call mid-loop). We do this
     # by patching prune to a no-op for the seeding phase, then unpatching.
     with patch.object(store, "prune", return_value=False):
-        for i in range(store.PRUNE_THRESHOLD + 5):  # 25 messages
+        for i in range(total_to_seed):
             role = "user" if i % 2 == 0 else "assistant"
             store.append_message("conv-10", role, f"msg-{i}")
-    assert store.message_count("conv-10") == store.PRUNE_THRESHOLD + 5
+    assert store.message_count("conv-10") == total_to_seed
 
     # Now run prune with a mocked summary call.
     with patch.object(store, "_summarize_evicted", return_value="folded summary"):
         ran = store.prune("conv-10")
 
     assert ran is True
-    # KEEP_RECENT (8) survive, the rest are gone.
+    # KEEP_RECENT survive, the rest are gone.
     assert store.message_count("conv-10") == store.KEEP_RECENT
     surviving = store.load_recent_turns("conv-10", n=store.KEEP_RECENT)
     surviving_indices = [r["turn_idx"] for r in surviving]
-    # The most recent 8 are turns 17..24.
-    assert surviving_indices == list(range(17, 25))
+    # The most recent KEEP_RECENT turn indices survive — turn_idx is
+    # 0-indexed by append_message, so indices total_to_seed-KEEP_RECENT
+    # through total_to_seed-1 (inclusive).
+    expected_first = total_to_seed - store.KEEP_RECENT
+    assert surviving_indices == list(range(expected_first, total_to_seed))
     # Summary was written.
     assert store.get_summary("conv-10") == "folded summary"
 
