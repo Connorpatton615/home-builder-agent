@@ -53,7 +53,12 @@ from home_builder_agent.core.chad_voice import (
     CUSTOMER_NAME,
     chad_voice_system,
 )
-from home_builder_agent.core.claude_client import make_client
+from home_builder_agent.core.claude_client import (
+    PROMPT_CACHING_BETA_HEADER,
+    cached_system_block,
+    make_client,
+    tools_with_cache,
+)
 from home_builder_agent.core.cost_guard import check_budget, record_cost
 
 
@@ -163,8 +168,12 @@ MAX_TOOL_LOOP_ITERATIONS = 8  # safety guard
 # lights up the cost line without pulling in the helper's full surface.
 OPUS_INPUT_PER_M = 15.00
 OPUS_OUTPUT_PER_M = 75.00
+OPUS_CACHE_WRITE_PER_M = 18.75    # base × 1.25 (write-through penalty)
+OPUS_CACHE_READ_PER_M = 1.50      # base × 0.10 (90% off, ~5-min TTL)
 SONNET_INPUT_PER_M = 3.00
 SONNET_OUTPUT_PER_M = 15.00
+SONNET_CACHE_WRITE_PER_M = 3.75   # base × 1.25
+SONNET_CACHE_READ_PER_M = 0.30    # base × 0.10
 
 
 # ---------------------------------------------------------------------------
@@ -2312,6 +2321,91 @@ def _tool_save_profile_fact(field: str, value: str) -> tuple[str, float]:
     )
 
 
+def _int_attr(obj, name: str) -> int:
+    """Read an int attribute, returning 0 when missing or non-numeric.
+
+    Anthropic Usage objects expose cache_creation_input_tokens /
+    cache_read_input_tokens as ints (zero when caching wasn't engaged).
+    But test fixtures and older SDK versions may auto-create those
+    attributes as MagicMock — which is truthy and would poison the
+    arithmetic chain below. Coerce defensively so the cost code never
+    flows non-numeric values into model_cost / SQLite.
+    """
+    val = getattr(obj, name, 0) or 0
+    return val if isinstance(val, int) else 0
+
+
+# ---------------------------------------------------------------------------
+# Trivial-input early return — skip the Opus round trip on greetings, thanks,
+# yes/no acknowledgments. Each match returns a canned reply at $0 cost. Long
+# inputs, anything with a question mark, or anything beyond the curated
+# patterns always falls through to the real chad_turn loop.
+# ---------------------------------------------------------------------------
+
+import random as _random
+import re as _re
+
+
+_TRIVIAL_INPUT_PATTERNS: list[tuple[_re.Pattern[str], list[str]]] = [
+    (_re.compile(
+        r"^(hi+|hey+|hello+|howdy+|yo+|sup|"
+        r"good morning|good afternoon|good evening|"
+        r"morning|afternoon|evening)[!.\s]*$",
+        _re.IGNORECASE,
+    ), [
+        "Hey Chad — what's up?",
+        "Hey. What's on your mind?",
+        "Howdy. Need anything?",
+    ]),
+    (_re.compile(
+        r"^(thanks|thank you|thx|ty|"
+        r"appreciate it|much appreciated|"
+        r"thanks man|thanks chad)[!.\s]*$",
+        _re.IGNORECASE,
+    ), [
+        "Anytime.",
+        "You got it.",
+        "Glad I could help.",
+    ]),
+    (_re.compile(
+        r"^(yes|yep|yeah|ok|okay|sure|sounds good|"
+        r"got it|k|alright|cool|nice|right|copy|copy that|"
+        r"perfect|good deal)[!.\s]*$",
+        _re.IGNORECASE,
+    ), [
+        "Got it.",
+        "Standing by.",
+        "On standby — holler when you need me.",
+    ]),
+    (_re.compile(
+        r"^(no|nope|nah|not really|never mind|nm|"
+        r"hold off|forget it)[!.\s]*$",
+        _re.IGNORECASE,
+    ), [
+        "Standing by.",
+        "Got it — no action.",
+        "Understood.",
+    ]),
+]
+
+
+def _trivial_reply(user_input: str) -> str | None:
+    """Return a canned Chad-voice reply for conversational filler, or None.
+
+    Triggers only for short non-question inputs that match the curated
+    greeting / thanks / yes / no patterns. Anything ambiguous falls through
+    to the real chad_turn loop. Saves the static system + tools input cost
+    on turns that don't need any reasoning at all.
+    """
+    s = user_input.strip()
+    if not s or len(s) > 30 or "?" in s:
+        return None
+    for pattern, replies in _TRIVIAL_INPUT_PATTERNS:
+        if pattern.match(s):
+            return _random.choice(replies)
+    return None
+
+
 # ---------------------------------------------------------------------------
 # The agent loop
 # ---------------------------------------------------------------------------
@@ -2369,6 +2463,58 @@ def chad_turn(
     hb-chad, future backend callers).
     """
     started_at = time.time()
+
+    # ─── Trivial-input free path ──────────────────────────────────────────
+    # Greetings, thanks, yes/no, "got it" — answer with a canned Chad-voice
+    # reply and skip the API entirely. iOS still gets the full chad_turn
+    # success shape (answer + cost_usd=0 + iterations=0). The audit entry
+    # in .cost_log.jsonl tags these as model="trivial" so they're visible
+    # but don't move the daily caps.
+    canned = _trivial_reply(user_input)
+    if canned:
+        if conversation_id:
+            try:
+                conversation_store.get_or_create(
+                    conversation_id, user_id=user_id, project_id=project_id
+                )
+                conversation_store.append_message(
+                    conversation_id, "user", user_input,
+                    user_id=user_id, project_id=project_id,
+                )
+                conversation_store.append_message(
+                    conversation_id, "assistant", canned,
+                    tool_log=[],
+                    actions_taken=[],
+                    cost_usd=0.0,
+                    user_id=user_id, project_id=project_id,
+                )
+            except Exception as e:
+                print(
+                    f"[chad_turn] memory write failed for {conversation_id}: "
+                    f"{type(e).__name__}: {e}",
+                    file=sys.stderr,
+                )
+        record_cost(
+            agent="hb-chad",
+            model="trivial",
+            cost_usd=0.0,
+            note="canned reply (trivial input)",
+        )
+        return {
+            "input": user_input,
+            "answer": canned,
+            "actions_taken": [],
+            "tool_log": [],
+            "model": "trivial",
+            "model_fallback_used": False,
+            "fallback_reason": None,
+            "cost_usd": 0.0,
+            "opus_cost_usd": 0.0,
+            "sonnet_cost_usd": 0.0,
+            "downstream_cost_usd": 0.0,
+            "duration_ms": int((time.time() - started_at) * 1000),
+            "iterations": 0,
+        }
 
     # Imports are lazy so we surface auth errors cleanly even if the env
     # is missing the API key entirely.
@@ -2474,8 +2620,20 @@ def chad_turn(
     actions_taken: list[str] = []
     total_input_tokens = 0
     total_output_tokens = 0
+    total_cache_write_tokens = 0
+    total_cache_read_tokens = 0
     downstream_cost = 0.0
     iteration = 0  # initialize so the error path can reference it before the loop
+
+    # Prompt caching — biggest single cost lever.
+    # The system prompt (persona + project context + tool-selection guide) and
+    # the TOOLS array (~600 lines of schemas) are both static across the
+    # whole conversation, so we mark them for ephemeral cache and reuse
+    # them on every iteration of the tool loop AND every subsequent turn
+    # within the ~5-min TTL. First request pays a 1.25× write-through
+    # penalty; every read after that costs 10% of the input rate.
+    cached_system = cached_system_block(system)
+    cached_tools = tools_with_cache(TOOLS)
 
     try:
         for iteration in range(MAX_TOOL_LOOP_ITERATIONS):
@@ -2485,13 +2643,16 @@ def chad_turn(
             response = client.messages.create(
                 model=active_model,
                 max_tokens=CHAD_MAX_TOKENS,
-                system=system,
-                tools=TOOLS,
+                system=cached_system,
+                tools=cached_tools,
                 messages=messages,
+                extra_headers=PROMPT_CACHING_BETA_HEADER,
             )
 
             total_input_tokens += response.usage.input_tokens
             total_output_tokens += response.usage.output_tokens
+            total_cache_write_tokens += _int_attr(response.usage, "cache_creation_input_tokens")
+            total_cache_read_tokens += _int_attr(response.usage, "cache_read_input_tokens")
 
             if response.stop_reason == "end_turn":
                 for block in response.content:
@@ -2657,15 +2818,23 @@ def chad_turn(
 
             messages.append({"role": "user", "content": tool_results})
 
-        # Compute the Opus-or-Sonnet cost based on which tier we actually used.
+        # Compute model cost — input + cache-write + cache-read + output.
+        # With prompt caching wired, usage.input_tokens carries only the
+        # uncached portion; the static system + tools chunk lands in
+        # cache_creation on the first call of a TTL window (billed 1.25×)
+        # and cache_read on every subsequent call (billed 0.10×, 90% off).
         if active_model == CHAD_MODEL:
             model_cost = (
                 total_input_tokens * OPUS_INPUT_PER_M / 1_000_000
+                + total_cache_write_tokens * OPUS_CACHE_WRITE_PER_M / 1_000_000
+                + total_cache_read_tokens * OPUS_CACHE_READ_PER_M / 1_000_000
                 + total_output_tokens * OPUS_OUTPUT_PER_M / 1_000_000
             )
         else:
             model_cost = (
                 total_input_tokens * SONNET_INPUT_PER_M / 1_000_000
+                + total_cache_write_tokens * SONNET_CACHE_WRITE_PER_M / 1_000_000
+                + total_cache_read_tokens * SONNET_CACHE_READ_PER_M / 1_000_000
                 + total_output_tokens * SONNET_OUTPUT_PER_M / 1_000_000
             )
         duration_ms = int((time.time() - started_at) * 1000)
@@ -2745,11 +2914,15 @@ def chad_turn(
         if active_model == CHAD_MODEL:
             model_cost = (
                 total_input_tokens * OPUS_INPUT_PER_M / 1_000_000
+                + total_cache_write_tokens * OPUS_CACHE_WRITE_PER_M / 1_000_000
+                + total_cache_read_tokens * OPUS_CACHE_READ_PER_M / 1_000_000
                 + total_output_tokens * OPUS_OUTPUT_PER_M / 1_000_000
             )
         else:
             model_cost = (
                 total_input_tokens * SONNET_INPUT_PER_M / 1_000_000
+                + total_cache_write_tokens * SONNET_CACHE_WRITE_PER_M / 1_000_000
+                + total_cache_read_tokens * SONNET_CACHE_READ_PER_M / 1_000_000
                 + total_output_tokens * SONNET_OUTPUT_PER_M / 1_000_000
             )
         return {
@@ -2837,6 +3010,59 @@ def chad_turn_stream(
         event_id_counter += 1
         return (event_id_counter, event_type, payload)
 
+    # ─── Trivial-input free path ──────────────────────────────────────────
+    # Mirrors chad_turn() — greetings / thanks / yes / no get a canned
+    # Chad-voice reply with zero API cost. iOS sees the same SSE shape
+    # (one text_delta + one message_complete) so the renderer needs no
+    # special-case code.
+    canned = _trivial_reply(user_input)
+    if canned:
+        if conversation_id:
+            try:
+                conversation_store.get_or_create(
+                    conversation_id, user_id=user_id, project_id=project_id
+                )
+                conversation_store.append_message(
+                    conversation_id, "user", user_input,
+                    user_id=user_id, project_id=project_id,
+                )
+                conversation_store.append_message(
+                    conversation_id, "assistant", canned,
+                    tool_log=[],
+                    actions_taken=[],
+                    cost_usd=0.0,
+                    user_id=user_id, project_id=project_id,
+                )
+            except Exception as e:
+                print(
+                    f"[chad_turn_stream] memory write failed for "
+                    f"{conversation_id}: {type(e).__name__}: {e}",
+                    file=sys.stderr,
+                )
+        record_cost(
+            agent="hb-chad",
+            model="trivial",
+            cost_usd=0.0,
+            note="canned reply (trivial input)",
+        )
+        yield emit("text_delta", {"delta": canned})
+        yield emit("message_complete", {
+            "answer": canned,
+            "citations": [],
+            "tools_called": [],
+            "actions_taken": [],
+            "model": "trivial",
+            "cost_usd": 0.0,
+            "opus_cost_usd": 0.0,
+            "downstream_cost_usd": 0.0,
+            "duration_ms": int((time.time() - started_at) * 1000),
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "iterations": 0,
+            "onboarding_state": _onboarding_state(),
+        })
+        return
+
     # Setup — kept inline so setup failures surface as error events rather
     # than raising before the stream opens.
     try:
@@ -2889,7 +3115,15 @@ def chad_turn_stream(
     actions_taken: list[str] = []
     total_input_tokens = 0
     total_output_tokens = 0
+    total_cache_write_tokens = 0
+    total_cache_read_tokens = 0
     downstream_cost = 0.0
+
+    # Prompt caching — same pattern as chad_turn(). System prompt + TOOLS
+    # array are static across the whole conversation; cache once, reuse on
+    # every iteration and every subsequent turn within the ~5-min TTL.
+    cached_system = cached_system_block(system)
+    cached_tools = tools_with_cache(TOOLS)
 
     try:
         for iteration in range(MAX_TOOL_LOOP_ITERATIONS):
@@ -2899,9 +3133,10 @@ def chad_turn_stream(
             with client.messages.stream(
                 model=CHAD_MODEL,
                 max_tokens=CHAD_MAX_TOKENS,
-                system=system,
-                tools=TOOLS,
+                system=cached_system,
+                tools=cached_tools,
                 messages=messages,
+                extra_headers=PROMPT_CACHING_BETA_HEADER,
             ) as stream:
                 for event in stream:
                     if event.type == "content_block_delta" and event.delta.type == "text_delta":
@@ -2911,6 +3146,8 @@ def chad_turn_stream(
 
             total_input_tokens += final_message.usage.input_tokens
             total_output_tokens += final_message.usage.output_tokens
+            total_cache_write_tokens += _int_attr(final_message.usage, "cache_creation_input_tokens")
+            total_cache_read_tokens += _int_attr(final_message.usage, "cache_read_input_tokens")
 
             if final_message.stop_reason == "end_turn":
                 final_text = ""
@@ -2918,12 +3155,17 @@ def chad_turn_stream(
                     if block.type == "text":
                         final_text += block.text
 
-                opus_cost = (
+                # Local var shadowed the imported opus_cost() helper in the
+                # original code; renamed to model_cost so future refactors
+                # can reach the helper if they want.
+                model_cost = (
                     total_input_tokens * OPUS_INPUT_PER_M / 1_000_000
+                    + total_cache_write_tokens * OPUS_CACHE_WRITE_PER_M / 1_000_000
+                    + total_cache_read_tokens * OPUS_CACHE_READ_PER_M / 1_000_000
                     + total_output_tokens * OPUS_OUTPUT_PER_M / 1_000_000
                 )
                 final_answer = final_text.strip() or "(no answer produced)"
-                total_cost = round(opus_cost + downstream_cost, 4)
+                total_cost = round(model_cost + downstream_cost, 4)
 
                 # ─── Memory write-back ────────────────────────────────────
                 # Persist BOTH user + assistant before yielding
@@ -2958,7 +3200,7 @@ def chad_turn_stream(
                     "actions_taken": actions_taken,
                     "model": CHAD_MODEL,
                     "cost_usd": total_cost,
-                    "opus_cost_usd": round(opus_cost, 4),
+                    "opus_cost_usd": round(model_cost, 4),
                     "downstream_cost_usd": round(downstream_cost, 4),
                     "duration_ms": int((time.time() - started_at) * 1000),
                     "input_tokens": total_input_tokens,

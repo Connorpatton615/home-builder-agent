@@ -215,7 +215,11 @@ class TestStreamMemory:
             captured_messages = {}
             captured_system = {}
 
-            def capture_stream(*, model, max_tokens, system, tools, messages):
+            def capture_stream(*, model, max_tokens, system, tools, messages, **kw):
+                # **kw absorbs extra_headers + any future kwargs so the test
+                # doesn't break when production adds new ones (e.g.
+                # prompt-caching beta header). Assertions below are about
+                # what's captured, not what's ignored.
                 captured_system["text"] = system
                 captured_messages["list"] = messages
                 return _fake_stream_context("It's still on track.")
@@ -263,12 +267,21 @@ class TestStreamMemory:
         fake_client = MagicMock()
         fake_client.messages.stream = MagicMock(side_effect=capture_stream)
         with patch.object(chad_agent, "make_client", return_value=fake_client):
+            # NOT "hello" — that triggers the trivial-input free path and
+            # skips the API call entirely, so the system prompt is never
+            # observed. Use a real question to force the Opus loop.
             list(chad_agent.chad_turn_stream(
-                "hello", conversation_id="conv-Sum",
+                "what's the framing status?", conversation_id="conv-Sum",
             ))
 
-        assert "Earlier conversation context" in captured_system["text"]
-        assert "framing dates" in captured_system["text"]
+        # `system` is now passed as a structured content-block list (for
+        # prompt caching) rather than a plain string. Pull the text out
+        # of the cache block before asserting.
+        captured_text = captured_system["text"]
+        if isinstance(captured_text, list):
+            captured_text = "".join(b.get("text", "") for b in captured_text)
+        assert "Earlier conversation context" in captured_text
+        assert "framing dates" in captured_text
 
     def test_images_attached_to_first_user_message(self):
         from home_builder_agent.agents import chad_agent
