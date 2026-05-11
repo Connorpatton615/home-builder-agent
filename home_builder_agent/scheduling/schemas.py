@@ -738,6 +738,22 @@ class HBAskCitationAddedEvent(_Base):
     webViewLink: str = Field(description="Direct Drive URL the chip opens on tap.")
 
 
+class HBAskOnboardingState(_Base):
+    """Onboarding interview progress, surfaced on every message_complete.
+
+    iOS mirrors this into @AppStorage('onboardingComplete') for cold-launch
+    tab routing — incomplete → default tab Ask, complete → Dashboard.
+    """
+    complete: bool = Field(
+        description="True once the 10-question interview has finished. "
+                    "Once true, iOS defaults to the Dashboard tab.",
+    )
+    current_step: int = Field(
+        ge=0, le=10,
+        description="Number of interview fields saved so far (0–10).",
+    )
+
+
 class HBAskMessageCompleteEvent(_Base):
     """Terminal event. Full final answer + citations + cost + duration."""
     type: Literal["message_complete"] = "message_complete"
@@ -755,6 +771,12 @@ class HBAskMessageCompleteEvent(_Base):
     duration_ms: int = Field(ge=0)
     input_tokens: int = Field(ge=0)
     output_tokens: int = Field(ge=0)
+    onboarding_state: HBAskOnboardingState | None = Field(
+        default=None,
+        description="First-launch onboarding progress. Always present on the "
+                    "wire; iOS treats it as authoritative state for the "
+                    "onboardingComplete @AppStorage mirror.",
+    )
 
 
 class HBAskErrorEvent(_Base):

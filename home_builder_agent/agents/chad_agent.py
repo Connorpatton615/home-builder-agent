@@ -42,6 +42,7 @@ import sys
 import time
 from dataclasses import dataclass
 from datetime import date, datetime
+from pathlib import Path
 from typing import Iterator
 
 from anthropic import Anthropic
@@ -232,6 +233,137 @@ Style rules:
   • When a tool returns "Postgres unavailable" or "table not present",
     surface that to Chad plainly — don't hide infrastructure issues
     behind Chad-voice fiction. He needs to know when the system is degraded.
+"""
+
+
+# ---------------------------------------------------------------------------
+# Onboarding interview — first-launch flow
+# ---------------------------------------------------------------------------
+#
+# On first launch, iOS routes Chad to the Ask tab where he taps a pre-staged
+# "What do you know about me?" prompt. The agent responds with the existing
+# profile snapshot, then methodically interviews him through the 10 fields
+# below. Each answer is saved via save_profile_fact, which bumps
+# onboarding.current_step in ~/.hb-profile-proposed.json and flips
+# onboarding.complete=true when current_step >= 10. iOS reads the state from
+# each message_complete event and updates its @AppStorage mirror, which
+# controls the default tab on subsequent cold launches (Ask → Dashboard).
+
+ONBOARDING_QUESTIONS: list[tuple[str, str]] = [
+    ("daily_rhythm",
+     "When do you start most days and when do you tap out? Weekends — on or off?"),
+    ("comms_style",
+     "Want me to push you on stuff — follow up, nag if you ghost me — "
+     "or only answer when you ask? More direct or softer?"),
+    ("top_projects",
+     "Which 2–3 projects are eating most of your headspace this week?"),
+    ("trusted_subs",
+     "Who are your 3–4 most-reliable subs by trade — the ones you'd call "
+     "first without shopping around?"),
+    ("subs_to_avoid",
+     "Anyone you've burned with and won't use again? Don't have to name "
+     "names — just trade if it's awkward."),
+    ("material_vendors",
+     "Where do you usually source windows, framing lumber, and roofing? "
+     "Same place every time or you shop it?"),
+    ("change_order_style",
+     "When an owner pushes back on a quote or wants a scope change — "
+     "what's your usual move? Up-front pricing, soft no first, or sit on it?"),
+    ("permit_gotchas",
+     "Baldwin County permits — anything that bites first-timers but you "
+     "know to handle? Any inspectors you actively dodge?"),
+    ("cost_anomaly_thresholds",
+     "Rough numbers — fair permit fee on a 4,000 sq ft custom build? "
+     "'Something's off' framing-labor number on a job that size?"),
+    ("quiet_hours",
+     "What times or days should I leave you alone? Kids' stuff, church, "
+     "family dinner — anything I should treat as quiet hours?"),
+]
+
+_PROFILE_PATH = Path.home() / ".hb-profile-proposed.json"
+
+
+def _read_profile_raw() -> dict:
+    """Read the local profile JSON. Returns {} on any failure (best-effort)."""
+    try:
+        if _PROFILE_PATH.exists():
+            return json.loads(_PROFILE_PATH.read_text())
+    except Exception:
+        pass
+    return {}
+
+
+def _onboarding_state(profile: dict | None = None) -> dict:
+    """Return current onboarding state. Always returns a dict with both keys.
+
+    Shape: {"complete": bool, "current_step": int}. Missing/malformed
+    profile yields {"complete": False, "current_step": 0} so iOS always
+    has a definite answer to render against.
+    """
+    if profile is None:
+        profile = _read_profile_raw()
+    ob = profile.get("onboarding") or {}
+    return {
+        "complete": bool(ob.get("complete", False)),
+        "current_step": int(ob.get("current_step", 0)),
+    }
+
+
+def _build_onboarding_suffix(profile: dict) -> str | None:
+    """System-prompt suffix that puts the agent in interview mode.
+
+    Returns None when onboarding is complete — caller appends nothing.
+    Otherwise builds a checklist of the 10 fields (✓ = saved this profile)
+    plus tight rules: one question per turn, save before replying, no
+    bundling.
+    """
+    state = _onboarding_state(profile)
+    if state["complete"]:
+        return None
+
+    question_lines = []
+    for i, (field, prompt) in enumerate(ONBOARDING_QUESTIONS, start=1):
+        marker = "✓" if profile.get(field) else " "
+        question_lines.append(f"  {marker} {i}. {field} — {prompt}")
+    questions_block = "\n".join(question_lines)
+
+    return f"""
+
+[ONBOARDING MODE — first-time interview, {state["current_step"]}/10 saved]
+
+This is Chad's first conversation with you in this app. Your job this
+thread is to fill out the 10 profile fields below by interviewing him —
+one question per turn. After onboarding completes, iOS routes him to
+the Dashboard by default.
+
+The 10 fields and the question to ask each (✓ = already saved):
+
+{questions_block}
+
+Hard rules:
+  • Ask EXACTLY ONE question per turn from the list above. Never bundle two.
+  • Pick the next question by skipping any already saved (✓). Order doesn't
+    matter — choose what flows naturally from Chad's previous answer.
+  • After Chad answers, call save_profile_fact(field=<the field id>,
+    value=<his answer distilled — under 200 chars>) BEFORE writing your
+    next text reply. Multiple save_profile_fact calls in one turn are OK
+    if Chad volunteered info that maps to multiple fields.
+  • Be warm. Briefly acknowledge his answer, then move on. Don't lecture.
+  • If Chad pushes back or wants to skip, acknowledge and move on. Don't
+    pressure him to answer.
+  • When all 10 are saved, your next reply is a short wrap-up — e.g.
+    "Got it, that's enough to work with. Tap Dashboard when you're ready."
+    — and you STOP. Do NOT call save_profile_fact after step 10.
+  • Do NOT discuss app features, other tabs, or unrelated topics during
+    onboarding. Stay focused on the interview.
+
+First-turn special case:
+  If Chad's opening message is some variation of "what do you know
+  about me", lead with a tight summary of the CHAD'S PROFILE block
+  above (identity, company, operating context, communication style),
+  then transition with: "Now let me return the favor — 10 quick
+  questions so I can be useful from day one." Then ask the first
+  unfilled question.
 """
 
 
@@ -794,6 +926,42 @@ TOOLS = [
                 },
             },
             "required": ["to", "subject", "body"],
+        },
+    },
+    {
+        "name": "save_profile_fact",
+        "description": (
+            "Save a single field of Chad's profile during the first-launch "
+            "onboarding interview. Writes the value to "
+            "~/.hb-profile-proposed.json and bumps onboarding.current_step. "
+            "When current_step reaches 10, onboarding.complete flips to "
+            "true and iOS will route Chad to the Dashboard on next launch. "
+            "Use this ONLY during onboarding mode (see [ONBOARDING MODE] "
+            "block in the system prompt). Never invent values — only save "
+            "what Chad actually told you. Distill his answer to under 200 "
+            "chars but keep the substance."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "field": {
+                    "type": "string",
+                    "description": (
+                        "The profile field ID. Must be one of: daily_rhythm, "
+                        "comms_style, top_projects, trusted_subs, "
+                        "subs_to_avoid, material_vendors, change_order_style, "
+                        "permit_gotchas, cost_anomaly_thresholds, quiet_hours."
+                    ),
+                },
+                "value": {
+                    "type": "string",
+                    "description": (
+                        "Chad's answer, distilled to under 200 chars. Plain "
+                        "text. Strip filler, keep the substance."
+                    ),
+                },
+            },
+            "required": ["field", "value"],
         },
     },
 ]
@@ -2078,6 +2246,62 @@ def _tool_approve_draft_action(
     )
 
 
+def _tool_save_profile_fact(field: str, value: str) -> tuple[str, float]:
+    """Save a single profile field. Used during the onboarding interview.
+
+    Writes ~/.hb-profile-proposed.json, increments onboarding.current_step,
+    and sets onboarding.complete=true when step hits 10. Returns
+    (status_text, cost_usd=0) — no Claude call here, just disk I/O.
+    """
+    valid_fields = {f for f, _ in ONBOARDING_QUESTIONS}
+    if field not in valid_fields:
+        return (
+            f"save_profile_fact: unknown field {field!r}. Valid: "
+            f"{sorted(valid_fields)}",
+            0.0,
+        )
+
+    # Clamp to 500 chars even though the prompt asks for 200 — defense
+    # against a chatty model bloating the profile.
+    value = (value or "").strip()[:500]
+    if not value:
+        return ("save_profile_fact: empty value, not saved.", 0.0)
+
+    try:
+        data = (
+            json.loads(_PROFILE_PATH.read_text())
+            if _PROFILE_PATH.exists()
+            else {}
+        )
+    except Exception as e:
+        return (
+            f"save_profile_fact: profile read failed — "
+            f"{type(e).__name__}: {e}",
+            0.0,
+        )
+
+    data[field] = value
+    ob = data.setdefault("onboarding", {"complete": False, "current_step": 0})
+    ob["current_step"] = min(int(ob.get("current_step", 0)) + 1, 10)
+    if ob["current_step"] >= 10:
+        ob["complete"] = True
+
+    try:
+        _PROFILE_PATH.write_text(json.dumps(data, indent=2) + "\n")
+    except Exception as e:
+        return (
+            f"save_profile_fact: profile write failed — "
+            f"{type(e).__name__}: {e}",
+            0.0,
+        )
+
+    status = "complete" if ob["complete"] else "in progress"
+    return (
+        f"Saved {field!r}. Onboarding {ob['current_step']}/10 ({status}).",
+        0.0,
+    )
+
+
 # ---------------------------------------------------------------------------
 # The agent loop
 # ---------------------------------------------------------------------------
@@ -2608,11 +2832,15 @@ def chad_turn_stream(
     try:
         client = make_client()
         voice = chad_voice_system("narrator")
+        profile_data = _read_profile_raw()
         ctx_block = get_chad_context().to_prompt_block()
         system = (
             f"{voice}\n\n{ctx_block}\n{PERSONA_SUFFIX}\n"
             f"TODAY: {date.today().strftime('%A, %B %-d, %Y')}"
         )
+        onboarding_suffix = _build_onboarding_suffix(profile_data)
+        if onboarding_suffix:
+            system += onboarding_suffix
     except Exception as e:
         yield emit("error", {
             "type": type(e).__name__,
@@ -2726,6 +2954,7 @@ def chad_turn_stream(
                     "input_tokens": total_input_tokens,
                     "output_tokens": total_output_tokens,
                     "iterations": iteration + 1,
+                    "onboarding_state": _onboarding_state(),
                 })
                 return
 
@@ -2897,6 +3126,13 @@ def chad_turn_stream(
                         actions_taken.append(
                             f"drafted email to {inputs.get('to', '?')}"
                         )
+                    elif block.name == "save_profile_fact":
+                        output, cost = _tool_save_profile_fact(
+                            field=inputs.get("field", ""),
+                            value=inputs.get("value", ""),
+                        )
+                        # Onboarding writes aren't tracked as "actions_taken"
+                        # — they're internal state, not visible work.
                     else:
                         output = f"Unknown tool: {block.name}"
                         cost = 0.0
