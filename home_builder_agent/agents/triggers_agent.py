@@ -116,7 +116,17 @@ def _print_pretty(results: list) -> None:
     print(f"{'='*64}\n")
 
 
-@beat_on_success("notification-triggers", stale_after_seconds=90000)
+@beat_on_success(
+    "notification-triggers",
+    stale_after_seconds=90000,
+    # exit 2 means at least one project errored — the pass STILL completed,
+    # the cron STILL fired, and the script is STILL healthy. The heartbeat
+    # must beat so the watchdog distinguishes "one bad project" from "cron
+    # didn't fire" or "script crashed on startup". Per-project errors are
+    # already surfaced via the pass_complete JSON log payload (errors=N).
+    # Mirrors how reconcile widens to (0, 3) for the same reason.
+    success_codes=(0, 2),
+)
 def main() -> None:
     configure_json_logging("hb-triggers")
     correlation_id = uuid.uuid4().hex
