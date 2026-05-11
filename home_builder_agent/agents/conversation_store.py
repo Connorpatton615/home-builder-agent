@@ -385,12 +385,12 @@ def message_count(conversation_id: str) -> int:
 # Pruning
 # ---------------------------------------------------------------------------
 
-# Threshold: prune when this many messages exist (per the user prompt's
-# spec: "if messages for this conversation now exceeds 20 rows"). Keep
-# the most recent KEEP_RECENT in SQLite + the context window; everything
-# older is summarized then deleted.
-PRUNE_THRESHOLD = 20
-KEEP_RECENT = 8
+# Threshold: prune when this many messages exist. Keep the most recent
+# KEEP_RECENT in SQLite + the context window; everything older is
+# summarized then deleted. Sized so load_recent_turns(n=16) survives a
+# prune — KEEP_RECENT must be ≥ the largest `n` any caller requests.
+PRUNE_THRESHOLD = 30
+KEEP_RECENT = 16
 
 # Sonnet model id for summarization. Mirrors core/claude_client + config.
 _SUMMARY_MODEL = "claude-sonnet-4-6"
