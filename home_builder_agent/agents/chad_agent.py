@@ -223,9 +223,20 @@ receipt." Good: "Logged the $400 receipt against Whitfield."
   "start a new project Maple Ridge"  create_project
   "clone Whitfield as Pelican Pt"    clone_project
   "create X like Pelican Point"      clone_project  (NOT create_project)
+  "set customer email on Whitfield"  update_customer_info
+  "phone for Bradfords is 251-555…"  update_customer_info
+  "job code Pelican Point is PP-26"  update_customer_info
+  "address for Maple Ridge is …"     update_customer_info
+  "note on Whitfield: Tuesday walk"  update_customer_info  (project-level, NOT log_site_note)
+  "push framing end to June 12"      update_schedule_date
+  "foundation starts Monday"         update_schedule_date
+  "move drywall to 2026-09-08"       update_schedule_date
+  "put trim before painting"         reorder_phase
+  "move HVAC to position 8"          reorder_phase
+  "make framing the first phase"     reorder_phase
   "log a $400 receipt for X"         dispatch_action
   "create a CO for cabinet upgrade"  dispatch_action
-  "push framing two weeks"           dispatch_action
+  "push framing two weeks"           dispatch_action  (use update_schedule_date if Chad cites exact dates)
   "save this chat to project folder" write_to_drive
   "export this conversation to .md"  write_to_drive
   "put that spec in Whitfield's"     write_to_drive
@@ -981,6 +992,188 @@ TOOLS = [
                 },
             },
             "required": ["field", "value"],
+        },
+    },
+    {
+        "name": "update_customer_info",
+        "description": (
+            "Update one or more customer-info fields on a project — "
+            "customer_name, customer_email, customer_phone, address, "
+            "job_code, or notes. Postgres-canonical replacement for "
+            "Connor's manual Tracker Project Info edits (per ADR "
+            "2026-05-11). Only fields you explicitly pass are written — "
+            "unprovided fields are NEVER nulled-out. Use when Chad says "
+            "'set the customer email on Whitfield to jane@example.com', "
+            "'phone for the Bradfords is 251-555-0142', 'job code for "
+            "Pelican Point is PP-2026', 'address for Maple Ridge is 123 "
+            "Main St', 'note on Whitfield: client wants Tuesday walkthroughs'. "
+            "Empty-string values are rejected (looks like a typo) — to "
+            "intentionally clear a field, pass null. Returns a "
+            "Chad-voice confirmation."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_id": {
+                    "type": "string",
+                    "description": (
+                        "UUID of the project to update. Required. Resolve "
+                        "from name via ask_chad / read_morning_view first "
+                        "if Chad named the project but you don't have the "
+                        "UUID."
+                    ),
+                },
+                "customer_name": {
+                    "type": "string",
+                    "description": (
+                        "Customer / homeowner name. Optional. Overwrites "
+                        "the legacy 'TBD' default cleanly."
+                    ),
+                },
+                "customer_email": {
+                    "type": "string",
+                    "description": (
+                        "Primary customer email. Loose 'something@something' "
+                        "validation — refuses obviously malformed input."
+                    ),
+                },
+                "customer_phone": {
+                    "type": "string",
+                    "description": (
+                        "Primary customer phone. Accepts '(251) 555-0142' "
+                        "or '2515550142' — non-digits stripped, must yield "
+                        "10 digits."
+                    ),
+                },
+                "address": {
+                    "type": "string",
+                    "description": "Project street address. Free-form text.",
+                },
+                "job_code": {
+                    "type": "string",
+                    "description": (
+                        "Optional short identifier (e.g. 'WHIT-2026') used "
+                        "in invoices, change orders, Tracker filenames."
+                    ),
+                },
+                "notes": {
+                    "type": "string",
+                    "description": (
+                        "Free-form project-level notes. Not for site notes "
+                        "(those go through log_site_note)."
+                    ),
+                },
+            },
+            "required": ["project_id"],
+        },
+    },
+    {
+        "name": "update_schedule_date",
+        "description": (
+            "Update planned_start_date and/or planned_end_date on a "
+            "single phase. Postgres-canonical replacement for manual "
+            "Tracker Master Schedule edits (per ADR 2026-05-11). "
+            "Identify the phase by EITHER phase_sequence_index (1–24) OR "
+            "phase_name (case-insensitive substring) — not both. Use "
+            "when Chad says 'push framing end to June 12', 'foundation "
+            "starts Monday', 'move drywall back a week to 2026-09-08'. "
+            "End date must be ≥ start date (if you pass only one, the "
+            "other is fetched from DB and validated). If shifting end "
+            "would push the next phase's start earlier than its current "
+            "value, you'll get a cascade_warning back — surface that to "
+            "Chad and ASK whether he wants the downstream phases shifted "
+            "(do NOT auto-cascade; that's a separate explicit operation)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_id": {
+                    "type": "string",
+                    "description": "UUID of the project. Required.",
+                },
+                "phase_sequence_index": {
+                    "type": "integer",
+                    "description": (
+                        "Phase position 1–24. Use this when Chad cited a "
+                        "phase by number ('move phase 3 to…')."
+                    ),
+                },
+                "phase_name": {
+                    "type": "string",
+                    "description": (
+                        "Phase name (case-insensitive substring OK — "
+                        "'framing' matches 'Framing'). Use this when Chad "
+                        "named the phase. If the substring matches >1 "
+                        "phase, the handler returns an 'ambiguous' error "
+                        "listing candidates."
+                    ),
+                },
+                "planned_start_date": {
+                    "type": "string",
+                    "description": (
+                        "YYYY-MM-DD planned start date. Optional but at "
+                        "least one of start / end is required."
+                    ),
+                },
+                "planned_end_date": {
+                    "type": "string",
+                    "description": (
+                        "YYYY-MM-DD planned end date. Optional but at "
+                        "least one of start / end is required."
+                    ),
+                },
+            },
+            "required": ["project_id"],
+        },
+    },
+    {
+        "name": "reorder_phase",
+        "description": (
+            "Move a single phase to a new position in the project's "
+            "schedule. Park-and-swap pattern, transaction-wrapped — "
+            "respects the (project_id, sequence_index) UNIQUE "
+            "constraint without a schema change. Postgres-canonical "
+            "replacement for drag-and-drop reordering Connor used to do "
+            "in the Tracker (per ADR 2026-05-11). Identify the moving "
+            "phase by phase_sequence_index OR phase_name (not both); "
+            "pass new_position as the integer target (1–N, where N is "
+            "the highest existing sequence_index for the project — no "
+            "gaps allowed). Use when Chad says 'move trim before "
+            "painting', 'put framing first', 'shift HVAC to position 8'. "
+            "If new_position equals the current position, returns a "
+            "no-op confirmation without touching the DB. Bulk reorders "
+            "are out of scope — call this once per phase."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "project_id": {
+                    "type": "string",
+                    "description": "UUID of the project. Required.",
+                },
+                "phase_sequence_index": {
+                    "type": "integer",
+                    "description": (
+                        "Current position of the phase to move (1–24)."
+                    ),
+                },
+                "phase_name": {
+                    "type": "string",
+                    "description": (
+                        "Phase name (case-insensitive substring OK). "
+                        "Ambiguous matches return an error listing "
+                        "candidates."
+                    ),
+                },
+                "new_position": {
+                    "type": "integer",
+                    "description": (
+                        "Target sequence_index, 1 ≤ new_position ≤ "
+                        "max_seq_index_for_project. Required."
+                    ),
+                },
+            },
+            "required": ["project_id", "new_position"],
         },
     },
 ]
@@ -1793,6 +1986,683 @@ def _tool_clone_project(
         f"(status=not-started, NULL actuals).{next_step}",
         0.0,
     )
+
+
+# ---------------------------------------------------------------------------
+# Tracker-canonicalization input tools (ADR 2026-05-11)
+# ---------------------------------------------------------------------------
+#
+# `update_customer_info`, `update_schedule_date`, and `reorder_phase` are
+# the input surface that replaces Connor's manual Google Sheets Tracker
+# edits now that Postgres is canonical for home-builder project state.
+#
+# All three:
+#   - operate directly on home_builder.{project,phase} via the existing
+#     postgres.connection() context manager (autocommit off → atomic
+#     commit on clean exit, rollback on exception)
+#   - return (chad_voice_text, cost_usd_=0) like the rest of the tool
+#     family (no Claude call inside; pure DB writes)
+#   - return a SECOND structured-result payload appended to the text so
+#     the agent has a machine-readable summary for its own awareness.
+#     The agent NEVER echoes the structured block to Chad verbatim —
+#     persona rules below the PERSONA_SUFFIX section enforce that.
+
+# Loose email regex — same posture as the rest of the suite: accept
+# anything that looks like x@y, reject obviously malformed input. We are
+# NOT trying to RFC-validate addresses; we're catching typos.
+import re as _re
+
+_EMAIL_RE = _re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+def _normalize_phone(raw: str) -> str | None:
+    """Strip non-digits from raw; return the digit-only string if it has
+    exactly 10 digits, else None. Accepts '(251) 555-0142', '251-555-0142',
+    '2515550142', etc.
+    """
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if len(digits) == 10:
+        return digits
+    return None
+
+
+# Allowlist of mutable customer-info fields. Order matters for the
+# Chad-voice confirmation suffix (fields are listed in this order).
+_CUSTOMER_INFO_FIELDS: tuple[str, ...] = (
+    "customer_name",
+    "customer_email",
+    "customer_phone",
+    "address",
+    "job_code",
+    "notes",
+)
+
+
+def _tool_update_customer_info(
+    project_id: str,
+    *,
+    customer_name: str | None = None,
+    customer_email: str | None = None,
+    customer_phone: str | None = None,
+    address: str | None = None,
+    job_code: str | None = None,
+    notes: str | None = None,
+    dry_run: bool = False,
+) -> tuple[str, float]:
+    """Update customer-info fields on home_builder.project.
+
+    Only fields explicitly passed (not None) are written. Empty-string
+    values are rejected — to intentionally clear a field, the caller
+    should pass null (Python None). Anthropic tool inputs distinguish
+    "absent" (key not in dict, default None on this side) from "present
+    but empty" (key present, value ""), so we can enforce the rule
+    without ambiguity.
+
+    Per ADR 2026-05-11 (Postgres-canonical home-builder project state),
+    this is the replacement for Connor's manual Tracker Project Info
+    edits.
+    """
+    if not project_id or not str(project_id).strip():
+        return "update_customer_info: project_id is required.", 0.0
+
+    # Collect provided fields. Critical contract: caller passes None for
+    # "I didn't touch this"; caller passes "" only as a mistake — reject.
+    provided: dict[str, str | None] = {}
+    raw_inputs = {
+        "customer_name": customer_name,
+        "customer_email": customer_email,
+        "customer_phone": customer_phone,
+        "address": address,
+        "job_code": job_code,
+        "notes": notes,
+    }
+    for fname, val in raw_inputs.items():
+        if val is None:
+            continue  # absent → leave DB row alone
+        if isinstance(val, str) and val == "":
+            return (
+                f"update_customer_info: {fname} was empty — to clear a "
+                "field, send null explicitly; empty looks like a typo.",
+                0.0,
+            )
+        provided[fname] = val
+
+    if not provided:
+        return (
+            "update_customer_info: at least one of customer_name, "
+            "customer_email, customer_phone, address, job_code, or notes "
+            "must be provided.",
+            0.0,
+        )
+
+    # Validation.
+    if "customer_email" in provided:
+        email_val = provided["customer_email"]
+        if not _EMAIL_RE.match(email_val.strip()):
+            return (
+                f"update_customer_info: customer_email "
+                f"{email_val!r} doesn't look like an email "
+                "(expecting something@something.tld).",
+                0.0,
+            )
+        provided["customer_email"] = email_val.strip()
+
+    if "customer_phone" in provided:
+        phone_val = provided["customer_phone"]
+        normalized = _normalize_phone(phone_val)
+        if normalized is None:
+            return (
+                f"update_customer_info: customer_phone "
+                f"{phone_val!r} doesn't have 10 digits. Accepted: "
+                "'(251) 555-0142', '251-555-0142', '2515550142'.",
+                0.0,
+            )
+        provided["customer_phone"] = normalized
+
+    if dry_run:
+        fields_str = ", ".join(sorted(provided.keys()))
+        return (
+            f"(dry-run) Would update {fields_str} on project "
+            f"{project_id[:8]}…",
+            0.0,
+        )
+
+    # Lazy import — keep cold-start fast and avoid pulling psycopg into
+    # tooling that doesn't need it.
+    try:
+        from home_builder_agent.integrations.postgres import connection
+    except Exception as e:
+        return (
+            f"update_customer_info: import failed — {type(e).__name__}: {e}",
+            0.0,
+        )
+
+    set_clauses = ", ".join(f"{f} = %s" for f in provided.keys())
+    params: list = list(provided.values())
+    params.append(project_id)
+
+    try:
+        with connection(application_name="hb-chad-update-customer-info") as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    UPDATE home_builder.project
+                    SET {set_clauses}
+                    WHERE id = %s::uuid
+                    RETURNING name
+                    """,
+                    tuple(params),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return (
+                        f"update_customer_info: no project matched id "
+                        f"{project_id[:8]}…",
+                        0.0,
+                    )
+                project_name_db = row["name"]
+    except Exception as e:
+        return (
+            f"update_customer_info: DB write failed — "
+            f"{type(e).__name__}: {e}",
+            0.0,
+        )
+
+    # Chad-voice confirmation — concrete, status-led, no tool names.
+    # List the updated fields in canonical order for readability.
+    in_order = [f for f in _CUSTOMER_INFO_FIELDS if f in provided]
+    pretty = {
+        "customer_name": "name",
+        "customer_email": "email",
+        "customer_phone": "phone",
+        "address": "address",
+        "job_code": "job code",
+        "notes": "notes",
+    }
+    label_list = [pretty[f] for f in in_order]
+    if len(label_list) == 1:
+        labels = label_list[0]
+    elif len(label_list) == 2:
+        labels = f"{label_list[0]} + {label_list[1]}"
+    else:
+        labels = ", ".join(label_list[:-1]) + f", + {label_list[-1]}"
+
+    summary = (
+        f"Updated {project_name_db} — {labels} on file."
+        f"\n\n[updated_fields: {in_order}]"
+    )
+    return summary, 0.0
+
+
+def _resolve_phase_for_project(
+    cur,
+    project_id: str,
+    *,
+    phase_sequence_index: int | None,
+    phase_name: str | None,
+) -> tuple[dict | None, list[dict], str | None]:
+    """Look up a single phase row inside an open cursor.
+
+    Returns (row, candidates, error_message):
+      - row: the matched phase row dict, or None
+      - candidates: when phase_name matched >1 row, the candidate list
+        (used to compose an "ambiguous" error). Empty otherwise.
+      - error_message: a Chad-voice error string when resolution fails,
+        else None. If error_message is set, row will be None.
+
+    All callers must be inside a transaction (so the SELECT and any
+    subsequent UPDATE see a consistent snapshot).
+    """
+    if phase_sequence_index is None and not phase_name:
+        return (
+            None,
+            [],
+            "phase_sequence_index or phase_name is required to identify the phase.",
+        )
+    if phase_sequence_index is not None and phase_name:
+        return (
+            None,
+            [],
+            "pass phase_sequence_index OR phase_name — not both.",
+        )
+
+    if phase_sequence_index is not None:
+        cur.execute(
+            """
+            SELECT id::text AS id, name, sequence_index,
+                   planned_start_date, planned_end_date
+            FROM home_builder.phase
+            WHERE project_id = %s::uuid
+              AND sequence_index = %s
+            """,
+            (project_id, phase_sequence_index),
+        )
+        row = cur.fetchone()
+        if not row:
+            return (
+                None,
+                [],
+                f"no phase at position {phase_sequence_index} on this project.",
+            )
+        return row, [], None
+
+    # phase_name lookup — ILIKE substring, up to 5 candidates surfaced.
+    cur.execute(
+        """
+        SELECT id::text AS id, name, sequence_index,
+               planned_start_date, planned_end_date
+        FROM home_builder.phase
+        WHERE project_id = %s::uuid
+          AND name ILIKE %s
+        ORDER BY sequence_index ASC
+        LIMIT 5
+        """,
+        (project_id, f"%{phase_name}%"),
+    )
+    rows = list(cur.fetchall())
+    if not rows:
+        return (
+            None,
+            [],
+            f"no phase on this project matches {phase_name!r}.",
+        )
+    if len(rows) > 1:
+        return None, rows, "ambiguous phase_name — multiple matches."
+    return rows[0], [], None
+
+
+def _tool_update_schedule_date(
+    project_id: str,
+    *,
+    phase_sequence_index: int | None = None,
+    phase_name: str | None = None,
+    planned_start_date: str | None = None,
+    planned_end_date: str | None = None,
+    dry_run: bool = False,
+) -> tuple[str, float]:
+    """Update planned_start_date and/or planned_end_date on a single phase.
+
+    Cascade-aware: if end_date moves later and pushes against the next
+    phase's planned_start_date, we INCLUDE a warning in the response.
+    We do NOT auto-cascade — Chad has to make that call explicitly.
+    """
+    if not project_id or not str(project_id).strip():
+        return "update_schedule_date: project_id is required.", 0.0
+    if planned_start_date is None and planned_end_date is None:
+        return (
+            "update_schedule_date: at least one of planned_start_date or "
+            "planned_end_date is required.",
+            0.0,
+        )
+
+    new_start = _parse_iso_date(planned_start_date)
+    new_end = _parse_iso_date(planned_end_date)
+    if new_start is _DATE_PARSE_ERROR:
+        return (
+            f"update_schedule_date: planned_start_date "
+            f"{planned_start_date!r} is not a valid YYYY-MM-DD.",
+            0.0,
+        )
+    if new_end is _DATE_PARSE_ERROR:
+        return (
+            f"update_schedule_date: planned_end_date "
+            f"{planned_end_date!r} is not a valid YYYY-MM-DD.",
+            0.0,
+        )
+
+    try:
+        from home_builder_agent.integrations.postgres import connection
+    except Exception as e:
+        return (
+            f"update_schedule_date: import failed — {type(e).__name__}: {e}",
+            0.0,
+        )
+
+    try:
+        with connection(application_name="hb-chad-update-schedule-date") as conn:
+            with conn.cursor() as cur:
+                row, candidates, err = _resolve_phase_for_project(
+                    cur,
+                    project_id,
+                    phase_sequence_index=phase_sequence_index,
+                    phase_name=phase_name,
+                )
+                if err:
+                    if candidates:
+                        opts = ", ".join(
+                            f"{c['name']} (#{c['sequence_index']})"
+                            for c in candidates
+                        )
+                        return (
+                            f"update_schedule_date: ambiguous phase_name "
+                            f"{phase_name!r}. Candidates: {opts}. Pass "
+                            "phase_sequence_index to disambiguate.",
+                            0.0,
+                        )
+                    return f"update_schedule_date: {err}", 0.0
+
+                old_start = row["planned_start_date"]
+                old_end = row["planned_end_date"]
+                effective_start = new_start if new_start is not None else old_start
+                effective_end = new_end if new_end is not None else old_end
+
+                if (
+                    effective_start is not None
+                    and effective_end is not None
+                    and effective_end < effective_start
+                ):
+                    return (
+                        f"update_schedule_date: end date "
+                        f"{effective_end} is before start date "
+                        f"{effective_start}. Refusing to write inverted "
+                        "range.",
+                        0.0,
+                    )
+
+                # Cascade check: if we changed end_date, look at the next
+                # phase. Warn if its current planned_start_date is now
+                # earlier than effective_end (the next phase would
+                # nominally start before this one wraps).
+                cascade_warning: str | None = None
+                if new_end is not None:
+                    cur.execute(
+                        """
+                        SELECT id::text AS id, name, sequence_index,
+                               planned_start_date
+                        FROM home_builder.phase
+                        WHERE project_id = %s::uuid
+                          AND sequence_index > %s
+                        ORDER BY sequence_index ASC
+                        LIMIT 1
+                        """,
+                        (project_id, row["sequence_index"]),
+                    )
+                    next_row = cur.fetchone()
+                    if (
+                        next_row
+                        and next_row.get("planned_start_date") is not None
+                        and effective_end is not None
+                        and next_row["planned_start_date"] < effective_end
+                    ):
+                        cascade_warning = (
+                            f"next phase '{next_row['name']}' "
+                            f"(#{next_row['sequence_index']}) currently "
+                            f"starts {next_row['planned_start_date']} — "
+                            f"that's earlier than this phase's new end "
+                            f"{effective_end}. Did NOT auto-shift "
+                            "downstream phases."
+                        )
+
+                if dry_run:
+                    return (
+                        f"(dry-run) Would update {row['name']} "
+                        f"(#{row['sequence_index']}): "
+                        f"start {old_start}→{effective_start}, "
+                        f"end {old_end}→{effective_end}.",
+                        0.0,
+                    )
+
+                # Build the SET clause from only the fields the caller
+                # actually passed; never null-out unprovided fields.
+                set_parts: list[str] = []
+                params: list = []
+                if new_start is not None:
+                    set_parts.append("planned_start_date = %s")
+                    params.append(new_start)
+                if new_end is not None:
+                    set_parts.append("planned_end_date = %s")
+                    params.append(new_end)
+                params.append(row["id"])
+
+                cur.execute(
+                    f"""
+                    UPDATE home_builder.phase
+                    SET {', '.join(set_parts)}
+                    WHERE id = %s::uuid
+                    """,
+                    tuple(params),
+                )
+    except Exception as e:
+        return (
+            f"update_schedule_date: DB write failed — "
+            f"{type(e).__name__}: {e}",
+            0.0,
+        )
+
+    # Chad-voice confirmation.
+    parts: list[str] = []
+    if new_start is not None:
+        parts.append(f"start {old_start}→{effective_start}")
+    if new_end is not None:
+        parts.append(f"end {old_end}→{effective_end}")
+    change_str = ", ".join(parts)
+
+    body = (
+        f"{row['name']} (#{row['sequence_index']}): {change_str}."
+    )
+    if cascade_warning:
+        body += f" Heads up — {cascade_warning}"
+
+    structured = {
+        "phase_name": row["name"],
+        "sequence_index": row["sequence_index"],
+        "old_dates": {
+            "planned_start_date": str(old_start) if old_start else None,
+            "planned_end_date": str(old_end) if old_end else None,
+        },
+        "new_dates": {
+            "planned_start_date": str(effective_start) if effective_start else None,
+            "planned_end_date": str(effective_end) if effective_end else None,
+        },
+        "cascade_warning": cascade_warning,
+    }
+    return f"{body}\n\n[update_schedule_date: {structured}]", 0.0
+
+
+def _tool_reorder_phase(
+    project_id: str,
+    new_position: int,
+    *,
+    phase_sequence_index: int | None = None,
+    phase_name: str | None = None,
+    dry_run: bool = False,
+) -> tuple[str, float]:
+    """Move a single phase to a new position.
+
+    Park-and-swap pattern wrapped in the transaction the postgres
+    `connection()` context manager already gives us (autocommit off
+    by default, commits on clean exit, rolls back on exception):
+
+      1. resolve moving_id + old_position from inputs
+      2. validate new_position is in [1, max_seq_index_for_project]
+      3. park the moving row at sequence_index = 0
+      4. shift the rows in between by ±1, direction-aware
+      5. land the moving row at new_position
+
+    The single-cursor / single-transaction execution + sentinel parking
+    is what makes this safe under the
+    `UNIQUE (project_id, sequence_index)` constraint without needing a
+    schema-level DEFERRABLE. ADR 2026-05-11 lists it as the prescribed
+    approach.
+
+    Migration 012 (2026-05-11) widened the table's CHECK constraint
+    from BETWEEN 1 AND 24 to BETWEEN 0 AND 24 so that 0 is a legal
+    transient sentinel. Without that, the park step would raise per
+    Postgres's per-statement CHECK enforcement (CHECK is not
+    deferrable). Final state of any committed transaction still
+    lands in [1, 24].
+    """
+    if not project_id or not str(project_id).strip():
+        return "reorder_phase: project_id is required.", 0.0
+    if not isinstance(new_position, int):
+        return (
+            f"reorder_phase: new_position must be an integer "
+            f"(got {type(new_position).__name__}).",
+            0.0,
+        )
+    if new_position < 1:
+        return (
+            f"reorder_phase: new_position must be ≥ 1 (got {new_position}).",
+            0.0,
+        )
+
+    try:
+        from home_builder_agent.integrations.postgres import connection
+    except Exception as e:
+        return (
+            f"reorder_phase: import failed — {type(e).__name__}: {e}",
+            0.0,
+        )
+
+    try:
+        with connection(application_name="hb-chad-reorder-phase") as conn:
+            with conn.cursor() as cur:
+                row, candidates, err = _resolve_phase_for_project(
+                    cur,
+                    project_id,
+                    phase_sequence_index=phase_sequence_index,
+                    phase_name=phase_name,
+                )
+                if err:
+                    if candidates:
+                        opts = ", ".join(
+                            f"{c['name']} (#{c['sequence_index']})"
+                            for c in candidates
+                        )
+                        return (
+                            f"reorder_phase: ambiguous phase_name "
+                            f"{phase_name!r}. Candidates: {opts}. Pass "
+                            "phase_sequence_index to disambiguate.",
+                            0.0,
+                        )
+                    return f"reorder_phase: {err}", 0.0
+
+                old_position = row["sequence_index"]
+                moving_id = row["id"]
+
+                # Validate new_position is within the project's existing
+                # range — no gaps, no above-max moves.
+                cur.execute(
+                    """
+                    SELECT MAX(sequence_index) AS max_idx
+                    FROM home_builder.phase
+                    WHERE project_id = %s::uuid
+                    """,
+                    (project_id,),
+                )
+                max_row = cur.fetchone()
+                max_idx = (max_row or {}).get("max_idx") or 0
+                if new_position > max_idx:
+                    return (
+                        f"reorder_phase: new_position {new_position} is "
+                        f"above the project's highest phase position "
+                        f"({max_idx}). Don't create a gap — pick a "
+                        f"position in [1, {max_idx}].",
+                        0.0,
+                    )
+
+                if new_position == old_position:
+                    # No-op — don't touch the DB at all.
+                    return (
+                        f"{row['name']} is already at position "
+                        f"{old_position}. No change."
+                        f"\n\n[reorder_phase: "
+                        f"{{'phase_name': {row['name']!r}, "
+                        f"'old_position': {old_position}, "
+                        f"'new_position': {new_position}, "
+                        f"'shifted_phases': []}}]",
+                        0.0,
+                    )
+
+                if dry_run:
+                    return (
+                        f"(dry-run) Would move {row['name']} from "
+                        f"position {old_position} → {new_position}.",
+                        0.0,
+                    )
+
+                # Park the moving row at sequence_index = 0, the
+                # CHECK-constraint-legal parking sentinel.
+                #
+                # CTO review 2026-05-11 caught that an earlier draft
+                # used -1 as the sentinel based on a wrong assumption
+                # about Postgres CHECK constraint deferral. CHECK
+                # constraints are NOT deferrable in Postgres — they
+                # fire per-statement, not at COMMIT. So `-1` would
+                # have raised the moment the UPDATE ran. Migration
+                # 012 widened the constraint from BETWEEN 1 AND 24 to
+                # BETWEEN 0 AND 24 so that 0 is a legal transient
+                # sentinel; final state of any committed transaction
+                # still lands in [1, 24].
+                #
+                # The UNIQUE (project_id, sequence_index) constraint
+                # has no row at 0 to collide with — the parking row
+                # is alone in that slot, then we shift the in-between
+                # phases, then land the parked row at new_position.
+                cur.execute(
+                    """
+                    UPDATE home_builder.phase
+                    SET sequence_index = 0
+                    WHERE id = %s::uuid
+                    """,
+                    (moving_id,),
+                )
+
+                # Shift the in-between rows.
+                if new_position > old_position:
+                    # Moving down — phases between old+1 and new shift up by 1
+                    cur.execute(
+                        """
+                        UPDATE home_builder.phase
+                        SET sequence_index = sequence_index - 1
+                        WHERE project_id = %s::uuid
+                          AND sequence_index BETWEEN %s AND %s
+                          AND id != %s::uuid
+                        """,
+                        (project_id, old_position + 1, new_position, moving_id),
+                    )
+                else:
+                    # Moving up — phases between new and old-1 shift down by 1
+                    cur.execute(
+                        """
+                        UPDATE home_builder.phase
+                        SET sequence_index = sequence_index + 1
+                        WHERE project_id = %s::uuid
+                          AND sequence_index BETWEEN %s AND %s
+                          AND id != %s::uuid
+                        """,
+                        (project_id, new_position, old_position - 1, moving_id),
+                    )
+                shifted_count = cur.rowcount
+
+                # Land the moving row.
+                cur.execute(
+                    """
+                    UPDATE home_builder.phase
+                    SET sequence_index = %s
+                    WHERE id = %s::uuid
+                    """,
+                    (new_position, moving_id),
+                )
+    except Exception as e:
+        return (
+            f"reorder_phase: DB write failed — {type(e).__name__}: {e}",
+            0.0,
+        )
+
+    direction = "down" if new_position > old_position else "up"
+    body = (
+        f"Moved {row['name']}: position {old_position} → "
+        f"{new_position} ({direction}). {shifted_count} other phase"
+        f"{'s' if shifted_count != 1 else ''} shifted to make room."
+    )
+    structured = {
+        "phase_name": row["name"],
+        "old_position": old_position,
+        "new_position": new_position,
+        "shifted_phases": shifted_count,
+    }
+    return f"{body}\n\n[reorder_phase: {structured}]", 0.0
 
 
 def _tool_write_to_drive(
@@ -2772,6 +3642,58 @@ def chad_turn(
                         f"clone project {inputs.get('copy_from', '?')!r} → "
                         f"{inputs.get('new_name', '?')!r}"
                     )
+                elif name == "update_customer_info":
+                    output, cost = _tool_update_customer_info(
+                        project_id=inputs.get("project_id", ""),
+                        customer_name=inputs.get("customer_name"),
+                        customer_email=inputs.get("customer_email"),
+                        customer_phone=inputs.get("customer_phone"),
+                        address=inputs.get("address"),
+                        job_code=inputs.get("job_code"),
+                        notes=inputs.get("notes"),
+                        dry_run=dry_run,
+                    )
+                    if not dry_run:
+                        actions_taken.append(
+                            f"updated customer info on project "
+                            f"{inputs.get('project_id', '?')[:8]}…"
+                        )
+                elif name == "update_schedule_date":
+                    output, cost = _tool_update_schedule_date(
+                        project_id=inputs.get("project_id", ""),
+                        phase_sequence_index=inputs.get("phase_sequence_index"),
+                        phase_name=inputs.get("phase_name"),
+                        planned_start_date=inputs.get("planned_start_date"),
+                        planned_end_date=inputs.get("planned_end_date"),
+                        dry_run=dry_run,
+                    )
+                    if not dry_run:
+                        ident = (
+                            f"#{inputs['phase_sequence_index']}"
+                            if inputs.get("phase_sequence_index") is not None
+                            else repr(inputs.get("phase_name", "?"))
+                        )
+                        actions_taken.append(
+                            f"updated schedule date on phase {ident}"
+                        )
+                elif name == "reorder_phase":
+                    output, cost = _tool_reorder_phase(
+                        project_id=inputs.get("project_id", ""),
+                        new_position=inputs.get("new_position", 0),
+                        phase_sequence_index=inputs.get("phase_sequence_index"),
+                        phase_name=inputs.get("phase_name"),
+                        dry_run=dry_run,
+                    )
+                    if not dry_run:
+                        ident = (
+                            f"#{inputs['phase_sequence_index']}"
+                            if inputs.get("phase_sequence_index") is not None
+                            else repr(inputs.get("phase_name", "?"))
+                        )
+                        actions_taken.append(
+                            f"reordered phase {ident} → position "
+                            f"{inputs.get('new_position', '?')}"
+                        )
                 elif name == "write_to_drive":
                     output, cost = _tool_write_to_drive(
                         folder_id=inputs.get("folder_id", ""),
@@ -3354,6 +4276,58 @@ def chad_turn_stream(
                             f"clone project {inputs.get('copy_from', '?')!r} "
                             f"→ {inputs.get('new_name', '?')!r}"
                         )
+                    elif block.name == "update_customer_info":
+                        output, cost = _tool_update_customer_info(
+                            project_id=inputs.get("project_id", ""),
+                            customer_name=inputs.get("customer_name"),
+                            customer_email=inputs.get("customer_email"),
+                            customer_phone=inputs.get("customer_phone"),
+                            address=inputs.get("address"),
+                            job_code=inputs.get("job_code"),
+                            notes=inputs.get("notes"),
+                            dry_run=dry_run,
+                        )
+                        if not dry_run:
+                            actions_taken.append(
+                                f"updated customer info on project "
+                                f"{inputs.get('project_id', '?')[:8]}…"
+                            )
+                    elif block.name == "update_schedule_date":
+                        output, cost = _tool_update_schedule_date(
+                            project_id=inputs.get("project_id", ""),
+                            phase_sequence_index=inputs.get("phase_sequence_index"),
+                            phase_name=inputs.get("phase_name"),
+                            planned_start_date=inputs.get("planned_start_date"),
+                            planned_end_date=inputs.get("planned_end_date"),
+                            dry_run=dry_run,
+                        )
+                        if not dry_run:
+                            ident = (
+                                f"#{inputs['phase_sequence_index']}"
+                                if inputs.get("phase_sequence_index") is not None
+                                else repr(inputs.get("phase_name", "?"))
+                            )
+                            actions_taken.append(
+                                f"updated schedule date on phase {ident}"
+                            )
+                    elif block.name == "reorder_phase":
+                        output, cost = _tool_reorder_phase(
+                            project_id=inputs.get("project_id", ""),
+                            new_position=inputs.get("new_position", 0),
+                            phase_sequence_index=inputs.get("phase_sequence_index"),
+                            phase_name=inputs.get("phase_name"),
+                            dry_run=dry_run,
+                        )
+                        if not dry_run:
+                            ident = (
+                                f"#{inputs['phase_sequence_index']}"
+                                if inputs.get("phase_sequence_index") is not None
+                                else repr(inputs.get("phase_name", "?"))
+                            )
+                            actions_taken.append(
+                                f"reordered phase {ident} → position "
+                                f"{inputs.get('new_position', '?')}"
+                            )
                     elif block.name == "write_to_drive":
                         # Streaming surface is real iOS user — never dry-run.
                         output, cost = _tool_write_to_drive(
