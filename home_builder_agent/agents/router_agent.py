@@ -45,6 +45,31 @@ from home_builder_agent.integrations.postgres import connection
 
 
 # ---------------------------------------------------------------------------
+# Module-fallback map for subprocess dispatch
+# ---------------------------------------------------------------------------
+# If the CLI binary isn't on PATH at subprocess time (daemon contexts,
+# sandboxed Claude Code sessions, launchd jobs with sanitized PATH —
+# every place the hb-chad agent might actually run from), retry the call
+# via `python -m <module>` instead. This mirrors the documented fallback
+# in CLAUDE.md ("PYTHONPATH … python3 -m home_builder_agent.agents.X")
+# and bypasses PATH entirely.
+#
+# Keep in sync with [project.scripts] in pyproject.toml. Each entry maps
+# the CLI command name → its dotted module path (without :main).
+AGENT_MODULE_MAP: dict[str, str] = {
+    "hb-receipt":       "home_builder_agent.agents.receipt_agent",
+    "hb-update":        "home_builder_agent.agents.status_updater",
+    "hb-ledger":        "home_builder_agent.agents.ledger_agent",
+    "hb-inspect":       "home_builder_agent.agents.inspection_tracker",
+    "hb-log":           "home_builder_agent.agents.site_log_agent",
+    "hb-waiver":        "home_builder_agent.agents.lien_waiver_agent",
+    "hb-change":        "home_builder_agent.agents.change_order_agent",
+    "hb-client-update": "home_builder_agent.agents.client_update_agent",
+    "hb-project":       "home_builder_agent.agents.project_agent",
+}
+
+
+# ---------------------------------------------------------------------------
 # Command registry
 # ---------------------------------------------------------------------------
 # The router classifies user intent into one of these slugs, then dispatches.
@@ -445,6 +470,10 @@ def _invoke_agent(
             f"Router couldn't build CLI args for {agent_cmd} from parameters {parameters!r}",
         )
 
+    # Try the CLI binary first (fast path), fall back to `python -m <module>`
+    # if it's not on PATH. The fallback is robust across daemon contexts
+    # (launchd, iOS HTTP backend, sandboxed Claude Code) where PATH may not
+    # include the Python framework's bin dir.
     try:
         proc = subprocess.run(
             args, capture_output=True, text=True, timeout=120,
@@ -452,7 +481,26 @@ def _invoke_agent(
     except subprocess.TimeoutExpired:
         return ("error", "", f"{agent_cmd} timed out after 120s")
     except FileNotFoundError:
-        return ("error", "", f"{agent_cmd} not found on PATH (run pip install -e .)")
+        module = AGENT_MODULE_MAP.get(agent_cmd)
+        if not module:
+            return (
+                "error", "",
+                f"{agent_cmd} not found on PATH and no module fallback "
+                f"registered (add to AGENT_MODULE_MAP in router_agent.py)",
+            )
+        fallback_args = [sys.executable, "-m", module, *args[1:]]
+        try:
+            proc = subprocess.run(
+                fallback_args, capture_output=True, text=True, timeout=120,
+            )
+        except subprocess.TimeoutExpired:
+            return ("error", "", f"{agent_cmd} (module fallback) timed out after 120s")
+        except FileNotFoundError:
+            return (
+                "error", "",
+                f"{agent_cmd}: python -m {module} also failed — "
+                f"home_builder_agent not importable in this interpreter",
+            )
 
     if proc.returncode == 0:
         # Pull a result summary from the agent's stdout (last few non-empty lines)
