@@ -212,6 +212,9 @@ Tool selection guide — pick the most specific tool, fall back to ask_chad:
   "save this chat to project folder" write_to_drive
   "export this conversation to .md"  write_to_drive
   "put that spec in Whitfield's"     write_to_drive
+  "look up that FEMA panel"          web_fetch
+  "what does this URL say?"          web_fetch
+  "read this code section for me"    web_fetch
   "what was framing's cost?"         ask_chad  (cross-cutting RAG)
   "find emails about windows"        ask_chad
 
@@ -715,6 +718,32 @@ TOOLS = [
                 },
             },
             "required": ["folder_id", "file_name", "content"],
+        },
+    },
+    {
+        "name": "web_fetch",
+        "description": (
+            "Fetch a web page or text URL and return its cleaned readable "
+            "text content. Use when Chad asks you to look something up on "
+            "a specific website, pull a public document (FEMA FIRM panel "
+            "page, Baldwin County code section, supplier product page, "
+            "municipal records lookup), or read an article whose URL Chad "
+            "shared. Returns plain text with HTML tags stripped. Capped "
+            "at 50 KB to protect context. Returns an error string on "
+            "failure — never throws. Read-only: this tool only fetches, "
+            "it never submits forms or follows redirects to login pages."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": (
+                        "Full http:// or https:// URL to fetch. Required."
+                    ),
+                },
+            },
+            "required": ["url"],
         },
     },
 ]
@@ -1618,6 +1647,168 @@ def _tool_write_to_drive(
     )
 
 
+def _tool_web_fetch(url: str) -> tuple[str, float]:
+    """Fetch a URL and return cleaned readable text.
+
+    Uses stdlib only — no new dependency. urllib for the GET,
+    html.parser for tag stripping. Response is capped at 50 KB
+    decoded text to protect Claude's context budget. Errors are
+    returned as text, never raised.
+
+    Returns (text_or_error_message, cost_usd_=0).
+    """
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+    from html.parser import HTMLParser
+
+    MAX_BYTES_FETCH = 1_000_000   # 1 MB cap on raw download
+    MAX_CHARS_RETURN = 50 * 1024  # 50 KB cap on returned text
+    TIMEOUT_SEC = 10
+
+    # ---- validation -------------------------------------------------
+    if not url or not isinstance(url, str):
+        return "web_fetch: url is required (string).", 0.0
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return (
+            f"web_fetch: only http/https URLs are supported. Got "
+            f"scheme={parsed.scheme!r}.",
+            0.0,
+        )
+    if not parsed.netloc:
+        return f"web_fetch: malformed URL (no host): {url!r}", 0.0
+
+    # ---- fetch ------------------------------------------------------
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": (
+                "home-builder-agent/0.2 (Palmetto Custom Homes; "
+                "+ Patton AI)"
+            ),
+            "Accept": "text/html,text/plain,*/*;q=0.5",
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT_SEC) as resp:
+            content_type = (resp.headers.get("Content-Type") or "").lower()
+            raw = resp.read(MAX_BYTES_FETCH + 1)
+            truncated_raw = len(raw) > MAX_BYTES_FETCH
+            raw = raw[:MAX_BYTES_FETCH]
+    except urllib.error.HTTPError as e:
+        return (
+            f"web_fetch: HTTP {e.code} from {parsed.netloc} "
+            f"({e.reason})",
+            0.0,
+        )
+    except urllib.error.URLError as e:
+        return f"web_fetch: connection error — {e.reason}", 0.0
+    except Exception as e:
+        return (
+            f"web_fetch: unexpected error — {type(e).__name__}: {e}",
+            0.0,
+        )
+
+    # ---- non-HTML short-circuit -------------------------------------
+    if "html" not in content_type and "xml" not in content_type:
+        if content_type.startswith("text/"):
+            try:
+                text = raw.decode("utf-8", errors="replace")
+            except Exception:
+                text = raw.decode("latin-1", errors="replace")
+        else:
+            return (
+                f"web_fetch: non-text content "
+                f"({content_type or 'unknown type'}, {len(raw)} bytes). "
+                f"web_fetch only returns readable text.",
+                0.0,
+            )
+    else:
+        # ---- HTML → text ---------------------------------------------
+        try:
+            html = raw.decode("utf-8", errors="replace")
+        except Exception:
+            html = raw.decode("latin-1", errors="replace")
+
+        class _TextExtractor(HTMLParser):
+            """Strip tags + collapse whitespace.
+
+            Skips <script>, <style>, <head>, <noscript> blocks. Adds
+            line breaks on block-level tags so the output isn't one wall.
+            """
+            SKIP = {"script", "style", "head", "noscript", "svg", "iframe"}
+            BLOCK = {
+                "p", "div", "br", "li", "tr", "h1", "h2", "h3", "h4",
+                "h5", "h6", "section", "article", "header", "footer",
+                "nav", "aside", "blockquote", "pre",
+            }
+
+            def __init__(self) -> None:
+                super().__init__()
+                self.parts: list[str] = []
+                self.skip_depth = 0
+
+            def handle_starttag(self, tag, attrs):
+                if tag in self.SKIP:
+                    self.skip_depth += 1
+                elif tag in self.BLOCK:
+                    self.parts.append("\n")
+
+            def handle_endtag(self, tag):
+                if tag in self.SKIP and self.skip_depth > 0:
+                    self.skip_depth -= 1
+                elif tag in self.BLOCK:
+                    self.parts.append("\n")
+
+            def handle_data(self, data):
+                if self.skip_depth == 0 and data.strip():
+                    self.parts.append(data)
+
+        parser = _TextExtractor()
+        try:
+            parser.feed(html)
+        except Exception as e:
+            return (
+                f"web_fetch: HTML parse failed — {type(e).__name__}: {e}",
+                0.0,
+            )
+
+        text = "".join(parser.parts)
+        # Collapse runs of whitespace, but preserve paragraph breaks
+        import re as _re
+        text = _re.sub(r"[ \t]+", " ", text)
+        text = _re.sub(r"\n[ \t]+", "\n", text)
+        text = _re.sub(r"\n{3,}", "\n\n", text)
+        text = text.strip()
+
+    # ---- cap return size --------------------------------------------
+    if not text:
+        return (
+            f"web_fetch: fetched {parsed.netloc} but extracted no "
+            f"readable text (page may be JS-rendered or empty).",
+            0.0,
+        )
+
+    truncated_text = len(text) > MAX_CHARS_RETURN
+    if truncated_text:
+        text = text[:MAX_CHARS_RETURN]
+
+    notes = []
+    if truncated_raw:
+        notes.append(f"raw download capped at {MAX_BYTES_FETCH} bytes")
+    if truncated_text:
+        notes.append(f"output capped at {MAX_CHARS_RETURN} chars")
+    note_line = (
+        f"\n\n[web_fetch: {parsed.netloc} • {len(text)} chars"
+        + (f" • {'; '.join(notes)}" if notes else "")
+        + "]"
+    )
+
+    return (text + note_line, 0.0)
+
+
 def _tool_approve_draft_action(
     draft_action_id: str,
     decision_notes: str | None = None,
@@ -2032,6 +2223,8 @@ def chad_turn(
                         actions_taken.append(
                             f"wrote {inputs.get('file_name', '?')!r} to Drive"
                         )
+                elif name == "web_fetch":
+                    output, cost = _tool_web_fetch(inputs.get("url", ""))
                 else:
                     output = f"Unknown tool: {name}"
                     cost = 0.0
@@ -2516,6 +2709,8 @@ def chad_turn_stream(
                         actions_taken.append(
                             f"wrote {inputs.get('file_name', '?')!r} to Drive"
                         )
+                    elif block.name == "web_fetch":
+                        output, cost = _tool_web_fetch(inputs.get("url", ""))
                     else:
                         output = f"Unknown tool: {block.name}"
                         cost = 0.0
