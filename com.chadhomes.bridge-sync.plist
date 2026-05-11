@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd job for the Sheets Tracker → Postgres canonical sync.
+
+  Per ADR 2026-05-11 SUPERSEDED (Postgres-canonical was wrong for
+  Chad's workflow — he edits Sheets directly). Per the corrected
+  ADR (same day), Sheets is canonical for raw editable state
+  (phase names/dates/statuses, customer info); Postgres is the
+  query store for the dashboard + agent-generated state. This
+  worker walks every active project's Tracker and upserts +
+  deletes home_builder.phase rows so the dashboard reflects what
+  Chad edits in Sheets within ~5 minutes.
+
+  hb-chad write tools dual-write (Sheets first, then Postgres
+  via the existing transaction) so the dashboard reflects
+  tool-driven changes instantly without waiting for this sync.
+
+  Install:
+    cp com.chadhomes.bridge-sync.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.chadhomes.bridge-sync.plist
+
+  Stop:
+    launchctl unload ~/Library/LaunchAgents/com.chadhomes.bridge-sync.plist
+
+  Inspect:
+    launchctl list | grep chadhomes
+    tail -f /tmp/bridge-sync.stderr.log
+    tail -f /tmp/bridge-sync.stdout.log
+
+  Pattern source: com.chadhomes.tracker-mirror.plist (now removed)
+  but with the inverted direction.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.chadhomes.bridge-sync</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Library/Frameworks/Python.framework/Versions/3.14/bin/python3</string>
+    <string>-m</string>
+    <string>home_builder_agent.agents.bridge_agent</string>
+    <string>--json</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/connorpatton/Projects/home-builder-agent</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONPATH</key>
+    <string>/Users/connorpatton/Projects/home-builder-agent</string>
+  </dict>
+
+  <key>StartInterval</key>
+  <integer>300</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/bridge-sync.stdout.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/bridge-sync.stderr.log</string>
+</dict>
+</plist>
