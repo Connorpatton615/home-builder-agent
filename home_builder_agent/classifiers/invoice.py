@@ -7,7 +7,7 @@ Three entry points:
   extract_receipt_data() — Sonnet-based vision extraction from a receipt photo
 
 Used by the Finance Office agent and any future watcher that processes
-supplier emails or receipt uploads for Chad's Custom Homes.
+supplier emails or receipt uploads for Palmetto Custom Homes.
 """
 
 import json
@@ -123,7 +123,7 @@ def extract_invoice_data(
         "job_hint": "",
     }
 
-    prompt = f"""You are parsing a construction invoice email for Chad's Custom Homes, a luxury home builder in Baldwin County, AL.
+    prompt = f"""You are parsing a construction invoice email for Palmetto Custom Homes, a luxury home builder in Baldwin County, AL.
 
 EMAIL DETAILS:
 - From: {from_name} <{from_email}>

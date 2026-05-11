@@ -284,7 +284,7 @@ def generate_summary(client, change, updates, original_phases, project_name, tod
     target_old = original_phases[target_idx] if target_idx is not None else {}
     target_new = next((u[1] for u in updates if u[0] == target_idx), {})
 
-    system_prompt = f"""You are a project communication agent for Chad's Custom Homes (Baldwin County, AL luxury custom homes).
+    system_prompt = f"""You are a project communication agent for Palmetto Custom Homes (Baldwin County, AL luxury custom homes).
 
 Apply Chad's preferred communication style strictly:
 

@@ -271,7 +271,7 @@ def generate_checklist(client, threads_with_classifications, today=None):
         thread_lines.append(line)
     threads_text = "\n\n".join(thread_lines)
 
-    system_prompt = f"""You are a project communication agent for Chad's Custom Homes.
+    system_prompt = f"""You are a project communication agent for Palmetto Custom Homes.
 
 Apply Chad's communication style strictly — direct, calm, status-led, scannable, no fluff.
 
