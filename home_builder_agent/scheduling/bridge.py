@@ -1,4 +1,34 @@
-"""bridge.py — Drive Tracker → Postgres sync.
+"""bridge.py — DORMANT legacy Drive Tracker → Postgres sync.
+
+================================================================================
+ DIRECTION INVERTED — 2026-05-11
+================================================================================
+
+Per ADR 2026-05-11 ("Postgres as Canonical State; Google Sheets as
+Read-Only Mirror"), Postgres is now the source of truth and the Sheets
+Tracker is a read-only mirror. The ACTIVE sync path lives in:
+
+    home_builder_agent/scheduling/mirror_worker.py
+    com.chadhomes.tracker-mirror.plist  (5-minute launchd loop)
+
+This module is kept *dormant* (not deleted) for one reason: the v1
+scope-out explicitly preserved it so we can roll back instantly if the
+Postgres-canonical refactor turns out to need adjustment. Its public
+entry points still exist as thin shims:
+
+    sync_tracker(...)        -> _legacy_sync_tracker_from_tracker_to_postgres(...)
+    sync_all_trackers(...)   -> walks every Tracker, then calls the legacy fn
+
+Do NOT use these for new code. New code that needs Tracker writes must
+go through `mirror_worker` (and, eventually, the hb-chad input tools
+that mutate Postgres state, which the mirror then projects to Sheets).
+
+`DRIVE_STATUS_TO_DB` and `_parse_iso_date` are still exported — they're
+the load-bearing parsers that `mirror_worker` reuses (inverted, in
+`DB_STATUS_TO_DRIVE`, for the same status vocabulary).
+
+--------------------------------------------------------------------------------
+Original docstring (now historical):
 
 The "real Chad data" pipe. Phase A architecture has Drive Tracker sheets
 as the canonical source of truth (where Chad and his agents have been
@@ -292,14 +322,19 @@ def _upsert_phase(
 # Top-level: sync one tracker
 # ---------------------------------------------------------------------------
 
-def sync_tracker(
+def _legacy_sync_tracker_from_tracker_to_postgres(
     drive_svc,
     sheets_svc,
     tracker: dict,
     *,
     dry_run: bool = False,
 ) -> TrackerSyncResult:
-    """Sync one Drive Tracker into Postgres. Returns a TrackerSyncResult.
+    """LEGACY: sync one Drive Tracker INTO Postgres.
+
+    DORMANT per ADR 2026-05-11. Postgres is now canonical and the
+    Tracker is a read-only mirror — see mirror_worker.py for the
+    active path. This function is preserved so the dormant `hb-bridge`
+    CLI keeps working as a rollback escape hatch.
 
     Args:
         drive_svc:    authenticated Drive service
@@ -454,7 +489,9 @@ def sync_all_trackers(
     dry_run: bool = False,
     name_filter: str | None = None,
 ) -> list[TrackerSyncResult]:
-    """Sync every Tracker in `folder_path` to Postgres.
+    """LEGACY: sync every Tracker in `folder_path` INTO Postgres.
+
+    DORMANT per ADR 2026-05-11. See module docstring + mirror_worker.py.
 
     If name_filter is provided, only sync trackers whose project_name
     contains it (case-insensitive substring).
@@ -466,7 +503,30 @@ def sync_all_trackers(
         project_name = drive.extract_project_name(tracker["name"])
         if name_filter and name_filter.lower() not in project_name.lower():
             continue
-        result = sync_tracker(drive_svc, sheets_svc, tracker, dry_run=dry_run)
+        result = _legacy_sync_tracker_from_tracker_to_postgres(
+            drive_svc, sheets_svc, tracker, dry_run=dry_run,
+        )
         results.append(result)
 
     return results
+
+
+# ---------------------------------------------------------------------------
+# Backward-compatibility shim
+# ---------------------------------------------------------------------------
+#
+# Preserves the `sync_tracker(...)` import path for the dormant
+# `hb-bridge` CLI (`agents/bridge_agent.py`). New callers must not use
+# this — use `home_builder_agent.scheduling.mirror_worker.run_once()`.
+#
+def sync_tracker(
+    drive_svc,
+    sheets_svc,
+    tracker: dict,
+    *,
+    dry_run: bool = False,
+) -> TrackerSyncResult:
+    """DEPRECATED shim → _legacy_sync_tracker_from_tracker_to_postgres."""
+    return _legacy_sync_tracker_from_tracker_to_postgres(
+        drive_svc, sheets_svc, tracker, dry_run=dry_run,
+    )
