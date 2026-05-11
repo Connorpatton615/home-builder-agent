@@ -61,3 +61,7 @@ watcher.log
 # OS-level cruft
 Thumbs.db
 desktop.ini
+
+# graphify (graph-generation tool) artifacts
+.graphifyignore
+graphify-out/
