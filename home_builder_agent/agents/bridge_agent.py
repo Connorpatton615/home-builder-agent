@@ -75,6 +75,25 @@ def _print_pretty(results: list[TrackerSyncResult]) -> None:
         print(f"    ⏸  unchanged:  {counts.get('unchanged', 0)}")
         print(f"    🚨 errors:     {counts.get('error', 0)}")
 
+        # Project Info tab outcomes (v1.2 of ADR 2026-05-11). Surfaced
+        # next to phase outcomes so a per-Tracker glance shows both.
+        print(f"  project_info:      {r.project_info_outcome}")
+        if r.project_info_field_outcomes:
+            field_updated = [
+                col
+                for col, oc in r.project_info_field_outcomes.items()
+                if oc == "updated"
+            ]
+            field_kept = [
+                col
+                for col, oc in r.project_info_field_outcomes.items()
+                if oc == "kept"
+            ]
+            if field_updated:
+                print(f"    ✏️  updated:    {', '.join(field_updated)}")
+            if field_kept:
+                print(f"    🛡  kept (pg wins): {', '.join(field_kept)}")
+
         if counts.get("error", 0) > 0:
             print(f"\n  Per-phase detail (errors only):")
             for p in r.phase_outcomes:
@@ -169,6 +188,8 @@ def main():
                      "outcome": p.outcome, "notes": p.notes}
                     for p in r.phase_outcomes
                 ],
+                "project_info_outcome": r.project_info_outcome,
+                "project_info_field_outcomes": r.project_info_field_outcomes,
                 "error": r.error,
             })
         print(json.dumps({

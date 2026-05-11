@@ -22,6 +22,12 @@ This sync is upsert + selective-delete:
     by (project_id, sequence_index). Missing-from-Tracker rows are
     DELETEd (so Chad's manual row-clears actually clear Postgres).
   - Project: upsert by drive_folder_id (or name as fallback).
+  - Project Info tab (v1.2 of ADR 2026-05-11): Customer Name/Email/
+    Phone, Project Address, Job Code, Notes flow from the Tracker's
+    "Project Info" tab into the corresponding home_builder.project
+    columns. Defensive: never overwrites a non-empty Postgres value
+    with a Tracker blank — Postgres real data wins over Tracker
+    blanks (except customer_name = "TBD", the bridge legacy default).
   - Idempotent — re-running against the same Trackers is a no-op
     when nothing has changed.
 
@@ -38,6 +44,7 @@ restored direction proves stable.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Optional
@@ -47,6 +54,27 @@ import psycopg
 from home_builder_agent.integrations import drive, sheets
 from home_builder_agent.integrations.postgres import connection
 from home_builder_agent.scheduling.store_postgres import _phase_template_slug
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Project Info tab field mapping
+# ---------------------------------------------------------------------------
+#
+# Tracker "Project Info" tab field name -> home_builder.project column.
+# Order matters for deterministic UPDATE-clause assembly + log output.
+# Builder is intentionally absent — always "Palmetto Custom Homes" by
+# definition; no Postgres column to store it.
+#
+PROJECT_INFO_FIELD_MAP: list[tuple[str, str]] = [
+    ("Customer Name",   "customer_name"),
+    ("Customer Email",  "customer_email"),
+    ("Customer Phone",  "customer_phone"),
+    ("Project Address", "address"),
+    ("Job Code",        "job_code"),
+    ("Notes",           "notes"),
+]
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +161,18 @@ class TrackerSyncResult:
     project_outcome: str    # 'inserted' | 'updated' | 'unchanged' | 'error'
     phase_count: int = 0
     phase_outcomes: list[PhaseSyncOutcome] = field(default_factory=list)
+    # Project Info tab outcomes (v1.2 of ADR 2026-05-11):
+    #   'updated'      — at least one column written
+    #   'unchanged'    — all Tracker values either match Postgres or
+    #                    are blank-and-Postgres-already-has-data
+    #   'tab_missing'  — sheets.read_project_info returned {} (no tab
+    #                    or empty tab); sync skipped cleanly
+    #   'error'        — exception while reading or writing
+    project_info_outcome: str = "unchanged"
+    # Per-field outcome map. Keys are Postgres column names (e.g.
+    # 'customer_name'). Values: 'updated' | 'unchanged' | 'kept' (tracker
+    # blank, Postgres preserved) | 'error'.
+    project_info_field_outcomes: dict[str, str] = field(default_factory=dict)
     error: str | None = None
 
     def summary_counts(self) -> dict[str, int]:
@@ -296,6 +336,98 @@ def _upsert_phase(
              planned_start_date, planned_end_date, duration),
         )
         return "inserted"
+
+
+# ---------------------------------------------------------------------------
+# Project Info tab sync (Tracker "Project Info" → home_builder.project columns)
+# ---------------------------------------------------------------------------
+
+def _sync_project_info(
+    conn: psycopg.Connection,
+    project_id: str,
+    tracker_info: dict[str, str],
+) -> tuple[str, dict[str, str]]:
+    """Sync the Tracker Project Info tab into home_builder.project columns.
+
+    Returns (outcome, field_outcomes) where:
+      - outcome is 'updated' | 'unchanged' | 'error'
+      - field_outcomes maps Postgres column name -> per-field outcome
+        ('updated' | 'unchanged' | 'kept' | 'error')
+
+    Defensive rule (per ADR 2026-05-11 v1.2 cutover): never overwrite
+    a non-empty Postgres value with a blank Tracker value. Postgres
+    real data wins over Tracker blanks. The only exception is
+    `customer_name = "TBD"` — that's the bridge legacy default for
+    projects inserted before the Project Info tab existed, so any
+    non-empty Tracker value should overwrite it.
+    """
+    field_outcomes: dict[str, str] = {}
+
+    # Read current Postgres state for every mapped column in one go.
+    pg_cols = [pg_col for _, pg_col in PROJECT_INFO_FIELD_MAP]
+    select_cols = ", ".join(pg_cols)
+    with conn.cursor() as cur:
+        cur.execute(
+            f"SELECT {select_cols} FROM home_builder.project WHERE id = %s::uuid",
+            (project_id,),
+        )
+        existing = cur.fetchone()
+
+    if not existing:
+        # Project row vanished between _upsert_project and now — unlikely
+        # but treat as error rather than silently no-op.
+        for _, pg_col in PROJECT_INFO_FIELD_MAP:
+            field_outcomes[pg_col] = "error"
+        return "error", field_outcomes
+
+    # Build the SET clause: include a column only if the Tracker has a
+    # non-empty value AND it differs from what's in Postgres (with the
+    # customer_name = "TBD" exception).
+    sets: dict[str, str] = {}
+    for tracker_field, pg_col in PROJECT_INFO_FIELD_MAP:
+        tracker_raw = tracker_info.get(tracker_field, "")
+        tracker_val = (str(tracker_raw).strip() if tracker_raw is not None else "")
+        pg_val = existing.get(pg_col)
+        pg_val_str = (str(pg_val).strip() if isinstance(pg_val, str) else
+                      ("" if pg_val is None else str(pg_val)))
+
+        if not tracker_val:
+            # Tracker blank. Don't update — preserve Postgres state.
+            if not pg_val_str:
+                field_outcomes[pg_col] = "unchanged"
+            else:
+                field_outcomes[pg_col] = "kept"
+            continue
+
+        # Tracker has a non-empty value.
+        # customer_name = "TBD" is the bridge legacy default — overwrite.
+        treat_pg_as_empty = (
+            pg_col == "customer_name" and pg_val_str.upper() == "TBD"
+        )
+
+        if not treat_pg_as_empty and tracker_val == pg_val_str:
+            field_outcomes[pg_col] = "unchanged"
+            continue
+
+        sets[pg_col] = tracker_val
+        field_outcomes[pg_col] = "updated"
+
+    if not sets:
+        return "unchanged", field_outcomes
+
+    # Issue one UPDATE for the project, deterministic column order.
+    cols = [c for c in pg_cols if c in sets]  # preserve mapping order
+    assignments = ", ".join(f"{c} = %s" for c in cols)
+    params: list = [sets[c] for c in cols]
+    params.append(project_id)
+    sql = (
+        f"UPDATE home_builder.project SET {assignments}, updated_at = now() "
+        f"WHERE id = %s::uuid"
+    )
+    with conn.cursor() as cur:
+        cur.execute(sql, params)
+
+    return "updated", field_outcomes
 
 
 # ---------------------------------------------------------------------------
@@ -549,6 +681,62 @@ def sync_tracker(
                             notes="absent from Tracker — propagated as DELETE",
                         )
                     )
+
+            # Project Info tab sync — v1.2 of ADR 2026-05-11. Read the
+            # Tracker's "Project Info" tab and write Customer Name/Email/
+            # Phone, Project Address, Job Code, Notes into the project
+            # row. Defensive: never overwrite a non-empty Postgres value
+            # with a Tracker blank (Postgres real data wins over blanks).
+            # Tab missing is a clean skip, not a sync failure.
+            try:
+                tracker_info = sheets.read_project_info(
+                    sheets_svc, tracker["id"]
+                )
+            except Exception as e:
+                logger.warning(
+                    "project_info_read_failed",
+                    extra={
+                        "event": "project_info_read_failed",
+                        "tracker_name": result.tracker_name,
+                        "project_id": project_id,
+                        "error": f"{type(e).__name__}: {e}",
+                    },
+                )
+                result.project_info_outcome = "error"
+            else:
+                if not tracker_info:
+                    logger.warning(
+                        "project_info_tab_missing",
+                        extra={
+                            "event": "project_info_tab_missing",
+                            "tracker_name": result.tracker_name,
+                            "project_id": project_id,
+                        },
+                    )
+                    result.project_info_outcome = "tab_missing"
+                else:
+                    try:
+                        (
+                            pi_outcome,
+                            pi_field_outcomes,
+                        ) = _sync_project_info(
+                            conn,
+                            project_id=project_id,
+                            tracker_info=tracker_info,
+                        )
+                        result.project_info_outcome = pi_outcome
+                        result.project_info_field_outcomes = pi_field_outcomes
+                    except Exception as e:
+                        logger.warning(
+                            "project_info_sync_failed",
+                            extra={
+                                "event": "project_info_sync_failed",
+                                "tracker_name": result.tracker_name,
+                                "project_id": project_id,
+                                "error": f"{type(e).__name__}: {e}",
+                            },
+                        )
+                        result.project_info_outcome = "error"
 
             if dry_run:
                 conn.rollback()
