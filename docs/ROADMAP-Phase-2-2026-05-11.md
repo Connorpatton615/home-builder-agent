@@ -17,12 +17,35 @@ Phase 1 (weeks 1–8) builds the foundation: SMS hub, Field Card synthesizer, vo
 
 **By Week 16: 15 features shipped + 4 deferred-but-ready (auto-ship when client #2 has supers).**
 
-## The 4 sequencing principles
+## The 5 sequencing principles
 
 1. **Infrastructure-first weeks unlock bundles.** Once SMS hub (W2) exists, every SMS-based feature is a config row.
 2. **Field Card variants are config rows.** Per ADR-UI-001, 10 of the 15 new ideas are Field Card surfaces — once the synthesizer abstraction lands, each new audience/slot is hours, not weeks.
 3. **Defer non-Chad workflows.** Multi-super, multi-PM coordination features don't fit Palmetto. They sit ready but ship when client #2 has supers (Newton RFID, future Nashville builders, etc.).
 4. **Bundle by audience.** Owner-batch ships together. Office-batch ships together. Reduces context-switch cost.
+5. **Dual-agent execution.** Per the 2026-05-11 dual-agent workflow ADR: Claude Code designs + integrates + reviews; Codex parallel-executes well-specified mechanical work + audits Claude's PRs with REVIEW_BRIEFs. Each week below carries an explicit tool-split — without it, the 8-week timeline slips.
+
+## Tool split by week (per dual-agent workflow ADR 2026-05-11)
+
+| Week | Claude Code | Codex | Codex parallelism |
+|---|---|---|---|
+| 9 SMS Hub Ext. | Field Card synthesizer abstraction + webhook + router shape | per-command handlers ("is OK?", "what's my budget?") + tests | 2 parallel workers |
+| 10 Owner Pack | narrative timeline screen design (iOS) + synthesizer audience configs | 4 email templates: decision queue · milestone celebration · Friday recap · narrative timeline | 4 parallel workers |
+| 11 Permit + Insp. | per-county adapter protocol + CountyAdapter test harness | per-county scrapers (Baldwin, Davidson, Williamson, ...) + inspection coordination flow | N parallel workers (one per county) |
+| 12 Photo+Voice | 30-second-walk orchestrator design + iOS Camera-tab integration | the four output composers (site log writer · homeowner email · punch list · Drive PDF) | 4 parallel workers |
+| 13 CarPlay | mostly Claude — Apple entitlement risk + CarPlay template specifics | post-build REVIEW_BRIEF audit + test scaffolding | minimal |
+| 14 Office Pack 1 | invoice parser design + lien-waiver state model | parser implementation + lien-waiver SMS flow | 2 parallel workers |
+| 15 Office Pack 2 | review + integration only — Codex-heavy week | 3 Field Card variants (draw schedule, doc routing, "what's open") | 3 parallel workers |
+| 16 Polish | cross-review pass + Phase-3 ADR | Codex audits everything Claude shipped Phase 2 → punch list | 1 deep-audit worker |
+
+**Codex parallel work peaks at W11 + W12** (4+ workers each) — those are the parallelism wins that compress the schedule. **W13 (CarPlay) is the sequential bottleneck** — accept it, mitigate by overlapping with W14 prep where possible.
+
+Handoff briefs land in:
+- `~/Projects/patton-ai-ios/docs/CODEX_HANDOFFS/VERTICAL_HANDOFF__<topic>.md` (execution briefs)
+- `~/Projects/patton-ai-ios/docs/CODEX_HANDOFFS/CODEX_REVIEW_BRIEF__<topic>.md` (audit briefs)
+- `~/Projects/patton-os/data/codex_review_package_<DATE>.md` (recurring cross-repo Codex review cycle)
+
+Template for new briefs: `~/Projects/patton-ai-ios/docs/CODEX_HANDOFFS/TEMPLATE__VERTICAL_HANDOFF.md`.
 
 ## Week-by-week
 
