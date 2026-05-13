@@ -65,3 +65,4 @@ desktop.ini
 # graphify (graph-generation tool) artifacts
 .graphifyignore
 graphify-out/
+state/
