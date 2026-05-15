@@ -322,3 +322,28 @@ project. Per *Multi-Tenant Telemetry Architecture* in
 - Is `compute_dashboard_metrics()` the right home in `integrations/sheets.py`, or should it move to `core/dashboard.py` once the metrics get more involved?
 - When the supplier-email watcher lands, where does shared "watcher harness" code go? (`watchers/_base.py`?)
 - Should we move to `uv` for dependency management instead of pip+pyproject?
+
+## Midnight Claude-to-Codex handoff
+
+At the end of any substantial Claude Code work session, leave a handoff for
+Codex before midnight Central. Connor is a vibe coder/founder, not a software
+engineer; the handoff should help Codex turn messy build context into a clean
+Daily 15 brief and next actions.
+
+Write the handoff in plain Markdown. If this repo does not already have a
+`docs/CODEX_HANDOFFS/` directory, create/use `docs/codex_handoffs/`. Filename:
+`YYYY-MM-DD__home-builder-agent__claude-to-codex.md`.
+
+Use this structure:
+
+1. What changed today
+2. Files/repos touched
+3. What works now
+4. What is broken, risky, or untested
+5. The next concrete Codex task
+6. Commands/tests run and results
+7. Decisions Connor needs to make
+8. What to ignore or park
+
+Do not dump raw logs. Summarize enough for Codex to review, verify, and brief
+Connor clearly the next morning.
